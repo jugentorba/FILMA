@@ -27,8 +27,8 @@ jobs:
       - name: Select Xcode 26.6
         run: sudo xcode-select -s /Applications/Xcode_26.6.app/Contents/Developer
 
-      - name: Install dependencies
-        run: yarn install --non-interactive
+      - name: Install locked dependencies
+        run: yarn install --frozen-lockfile --non-interactive
 
       - name: Verify resolved native versions
         run: yarn list --pattern 'react-native|expo-modules-autolinking|expo-modules-core|^expo$' --depth=2
