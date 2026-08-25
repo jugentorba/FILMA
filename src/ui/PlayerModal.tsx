@@ -405,13 +405,21 @@ const styles = StyleSheet.create({
   subtitle: { color: theme.muted, marginTop: 2, fontSize: Platform.isTV ? 13 : 11 },
   actions: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 7 },
   channelOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
     zIndex: 40,
     flexDirection: 'row',
     justifyContent: 'flex-end',
   },
   channelOverlayBackdrop: {
-    ...StyleSheet.absoluteFillObject,
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
     backgroundColor: 'rgba(0,0,0,0.48)',
   },
   channelPanel: {
