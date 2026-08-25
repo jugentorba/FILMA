@@ -33,11 +33,16 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      - name: Verify resolved native versions
+        run: npm ls expo react-native @react-native/gradle-plugin expo-modules-autolinking expo-modules-core --depth=2
+
       - name: Generate mobile Android project
         run: npx expo prebuild --platform android --clean --no-install
 
-      - name: Align mobile Gradle wrapper
-        run: node scripts/fix-android-gradle-wrapper.mjs
+      - name: Verify Expo SDK 57 Gradle wrapper
+        run: |
+          grep '^distributionUrl=' android/gradle/wrapper/gradle-wrapper.properties
+          grep -q 'gradle-9.3.1-bin.zip' android/gradle/wrapper/gradle-wrapper.properties
 
       - name: Build mobile release APK
         run: |
@@ -59,8 +64,10 @@ jobs:
       - name: Generate Android TV project
         run: EXPO_TV=1 npx expo prebuild --platform android --clean --no-install
 
-      - name: Align Android TV Gradle wrapper
-        run: node scripts/fix-android-gradle-wrapper.mjs
+      - name: Verify Expo SDK 57 TV Gradle wrapper
+        run: |
+          grep '^distributionUrl=' android/gradle/wrapper/gradle-wrapper.properties
+          grep -q 'gradle-9.3.1-bin.zip' android/gradle/wrapper/gradle-wrapper.properties
 
       - name: Build Android TV release APK
         run: |
