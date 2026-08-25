@@ -2,10 +2,12 @@ export type AppMode = 'movies' | 'live';
 
 export type AppLanguage = 'en' | 'fr' | 'sq';
 export type AudioLanguage = 'en' | 'fr' | 'sq' | 'it' | 'es' | 'de' | 'tr';
+export type InterfaceDensity = 'compact' | 'comfortable';
 
 export type AppPreferences = {
   appLanguage: AppLanguage;
   preferredAudioLanguages: AudioLanguage[];
+  interfaceDensity: InterfaceDensity;
   updatedAt: string;
 };
 
