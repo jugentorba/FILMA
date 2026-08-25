@@ -9,6 +9,7 @@ type DeviceModeOverride = 'auto' | 'phone' | 'tv';
 type DeviceModeContextValue = {
   tvModeEnabled: boolean;
   isTvMode: boolean;
+  isNativeTv: boolean;
   setTvModeEnabled(enabled: boolean): void;
 };
 
@@ -16,32 +17,40 @@ const DeviceModeContext = createContext<DeviceModeContextValue | null>(null);
 
 export function DeviceModeProvider({ children }: { children: React.ReactNode }) {
   const [override, setOverride] = useState<DeviceModeOverride>('auto');
+  const isNativeTv = Platform.isTV;
 
   useEffect(() => {
     void AsyncStorage.getItem(TV_MODE_KEY).then(value => {
+      if (isNativeTv) {
+        setOverride('tv');
+        return;
+      }
       if (value === '1' || value === 'tv') setOverride('tv');
       else if (value === '0' || value === 'phone') setOverride('phone');
       else setOverride('auto');
     }).catch(() => undefined);
-  }, []);
+  }, [isNativeTv]);
 
   const setTvModeEnabled = useCallback((enabled: boolean) => {
-    const next: DeviceModeOverride = enabled ? 'tv' : 'phone';
+    const next: DeviceModeOverride = isNativeTv ? 'tv' : enabled ? 'tv' : 'phone';
     setOverride(next);
     void AsyncStorage.setItem(TV_MODE_KEY, next).catch(() => undefined);
-  }, []);
+  }, [isNativeTv]);
 
-  const isTvMode = override === 'tv'
+  const isTvMode = isNativeTv
     ? true
-    : override === 'phone'
-      ? false
-      : Platform.isTV;
+    : override === 'tv'
+      ? true
+      : override === 'phone'
+        ? false
+        : false;
 
   const value = useMemo<DeviceModeContextValue>(() => ({
     tvModeEnabled: isTvMode,
     isTvMode,
+    isNativeTv,
     setTvModeEnabled,
-  }), [isTvMode, setTvModeEnabled]);
+  }), [isNativeTv, isTvMode, setTvModeEnabled]);
 
   return <DeviceModeContext.Provider value={value}>{children}</DeviceModeContext.Provider>;
 }
