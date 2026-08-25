@@ -32,6 +32,7 @@ jobs:
         run: |
           rm -rf .sync-test-build
           ./node_modules/.bin/tsc src/types.ts src/services/sync.ts src/services/stateSchema.ts \
+            --ignoreConfig \
             --outDir .sync-test-build \
             --module commonjs \
             --target ES2020 \
