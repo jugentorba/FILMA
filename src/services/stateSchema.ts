@@ -3,6 +3,8 @@ import type {
   AppMode,
   Favorite,
   FilmaState,
+  MediaResumeSnapshot,
+  MediaSource,
   PlaylistSource,
   SyncEnvelope,
   WatchProgress,
@@ -41,6 +43,50 @@ function normalizeMode(value: unknown): AppMode {
   return value === 'live' ? 'live' : 'movies';
 }
 
+function normalizeMediaSource(value: unknown): MediaSource | undefined {
+  if (!isRecord(value)) return undefined;
+  if (value.kind === 'direct') return { kind: 'direct' };
+  if (value.kind !== 'stremio') return undefined;
+
+  const manifestUrl = stringValue(value.manifestUrl);
+  const mediaType = stringValue(value.mediaType);
+  const mediaId = stringValue(value.mediaId);
+  if (!manifestUrl || !mediaType || !mediaId) return undefined;
+
+  const videoId = stringValue(value.videoId);
+  return {
+    kind: 'stremio',
+    manifestUrl,
+    mediaType,
+    mediaId,
+    ...(videoId ? { videoId } : {}),
+  };
+}
+
+function normalizeResumeItem(value: unknown): MediaResumeSnapshot | undefined {
+  if (!isRecord(value)) return undefined;
+  const id = stringValue(value.id);
+  const title = stringValue(value.title);
+  if (!id || !title) return undefined;
+
+  const genres = Array.isArray(value.genres)
+    ? value.genres.filter((genre): genre is string => typeof genre === 'string')
+    : undefined;
+  const source = normalizeMediaSource(value.source);
+  const year = typeof value.year === 'number' && Number.isFinite(value.year) ? value.year : undefined;
+
+  return {
+    id,
+    title,
+    ...(stringValue(value.subtitle) ? { subtitle: stringValue(value.subtitle) } : {}),
+    ...(stringValue(value.poster) ? { poster: stringValue(value.poster) } : {}),
+    ...(stringValue(value.backdrop) ? { backdrop: stringValue(value.backdrop) } : {}),
+    ...(source ? { source } : {}),
+    ...(genres?.length ? { genres } : {}),
+    ...(year !== undefined ? { year } : {}),
+  };
+}
+
 function normalizeProgress(value: unknown): Record<string, WatchProgress> {
   if (!isRecord(value)) return {};
   const result: Record<string, WatchProgress> = {};
@@ -48,12 +94,14 @@ function normalizeProgress(value: unknown): Record<string, WatchProgress> {
   for (const [key, raw] of Object.entries(value)) {
     if (!isRecord(raw)) continue;
     const mediaId = stringValue(raw.mediaId) ?? key;
+    const item = normalizeResumeItem(raw.item);
     result[key] = {
       mediaId,
       positionSeconds: Math.max(0, finiteNumber(raw.positionSeconds)),
       durationSeconds: Math.max(0, finiteNumber(raw.durationSeconds)),
       updatedAt: timestamp(raw.updatedAt),
       deviceId: stringValue(raw.deviceId) ?? 'legacy',
+      ...(item ? { item } : {}),
     };
   }
 
