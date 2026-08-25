@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, FlatList, Image, Linking, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, FlatList, Image, Linking, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { stringsFor } from '../i18n';
 import {
   fetchPopularYouTubeVideos,
@@ -11,38 +11,61 @@ import {
 import { useFilma } from '../store/FilmaContext';
 import { FocusButton } from '../ui/FocusButton';
 import { theme } from '../ui/theme';
+import { useResponsiveLayout } from '../ui/useResponsiveLayout';
 
 type Props = {
   onOpenVideo(video: YouTubeVideo): void;
 };
 
-function YouTubeCard({ video, index, onFocus, onPress }: {
+function YouTubeCard({ video, index, columns, onFocus, onPress }: {
   video: YouTubeVideo;
   index: number;
+  columns: number;
   onFocus(index: number): void;
   onPress(): void;
 }) {
   const [focused, setFocused] = useState(false);
+  const layout = useResponsiveLayout();
+  const cardStyle = useMemo(() => ({
+    maxWidth: `${100 / columns}%` as const,
+    padding: layout.isTv ? 6 : layout.isCompactPhone ? 2 : 4,
+    borderRadius: layout.isTv ? 14 : 12,
+  }), [columns, layout.isCompactPhone, layout.isTv]);
+  const titleStyle = useMemo(() => ({
+    fontSize: layout.isTv ? 15 : layout.isCompactPhone ? 12 : layout.isTablet ? 14 : 13,
+    lineHeight: layout.isTv ? 20 : layout.isCompactPhone ? 16 : 18,
+    marginTop: layout.isCompactPhone ? 6 : 8,
+  }), [layout.isCompactPhone, layout.isTablet, layout.isTv]);
+  const channelStyle = useMemo(() => ({
+    fontSize: layout.isTv ? 12 : layout.isCompactPhone ? 10 : 11,
+    marginTop: layout.isCompactPhone ? 3 : 4,
+  }), [layout.isCompactPhone, layout.isTv]);
+
   return (
     <Pressable
       focusable
+      accessibilityRole="button"
+      accessibilityLabel={`${video.title} · ${video.channelTitle}`}
       onFocus={() => { setFocused(true); onFocus(index); }}
       onBlur={() => setFocused(false)}
       onPress={onPress}
-      style={[styles.card, focused && styles.cardFocused]}
+      style={[styles.card, cardStyle, focused && styles.cardFocused]}
     >
       <View style={styles.thumbnailWrap}>
         {video.thumbnail ? <Image source={{ uri: video.thumbnail }} style={styles.thumbnail} resizeMode="cover" /> : null}
-        <View style={styles.playBadge}><Text style={styles.playBadgeText}>▶</Text></View>
+        <View style={[styles.playBadge, layout.isCompactPhone && styles.playBadgeCompact]}>
+          <Text style={styles.playBadgeText}>▶</Text>
+        </View>
       </View>
-      <Text numberOfLines={2} style={styles.videoTitle}>{video.title}</Text>
-      <Text numberOfLines={1} style={styles.channelTitle}>{video.channelTitle}</Text>
+      <Text numberOfLines={2} style={[styles.videoTitle, titleStyle]}>{video.title}</Text>
+      <Text numberOfLines={1} style={[styles.channelTitle, channelStyle]}>{video.channelTitle}</Text>
     </Pressable>
   );
 }
 
 export function YouTubeScreen({ onOpenVideo }: Props) {
   const { state } = useFilma();
+  const layout = useResponsiveLayout();
   const text = stringsFor(state.preferences.appLanguage);
   const listRef = useRef<FlatList<YouTubeVideo>>(null);
   const [query, setQuery] = useState('');
@@ -52,7 +75,11 @@ export function YouTubeScreen({ onOpenVideo }: Props) {
   const [error, setError] = useState<string>();
   const [reloadVersion, setReloadVersion] = useState(0);
   const configured = youtubeConfigured();
-  const columns = Platform.isTV ? 4 : 2;
+  const columns = layout.isTv
+    ? (layout.width >= 1700 ? 5 : 4)
+    : layout.isTablet
+      ? (layout.width >= 950 ? 4 : 3)
+      : 2;
 
   const modeCopy = useMemo(() => {
     if (state.preferences.appLanguage === 'fr') {
@@ -151,7 +178,7 @@ export function YouTubeScreen({ onOpenVideo }: Props) {
         .finally(() => {
           if (!cancelled) setLoading(false);
         });
-    }, 500);
+    }, 450);
     return () => {
       cancelled = true;
       clearTimeout(timer);
@@ -171,18 +198,36 @@ export function YouTubeScreen({ onOpenVideo }: Props) {
     listRef.current?.scrollToOffset({ offset: 0, animated: false });
   };
 
+  const rootStyle = useMemo(() => ({
+    paddingHorizontal: layout.horizontalPadding,
+    paddingTop: layout.isTv ? 22 : layout.isCompactPhone ? 12 : 16,
+  }), [layout.horizontalPadding, layout.isCompactPhone, layout.isTv]);
+  const titleStyle = useMemo(() => ({
+    fontSize: layout.isTv ? 34 : layout.isCompactPhone ? 24 : layout.isTablet ? 30 : 27,
+  }), [layout.isCompactPhone, layout.isTablet, layout.isTv]);
+  const searchStyle = useMemo(() => ({
+    minHeight: layout.isTv ? 48 : layout.isCompactPhone ? 38 : 44,
+    borderRadius: layout.isCompactPhone ? 11 : 13,
+    paddingHorizontal: layout.isCompactPhone ? 11 : 14,
+    fontSize: layout.isTv ? 16 : layout.isCompactPhone ? 13 : 14,
+  }), [layout.isCompactPhone, layout.isTv]);
+  const rowStyle = useMemo(() => ({
+    gap: layout.isTv ? 10 : layout.isCompactPhone ? 5 : 8,
+    marginBottom: layout.isTv ? 12 : layout.isCompactPhone ? 8 : 11,
+  }), [layout.isCompactPhone, layout.isTv]);
+
   if (!configured) {
     return (
-      <View style={styles.root}>
+      <View style={[styles.root, rootStyle]}>
         <View style={styles.heroRow}>
-          <View style={styles.youtubeMark}><Text style={styles.youtubeMarkText}>▶</Text></View>
+          <View style={[styles.youtubeMark, layout.isCompactPhone && styles.youtubeMarkCompact]}><Text style={styles.youtubeMarkText}>▶</Text></View>
           <View style={styles.heroText}>
-            <Text style={styles.title}>YouTube</Text>
+            <Text style={[styles.title, titleStyle]}>YouTube</Text>
             <Text style={styles.subtitle}>{modeCopy.fallbackTitle}</Text>
           </View>
         </View>
 
-        <Text style={styles.fallbackText}>{modeCopy.fallbackText}</Text>
+        <Text style={[styles.fallbackText, layout.isCompactPhone && styles.fallbackTextCompact]}>{modeCopy.fallbackText}</Text>
 
         <View style={styles.modeRow}>
           <FocusButton label="YouTube" active preferredFocus onPress={() => void openUrl('https://www.youtube.com/')} />
@@ -195,7 +240,7 @@ export function YouTubeScreen({ onOpenVideo }: Props) {
             onChangeText={setQuery}
             placeholder={text.youtubeSearchPlaceholder}
             placeholderTextColor={theme.muted}
-            style={styles.search}
+            style={[styles.search, searchStyle]}
             autoCorrect={false}
             returnKeyType="search"
             onSubmitEditing={openExternalSearch}
@@ -215,11 +260,11 @@ export function YouTubeScreen({ onOpenVideo }: Props) {
   }
 
   return (
-    <View style={styles.root}>
+    <View style={[styles.root, rootStyle]}>
       <View style={styles.heroRow}>
-        <View style={styles.youtubeMark}><Text style={styles.youtubeMarkText}>▶</Text></View>
+        <View style={[styles.youtubeMark, layout.isCompactPhone && styles.youtubeMarkCompact]}><Text style={styles.youtubeMarkText}>▶</Text></View>
         <View style={styles.heroText}>
-          <Text style={styles.title}>YouTube</Text>
+          <Text style={[styles.title, titleStyle]}>YouTube</Text>
           <Text style={styles.subtitle}>{text.youtubeTvSubtitle}</Text>
         </View>
       </View>
@@ -235,7 +280,7 @@ export function YouTubeScreen({ onOpenVideo }: Props) {
           onChangeText={setQuery}
           placeholder={text.youtubeSearchPlaceholder}
           placeholderTextColor={theme.muted}
-          style={styles.search}
+          style={[styles.search, searchStyle]}
           autoCorrect={false}
           returnKeyType="search"
         />
@@ -243,7 +288,8 @@ export function YouTubeScreen({ onOpenVideo }: Props) {
       </View>
 
       <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>{heading}</Text>
+        <Text style={[styles.sectionTitle, { fontSize: layout.isTv ? 21 : layout.isCompactPhone ? 16 : 18 }]}>{heading}</Text>
+        <Text style={styles.resultCount}>{videos.length}</Text>
         {loading ? <ActivityIndicator size="small" /> : null}
       </View>
 
@@ -255,9 +301,9 @@ export function YouTubeScreen({ onOpenVideo }: Props) {
         data={videos}
         numColumns={columns}
         keyExtractor={item => item.id}
-        contentContainerStyle={styles.grid}
-        columnWrapperStyle={styles.row}
-        initialNumToRender={Platform.isTV ? 12 : 8}
+        contentContainerStyle={[styles.grid, { paddingBottom: layout.isTv ? 70 : 96 }]}
+        columnWrapperStyle={rowStyle}
+        initialNumToRender={layout.isTv ? Math.max(12, columns * 3) : Math.max(8, columns * 3)}
         windowSize={7}
         onScrollToIndexFailed={({ index, averageItemLength }) => {
           listRef.current?.scrollToOffset({ offset: Math.max(0, Math.floor(index / columns) * averageItemLength), animated: true });
@@ -266,8 +312,9 @@ export function YouTubeScreen({ onOpenVideo }: Props) {
           <YouTubeCard
             video={item}
             index={index}
+            columns={columns}
             onFocus={focusedIndex => {
-              if (Platform.isTV) listRef.current?.scrollToIndex({ index: focusedIndex, viewPosition: 0.55, animated: true });
+              if (layout.isTv) listRef.current?.scrollToIndex({ index: focusedIndex, viewPosition: 0.55, animated: true });
             }}
             onPress={() => onOpenVideo(item)}
           />
@@ -279,71 +326,62 @@ export function YouTubeScreen({ onOpenVideo }: Props) {
 }
 
 const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: theme.background,
-    paddingHorizontal: Platform.isTV ? 52 : 16,
-    paddingTop: Platform.isTV ? 30 : 20,
-  },
-  heroRow: { flexDirection: 'row', alignItems: 'center', gap: 16 },
+  root: { flex: 1, backgroundColor: theme.background },
+  heroRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   heroText: { flex: 1 },
   youtubeMark: {
-    width: Platform.isTV ? 58 : 48,
-    height: Platform.isTV ? 40 : 34,
-    borderRadius: 12,
+    width: 50,
+    height: 35,
+    borderRadius: 10,
     backgroundColor: '#ff0033',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  youtubeMarkText: { color: '#fff', fontSize: Platform.isTV ? 20 : 16, fontWeight: '900' },
-  title: { color: theme.text, fontSize: Platform.isTV ? 40 : 30, fontWeight: '900' },
-  subtitle: { color: theme.muted, marginTop: 4, fontSize: Platform.isTV ? 15 : 13 },
-  fallbackText: { color: theme.muted, fontSize: Platform.isTV ? 18 : 16, lineHeight: 26, maxWidth: 780, marginTop: 28 },
-  fallbackSectionTitle: { color: theme.text, fontSize: 18, fontWeight: '900', marginTop: 28, marginBottom: 10 },
-  quickLinks: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  modeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: Platform.isTV ? 24 : 18 },
-  searchRow: { flexDirection: 'row', gap: 10, marginTop: 12, alignItems: 'center' },
+  youtubeMarkCompact: { width: 42, height: 30, borderRadius: 9 },
+  youtubeMarkText: { color: '#fff', fontSize: 15, fontWeight: '900' },
+  title: { color: theme.text, fontWeight: '900' },
+  subtitle: { color: theme.muted, marginTop: 2, fontSize: 12 },
+  fallbackText: { color: theme.muted, fontSize: 15, lineHeight: 23, maxWidth: 780, marginTop: 20 },
+  fallbackTextCompact: { fontSize: 13, lineHeight: 19, marginTop: 14 },
+  fallbackSectionTitle: { color: theme.text, fontSize: 16, fontWeight: '900', marginTop: 22, marginBottom: 8 },
+  quickLinks: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  modeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginTop: 14 },
+  searchRow: { flexDirection: 'row', gap: 8, marginTop: 9, alignItems: 'center' },
   search: {
     flex: 1,
-    minHeight: Platform.isTV ? 58 : 52,
-    borderRadius: 16,
     borderWidth: 1,
     borderColor: theme.border,
     backgroundColor: theme.surface,
-    paddingHorizontal: 18,
     color: theme.text,
-    fontSize: Platform.isTV ? 18 : 16,
   },
-  sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 14, marginTop: 26, marginBottom: 12 },
-  sectionTitle: { color: theme.text, fontSize: Platform.isTV ? 24 : 20, fontWeight: '900' },
-  error: { color: '#fda4af', marginTop: 16, marginBottom: 12 },
-  grid: { paddingBottom: Platform.isTV ? 80 : 110 },
-  row: { gap: Platform.isTV ? 16 : 10, marginBottom: Platform.isTV ? 22 : 16 },
+  sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 9, marginTop: 17, marginBottom: 8 },
+  sectionTitle: { color: theme.text, fontWeight: '900' },
+  resultCount: { color: theme.muted, backgroundColor: theme.surface, paddingHorizontal: 7, paddingVertical: 3, borderRadius: 8, fontSize: 11, fontWeight: '800' },
+  error: { color: '#fda4af', marginTop: 10, marginBottom: 8, fontSize: 12 },
+  grid: {},
   card: {
     flex: 1,
-    maxWidth: Platform.isTV ? '25%' : '50%',
-    padding: Platform.isTV ? 8 : 4,
-    borderRadius: 16,
     borderWidth: 2,
     borderColor: 'transparent',
     transform: [{ scale: 1 }],
   },
-  cardFocused: { borderColor: theme.accent, backgroundColor: theme.surface, transform: [{ scale: 1.035 }] },
-  thumbnailWrap: { width: '100%', aspectRatio: 16 / 9, borderRadius: 12, overflow: 'hidden', backgroundColor: '#151a25' },
+  cardFocused: { borderColor: theme.accent, backgroundColor: theme.surface, transform: [{ scale: 1.025 }] },
+  thumbnailWrap: { width: '100%', aspectRatio: 16 / 9, borderRadius: 10, overflow: 'hidden', backgroundColor: '#151a25' },
   thumbnail: { width: '100%', height: '100%' },
   playBadge: {
     position: 'absolute',
-    left: 10,
-    bottom: 10,
-    width: 34,
-    height: 28,
-    borderRadius: 8,
+    left: 8,
+    bottom: 8,
+    width: 30,
+    height: 24,
+    borderRadius: 7,
     backgroundColor: 'rgba(0,0,0,0.72)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  playBadgeText: { color: '#fff', fontSize: 13 },
-  videoTitle: { color: theme.text, fontSize: Platform.isTV ? 16 : 14, lineHeight: Platform.isTV ? 21 : 19, fontWeight: '800', marginTop: 10 },
-  channelTitle: { color: theme.muted, fontSize: 13, marginTop: 5 },
-  emptyList: { color: theme.muted, fontSize: 17, paddingVertical: 40 },
+  playBadgeCompact: { left: 6, bottom: 6, width: 25, height: 20, borderRadius: 6 },
+  playBadgeText: { color: '#fff', fontSize: 11 },
+  videoTitle: { color: theme.text, fontWeight: '800' },
+  channelTitle: { color: theme.muted },
+  emptyList: { color: theme.muted, fontSize: 15, paddingVertical: 28 },
 });
