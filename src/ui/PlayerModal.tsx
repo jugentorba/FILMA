@@ -1,7 +1,7 @@
 import { useEventListener } from 'expo';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Modal, Platform, SafeAreaView, StyleSheet, Text, View } from 'react-native';
+import { Linking, Modal, Platform, SafeAreaView, StyleSheet, Text, View } from 'react-native';
 import { stringsFor } from '../i18n';
 import { resolvedStreamsForItem } from '../services/streamResolver';
 import { useFilma } from '../store/FilmaContext';
@@ -16,14 +16,38 @@ type Props = {
   onClose(): void;
   onToggleFavorite(): void;
   favorite: boolean;
+  onPreviousChannel?(): void;
+  onNextChannel?(): void;
+  channelPosition?: string;
 };
 
 const PLAYBACK_START_TIMEOUT_MS = 15_000;
+const EXTERNAL_PROVIDER_PREFIX = 'external-provider:';
 
-export function PlayerModal({ item, progress, onProgress, onClose, onToggleFavorite, favorite }: Props) {
+function externalProviderUrl(value?: string): string | undefined {
+  if (!value?.startsWith(EXTERNAL_PROVIDER_PREFIX)) return undefined;
+  try {
+    return decodeURIComponent(value.slice(EXTERNAL_PROVIDER_PREFIX.length));
+  } catch {
+    return undefined;
+  }
+}
+
+export function PlayerModal({
+  item,
+  progress,
+  onProgress,
+  onClose,
+  onToggleFavorite,
+  favorite,
+  onPreviousChannel,
+  onNextChannel,
+  channelPosition,
+}: Props) {
   const { state } = useFilma();
   const text = stringsFor(state.preferences.appLanguage);
   const isLive = item.id.startsWith('live:');
+  const initialExternalProvider = externalProviderUrl(item.streamUrl);
   const progressHandler = useRef(onProgress);
   progressHandler.current = onProgress;
   const replacingRef = useRef(false);
@@ -33,7 +57,7 @@ export function PlayerModal({ item, progress, onProgress, onClose, onToggleFavor
   const [sourceMessage, setSourceMessage] = useState<string>();
   const [terminalError, setTerminalError] = useState<string>();
   const [sourceAttempt, setSourceAttempt] = useState(0);
-  const [sourceReady, setSourceReady] = useState(false);
+  const [sourceReady, setSourceReady] = useState(Boolean(initialExternalProvider));
 
   const copy = useMemo(() => state.preferences.appLanguage === 'fr'
     ? {
@@ -43,6 +67,10 @@ export function PlayerModal({ item, progress, onProgress, onClose, onToggleFavor
           : 'FILMA a essayé toutes les sources disponibles, mais aucune ne peut lire ce titre.',
         timeout: 'Cette source met trop de temps à démarrer. FILMA essaie la suivante.',
         nextSource: 'Source suivante',
+        previousChannel: 'Chaîne préc.',
+        nextChannel: 'Chaîne suiv.',
+        openingProvider: 'Ouverture du fournisseur…',
+        providerFailed: 'FILMA n’a pas pu ouvrir ce fournisseur.',
         player: isLive ? 'TV en direct · FILMA' : 'Lecteur FILMA',
       }
     : state.preferences.appLanguage === 'sq'
@@ -53,6 +81,10 @@ export function PlayerModal({ item, progress, onProgress, onClose, onToggleFavor
             : 'FILMA provoi të gjitha burimet e disponueshme, por asnjëri nuk mund ta luajë këtë titull.',
           timeout: 'Ky burim po vonon shumë për të nisur. FILMA po provon tjetrin.',
           nextSource: 'Burimi tjetër',
+          previousChannel: 'Kanali para',
+          nextChannel: 'Kanali tjetër',
+          openingProvider: 'Po hapet ofruesi…',
+          providerFailed: 'FILMA nuk arriti ta hapë këtë ofrues.',
           player: isLive ? 'TV Live · FILMA' : 'Luajtësi FILMA',
         }
       : {
@@ -62,6 +94,10 @@ export function PlayerModal({ item, progress, onProgress, onClose, onToggleFavor
             : 'FILMA tried every available provider, but none could play this title.',
           timeout: 'This source is taking too long to start. FILMA is trying the next one.',
           nextSource: 'Next source',
+          previousChannel: 'Previous channel',
+          nextChannel: 'Next channel',
+          openingProvider: 'Opening provider…',
+          providerFailed: 'FILMA could not open this provider.',
           player: isLive ? 'Live TV · FILMA' : 'FILMA player',
         }, [isLive, state.preferences.appLanguage]);
 
@@ -74,13 +110,27 @@ export function PlayerModal({ item, progress, onProgress, onClose, onToggleFavor
     return [...new Set(urls)];
   }, [item.alternateStreamUrls, item.id, item.streamUrl]);
 
-  const player = useVideoPlayer(item.streamUrl ?? null, instance => {
+  const player = useVideoPlayer(initialExternalProvider ? null : (item.streamUrl ?? null), instance => {
     instance.timeUpdateEventInterval = 5;
     if (!progress?.completed && progress?.positionSeconds && progress.positionSeconds > 5) {
       instance.currentTime = progress.positionSeconds;
     }
     instance.play();
   });
+
+  const openExternalProvider = useCallback(async (url: string) => {
+    setTerminalError(undefined);
+    setSourceMessage(copy.openingProvider);
+    try {
+      await Linking.openURL(url);
+      setSourceMessage(undefined);
+      setSourceReady(true);
+      onClose();
+    } catch {
+      setSourceMessage(undefined);
+      setTerminalError(copy.providerFailed);
+    }
+  }, [copy.openingProvider, copy.providerFailed, onClose]);
 
   const switchToNextCandidate = useCallback(async (reason?: string) => {
     if (replacingRef.current) return;
@@ -104,6 +154,14 @@ export function PlayerModal({ item, progress, onProgress, onClose, onToggleFavor
         setSourceReady(false);
         setSourceMessage(copy.trying(nextNumber, candidateUrls.length));
 
+        const external = externalProviderUrl(nextUrl);
+        if (external) {
+          currentUrlRef.current = nextUrl;
+          replacingRef.current = false;
+          await openExternalProvider(external);
+          return;
+        }
+
         try {
           const resumeAt = Math.max(lastKnownPositionRef.current, progress?.completed ? 0 : (progress?.positionSeconds ?? 0));
           await player.replaceAsync(nextUrl);
@@ -120,7 +178,7 @@ export function PlayerModal({ item, progress, onProgress, onClose, onToggleFavor
     } finally {
       replacingRef.current = false;
     }
-  }, [candidateUrls, copy.failed, copy.trying, isLive, player, progress?.completed, progress?.positionSeconds]);
+  }, [candidateUrls, copy.failed, copy.trying, isLive, openExternalProvider, player, progress?.completed, progress?.positionSeconds]);
 
   const manuallyTryNextSource = useCallback(() => {
     const currentUrl = currentUrlRef.current;
@@ -132,6 +190,7 @@ export function PlayerModal({ item, progress, onProgress, onClose, onToggleFavor
   }, [candidateUrls, switchToNextCandidate]);
 
   useEventListener(player, 'statusChange', ({ status, error }) => {
+    if (initialExternalProvider) return;
     if (status === 'readyToPlay') {
       setSourceReady(true);
       setSourceMessage(undefined);
@@ -152,40 +211,53 @@ export function PlayerModal({ item, progress, onProgress, onClose, onToggleFavor
   });
 
   useEffect(() => {
-    if (sourceReady || terminalError || !currentUrlRef.current) return;
+    if (!initialExternalProvider) return;
+    void openExternalProvider(initialExternalProvider);
+  }, [initialExternalProvider, openExternalProvider]);
+
+  useEffect(() => {
+    if (initialExternalProvider || sourceReady || terminalError || !currentUrlRef.current) return;
     const timer = setTimeout(() => {
       void switchToNextCandidate(copy.timeout);
     }, PLAYBACK_START_TIMEOUT_MS);
     return () => clearTimeout(timer);
-  }, [copy.timeout, sourceAttempt, sourceReady, switchToNextCandidate, terminalError]);
+  }, [copy.timeout, initialExternalProvider, sourceAttempt, sourceReady, switchToNextCandidate, terminalError]);
 
   useEffect(() => () => {
-    if (!isLive && Number.isFinite(player.currentTime) && Number.isFinite(player.duration) && player.duration > 0) {
+    if (!isLive && !initialExternalProvider && Number.isFinite(player.currentTime) && Number.isFinite(player.duration) && player.duration > 0) {
       progressHandler.current(player.currentTime, player.duration);
     }
-  }, [isLive, player]);
+  }, [initialExternalProvider, isLive, player]);
 
   return (
     <Modal visible animationType="fade" supportedOrientations={['landscape', 'portrait']} onRequestClose={onClose}>
       <SafeAreaView style={styles.root}>
-        <VideoView
-          style={styles.video}
-          player={player}
-          nativeControls
-          contentFit="contain"
-          fullscreenOptions={{ enable: true }}
-        />
+        {!initialExternalProvider ? (
+          <VideoView
+            style={styles.video}
+            player={player}
+            nativeControls
+            contentFit="contain"
+            fullscreenOptions={{ enable: true }}
+          />
+        ) : <View style={styles.video} />}
+
         {sourceMessage || terminalError ? (
           <View style={[styles.statusBanner, terminalError ? styles.errorBanner : undefined]}>
             <Text numberOfLines={2} style={styles.statusText}>{terminalError ?? sourceMessage}</Text>
           </View>
         ) : null}
+
         <View style={styles.topBar}>
           <View style={styles.titleBlock}>
             <Text numberOfLines={1} style={styles.title}>{item.title}</Text>
-            <Text style={styles.subtitle}>{item.subtitle ?? copy.player}</Text>
+            <Text style={styles.subtitle}>
+              {item.subtitle ?? copy.player}{channelPosition ? ` · ${channelPosition}` : ''}
+            </Text>
           </View>
           <View style={styles.actions}>
+            {isLive && onPreviousChannel ? <FocusButton compact label={`‹ ${copy.previousChannel}`} onPress={onPreviousChannel} /> : null}
+            {isLive && onNextChannel ? <FocusButton compact label={`${copy.nextChannel} ›`} onPress={onNextChannel} /> : null}
             {candidateUrls.length > 1 ? <FocusButton compact label={`↻ ${copy.nextSource}`} onPress={manuallyTryNextSource} /> : null}
             {!isLive ? <FocusButton compact label={`${favorite ? '♥' : '♡'} ${text.favorites}`} active={favorite} onPress={onToggleFavorite} /> : null}
             <FocusButton compact label={text.dismiss} onPress={onClose} />
@@ -197,14 +269,8 @@ export function PlayerModal({ item, progress, onProgress, onClose, onToggleFavor
 }
 
 const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: '#000',
-  },
-  video: {
-    flex: 1,
-    backgroundColor: '#000',
-  },
+  root: { flex: 1, backgroundColor: '#000' },
+  video: { flex: 1, backgroundColor: '#000' },
   statusBanner: {
     position: 'absolute',
     left: Platform.isTV ? 48 : 14,
@@ -217,14 +283,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: theme.border,
   },
-  errorBanner: {
-    backgroundColor: 'rgba(59,16,24,0.96)',
-  },
-  statusText: {
-    color: theme.text,
-    fontWeight: '800',
-    textAlign: 'center',
-  },
+  errorBanner: { backgroundColor: 'rgba(59,16,24,0.96)' },
+  statusText: { color: theme.text, fontWeight: '800', textAlign: 'center' },
   topBar: {
     position: 'absolute',
     top: Platform.isTV ? 36 : 10,
@@ -239,23 +299,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  titleBlock: {
-    flex: 1,
-    marginRight: 16,
-  },
-  title: {
-    color: theme.text,
-    fontSize: Platform.isTV ? 26 : 17,
-    fontWeight: '800',
-  },
-  subtitle: {
-    color: theme.muted,
-    marginTop: 2,
-  },
-  actions: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'flex-end',
-    gap: 10,
-  },
+  titleBlock: { flex: 1, marginRight: 16 },
+  title: { color: theme.text, fontSize: Platform.isTV ? 26 : 17, fontWeight: '800' },
+  subtitle: { color: theme.muted, marginTop: 2 },
+  actions: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 10 },
 });
