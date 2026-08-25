@@ -7,6 +7,7 @@ import type { MediaItem } from '../types';
 import { useFilma } from '../store/FilmaContext';
 import { FocusButton } from './FocusButton';
 import { theme } from './theme';
+import { useResponsiveLayout } from './useResponsiveLayout';
 
 type Props = {
   series: MediaItem;
@@ -22,6 +23,7 @@ function episodeLabel(video: StremioVideo, fallback: string): string {
 
 export function EpisodePickerModal({ series, episodes, onChoose, onClose }: Props) {
   const { state } = useFilma();
+  const layout = useResponsiveLayout();
   const text = stringsFor(state.preferences.appLanguage);
   const seasonListRef = useRef<FlatList<number>>(null);
   const episodeListRef = useRef<FlatList<StremioVideo>>(null);
@@ -62,14 +64,62 @@ export function EpisodePickerModal({ series, episodes, onChoose, onClose }: Prop
       return (a.released ?? '').localeCompare(b.released ?? '');
     }), [episodes, selectedSeason]);
 
+  const headerStyle = useMemo(() => ({
+    minHeight: layout.isTv ? 96 : layout.isCompactPhone ? 68 : layout.isTablet ? 84 : 76,
+    paddingHorizontal: layout.horizontalPadding,
+    paddingVertical: layout.isTv ? 14 : layout.isCompactPhone ? 9 : 12,
+    gap: layout.isCompactPhone ? 10 : 18,
+  }), [layout.horizontalPadding, layout.isCompactPhone, layout.isTablet, layout.isTv]);
+
+  const titleStyle = useMemo(() => ({
+    fontSize: layout.isTv ? 28 : layout.isCompactPhone ? 19 : layout.isTablet ? 25 : 21,
+  }), [layout.isCompactPhone, layout.isTablet, layout.isTv]);
+
+  const seasonRowStyle = useMemo(() => ({
+    gap: layout.isCompactPhone ? 6 : 9,
+    paddingHorizontal: layout.horizontalPadding,
+    paddingVertical: layout.isTv ? 13 : layout.isCompactPhone ? 8 : 11,
+  }), [layout.horizontalPadding, layout.isCompactPhone, layout.isTv]);
+
+  const episodeContentStyle = useMemo(() => ({
+    paddingHorizontal: layout.horizontalPadding,
+    paddingVertical: layout.isCompactPhone ? 5 : 9,
+    paddingBottom: layout.isTv ? 62 : 88,
+  }), [layout.horizontalPadding, layout.isCompactPhone, layout.isTv]);
+
+  const episodeRowStyle = useMemo(() => ({
+    minHeight: layout.isTv ? 124 : layout.isCompactPhone ? 82 : layout.isTablet ? 112 : 96,
+    paddingVertical: layout.isTv ? 11 : layout.isCompactPhone ? 7 : 9,
+    gap: layout.isTv ? 18 : layout.isCompactPhone ? 9 : layout.isTablet ? 15 : 11,
+  }), [layout.isCompactPhone, layout.isTablet, layout.isTv]);
+
+  const thumbnailStyle = useMemo(() => ({
+    width: layout.isTv ? 172 : layout.isCompactPhone ? 92 : layout.isTablet ? 154 : 112,
+    borderRadius: layout.isTv ? 11 : layout.isCompactPhone ? 7 : 9,
+  }), [layout.isCompactPhone, layout.isTablet, layout.isTv]);
+
+  const episodeTitleStyle = useMemo(() => ({
+    fontSize: layout.isTv ? 19 : layout.isCompactPhone ? 13 : layout.isTablet ? 17 : 15,
+  }), [layout.isCompactPhone, layout.isTablet, layout.isTv]);
+
+  const overviewStyle = useMemo(() => ({
+    fontSize: layout.isCompactPhone ? 11 : layout.isTv ? 14 : 12,
+    lineHeight: layout.isTv ? 20 : layout.isCompactPhone ? 15 : 18,
+    marginTop: layout.isCompactPhone ? 3 : 5,
+  }), [layout.isCompactPhone, layout.isTv]);
+
+  const fallbackStyle = useMemo(() => ({
+    fontSize: layout.isTv ? 20 : layout.isCompactPhone ? 12 : 14,
+  }), [layout.isCompactPhone, layout.isTv]);
+
   return (
     <Modal visible animationType="fade" onRequestClose={onClose}>
       <SafeAreaView style={styles.root}>
-        <View style={styles.header}>
+        <View style={[styles.header, headerStyle]}>
           <View style={styles.headerText}>
-            <Text style={styles.eyebrow}>{copy.series}</Text>
-            <Text numberOfLines={1} style={styles.title}>{series.title}</Text>
-            <Text style={styles.subtitle}>{episodes.length} {copy.episodes}</Text>
+            <Text style={[styles.eyebrow, layout.isCompactPhone && styles.eyebrowCompact]}>{copy.series}</Text>
+            <Text numberOfLines={1} style={[styles.title, titleStyle]}>{series.title}</Text>
+            <Text style={[styles.subtitle, layout.isCompactPhone && styles.subtitleCompact]}>{episodes.length} {copy.episodes}</Text>
           </View>
           <FocusButton compact label={text.dismiss} onPress={onClose} />
         </View>
@@ -81,7 +131,7 @@ export function EpisodePickerModal({ series, episodes, onChoose, onClose }: Prop
             data={seasons}
             keyExtractor={season => String(season)}
             showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.seasonRow}
+            contentContainerStyle={[styles.seasonRow, seasonRowStyle]}
             onScrollToIndexFailed={({ index, averageItemLength }) => {
               seasonListRef.current?.scrollToOffset({ offset: Math.max(0, index * averageItemLength), animated: true });
             }}
@@ -108,11 +158,11 @@ export function EpisodePickerModal({ series, episodes, onChoose, onClose }: Prop
         <FlatList
           ref={episodeListRef}
           style={styles.episodes}
-          contentContainerStyle={styles.episodeContent}
+          contentContainerStyle={[styles.episodeContent, episodeContentStyle]}
           data={visible}
           keyExtractor={video => video.id}
-          initialNumToRender={Platform.isTV ? 12 : 8}
-          windowSize={Platform.isTV ? 9 : 5}
+          initialNumToRender={layout.isTv ? 12 : layout.isTablet ? 10 : 8}
+          windowSize={layout.isTv ? 9 : 5}
           onScrollToIndexFailed={({ index, averageItemLength }) => {
             episodeListRef.current?.scrollToOffset({ offset: Math.max(0, index * averageItemLength), animated: true });
           }}
@@ -125,13 +175,13 @@ export function EpisodePickerModal({ series, episodes, onChoose, onClose }: Prop
               : 0;
 
             return (
-              <View style={styles.episodeRow}>
-                <View style={styles.thumbnailWrap}>
+              <View style={[styles.episodeRow, episodeRowStyle]}>
+                <View style={[styles.thumbnailWrap, thumbnailStyle]}>
                   {video.thumbnail ? (
                     <Image source={{ uri: video.thumbnail }} style={styles.thumbnail} resizeMode="cover" />
                   ) : (
                     <View style={styles.thumbnailFallback}>
-                      <Text style={styles.thumbnailFallbackText}>{typeof video.episode === 'number' ? `E${video.episode}` : 'FILMA'}</Text>
+                      <Text style={[styles.thumbnailFallbackText, fallbackStyle]}>{typeof video.episode === 'number' ? `E${video.episode}` : 'FILMA'}</Text>
                     </View>
                   )}
                   {ratio > 0 ? (
@@ -142,13 +192,13 @@ export function EpisodePickerModal({ series, episodes, onChoose, onClose }: Prop
                 </View>
 
                 <View style={styles.episodeText}>
-                  <Text style={styles.episodeTitle}>{episodeLabel(video, copy.episode)}</Text>
-                  {video.overview ? <Text numberOfLines={2} style={styles.overview}>{video.overview}</Text> : null}
-                  <View style={styles.metaRow}>
+                  <Text numberOfLines={layout.isCompactPhone ? 1 : 2} style={[styles.episodeTitle, episodeTitleStyle]}>{episodeLabel(video, copy.episode)}</Text>
+                  {video.overview && !layout.isCompactPhone ? <Text numberOfLines={2} style={[styles.overview, overviewStyle]}>{video.overview}</Text> : null}
+                  <View style={[styles.metaRow, layout.isCompactPhone && styles.metaRowCompact]}>
                     {video.released ? (
-                      <Text style={styles.released}>{new Date(video.released).toLocaleDateString(copy.locale)}</Text>
+                      <Text style={[styles.released, layout.isCompactPhone && styles.metaCompact]}>{new Date(video.released).toLocaleDateString(copy.locale)}</Text>
                     ) : null}
-                    {ratio > 0 ? <Text style={styles.progressText}>{Math.round(ratio * 100)}% {copy.watched}</Text> : null}
+                    {ratio > 0 ? <Text style={[styles.progressText, layout.isCompactPhone && styles.metaCompact]}>{Math.round(ratio * 100)}% {copy.watched}</Text> : null}
                   </View>
                 </View>
 
@@ -177,54 +227,47 @@ export function EpisodePickerModal({ series, episodes, onChoose, onClose }: Prop
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: theme.background },
   header: {
-    minHeight: Platform.isTV ? 110 : 86,
-    paddingHorizontal: Platform.isTV ? 54 : 18,
-    paddingVertical: 18,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 20,
     borderBottomWidth: 1,
     borderBottomColor: theme.border,
   },
-  headerText: { flex: 1 },
+  headerText: { flex: 1, minWidth: 0 },
   eyebrow: { color: theme.accent, fontWeight: '900', letterSpacing: 2, fontSize: 12 },
-  title: { color: theme.text, fontSize: Platform.isTV ? 31 : 23, fontWeight: '900', marginTop: 4 },
-  subtitle: { color: theme.muted, marginTop: 4 },
+  eyebrowCompact: { fontSize: 10, letterSpacing: 1.5 },
+  title: { color: theme.text, fontWeight: '900', marginTop: 3 },
+  subtitle: { color: theme.muted, marginTop: 3, fontSize: 13 },
+  subtitleCompact: { fontSize: 11, marginTop: 2 },
   seasonRow: {
-    gap: 10,
-    paddingHorizontal: Platform.isTV ? 54 : 18,
-    paddingVertical: 16,
     borderBottomWidth: 1,
     borderBottomColor: theme.border,
   },
   episodes: { flex: 1 },
-  episodeContent: { paddingHorizontal: Platform.isTV ? 54 : 18, paddingVertical: 12, paddingBottom: 70 },
+  episodeContent: {},
   episodeRow: {
-    minHeight: Platform.isTV ? 138 : 112,
-    paddingVertical: 14,
     borderBottomWidth: 1,
     borderBottomColor: theme.border,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Platform.isTV ? 22 : 14,
   },
   thumbnailWrap: {
-    width: Platform.isTV ? 190 : 118,
     aspectRatio: 16 / 9,
-    borderRadius: Platform.isTV ? 12 : 9,
     overflow: 'hidden',
     backgroundColor: theme.surfaceRaised,
+    flexShrink: 0,
   },
   thumbnail: { width: '100%', height: '100%' },
   thumbnailFallback: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#171d2b' },
-  thumbnailFallbackText: { color: '#dfe5ef', fontWeight: '900', fontSize: Platform.isTV ? 22 : 15 },
+  thumbnailFallbackText: { color: '#dfe5ef', fontWeight: '900' },
   thumbnailProgressTrack: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 4, backgroundColor: 'rgba(255,255,255,0.28)' },
   thumbnailProgressFill: { height: '100%', backgroundColor: theme.accent },
-  episodeText: { flex: 1 },
-  episodeTitle: { color: theme.text, fontWeight: '800', fontSize: Platform.isTV ? 21 : 16 },
-  overview: { color: theme.muted, marginTop: 5, lineHeight: Platform.isTV ? 22 : 19 },
+  episodeText: { flex: 1, minWidth: 0 },
+  episodeTitle: { color: theme.text, fontWeight: '800' },
+  overview: { color: theme.muted },
   metaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 6 },
+  metaRowCompact: { gap: 6, marginTop: 3 },
   released: { color: theme.muted, fontSize: 12 },
   progressText: { color: theme.accent, fontSize: 12, fontWeight: '800' },
+  metaCompact: { fontSize: 10 },
 });
