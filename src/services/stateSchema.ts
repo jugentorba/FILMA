@@ -6,6 +6,7 @@ import type {
   AudioLanguage,
   Favorite,
   FilmaState,
+  InterfaceDensity,
   MediaResumeSnapshot,
   MediaSource,
   PlaylistSource,
@@ -18,6 +19,7 @@ export const LEGACY_TIMESTAMP = '1970-01-01T00:00:00.000Z';
 export const defaultPreferences: AppPreferences = {
   appLanguage: 'en',
   preferredAudioLanguages: [],
+  interfaceDensity: 'compact',
   updatedAt: LEGACY_TIMESTAMP,
 };
 
@@ -34,6 +36,7 @@ type UnknownRecord = Record<string, unknown>;
 
 const APP_LANGUAGES = new Set<AppLanguage>(['en', 'fr', 'sq']);
 const AUDIO_LANGUAGES = new Set<AudioLanguage>(['en', 'fr', 'sq', 'it', 'es', 'de', 'tr']);
+const INTERFACE_DENSITIES = new Set<InterfaceDensity>(['compact', 'comfortable']);
 
 function isRecord(value: unknown): value is UnknownRecord {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -66,10 +69,14 @@ function normalizePreferences(value: unknown): AppPreferences {
     ? [...new Set(value.preferredAudioLanguages.filter((language): language is AudioLanguage =>
       typeof language === 'string' && AUDIO_LANGUAGES.has(language as AudioLanguage)))]
     : [];
+  const interfaceDensity = typeof value.interfaceDensity === 'string' && INTERFACE_DENSITIES.has(value.interfaceDensity as InterfaceDensity)
+    ? value.interfaceDensity as InterfaceDensity
+    : 'compact';
 
   return {
     appLanguage,
     preferredAudioLanguages,
+    interfaceDensity,
     updatedAt: timestamp(value.updatedAt),
   };
 }
@@ -77,6 +84,12 @@ function normalizePreferences(value: unknown): AppPreferences {
 function normalizeMediaSource(value: unknown): MediaSource | undefined {
   if (!isRecord(value)) return undefined;
   if (value.kind === 'direct') return { kind: 'direct' };
+  if (value.kind === 'youtube') {
+    const videoId = stringValue(value.videoId);
+    if (!videoId) return undefined;
+    const channelTitle = stringValue(value.channelTitle);
+    return { kind: 'youtube', videoId, ...(channelTitle ? { channelTitle } : {}) };
+  }
   if (value.kind !== 'stremio') return undefined;
 
   const manifestUrl = stringValue(value.manifestUrl);
@@ -179,6 +192,9 @@ function normalizePlaylist(raw: unknown): PlaylistSource | null {
     ...(stringValue(raw.lastCheckedAt) ? { lastCheckedAt: timestamp(raw.lastCheckedAt) } : {}),
     ...(stringValue(raw.lastHealthyAt) ? { lastHealthyAt: timestamp(raw.lastHealthyAt) } : {}),
     ...(stringValue(raw.error) ? { error: stringValue(raw.error) } : {}),
+    ...(stringValue(raw.countryCode) ? { countryCode: stringValue(raw.countryCode) } : {}),
+    ...(stringValue(raw.countryName) ? { countryName: stringValue(raw.countryName) } : {}),
+    ...(stringValue(raw.countryGroup) ? { countryGroup: stringValue(raw.countryGroup) } : {}),
   };
 }
 
