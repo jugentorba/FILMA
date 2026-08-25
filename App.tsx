@@ -1,12 +1,14 @@
 import { StatusBar } from 'expo-status-bar';
 import React, { useCallback, useState } from 'react';
-import { ActivityIndicator, Platform, SafeAreaView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Linking, Platform, SafeAreaView, StyleSheet, Text, View } from 'react-native';
 import { stringsFor } from './src/i18n';
 import { HomeScreen } from './src/screens/HomeScreen';
 import { LiveTvScreen } from './src/screens/LiveTvScreen';
 import { SettingsScreen } from './src/screens/SettingsScreen';
+import { YouTubeScreen } from './src/screens/YouTubeScreen';
 import { resolveStreamsAcrossAddons, type StreamResolutionDiagnostics } from './src/services/streamResolver';
 import { fetchMeta, mediaItemForEpisode, type StremioVideo } from './src/services/stremio';
+import { type YouTubeVideo, youtubeWatchUrl } from './src/services/youtube';
 import { DropboxSyncProvider } from './src/store/DropboxSyncContext';
 import { FilmaProvider, useFilma } from './src/store/FilmaContext';
 import type { MediaItem } from './src/types';
@@ -16,7 +18,7 @@ import { PlayerModal } from './src/ui/PlayerModal';
 import { StreamPickerModal, type StreamChoice } from './src/ui/StreamPickerModal';
 import { theme } from './src/ui/theme';
 
-type Screen = 'home' | 'live' | 'settings';
+type Screen = 'home' | 'live' | 'youtube' | 'settings';
 
 type PendingStreams = { item: MediaItem; streams: StreamChoice[] };
 type PendingEpisodes = { series: MediaItem; episodes: StremioVideo[] };
@@ -55,6 +57,7 @@ function FilmaApp() {
 
   const goMovies = () => { setMode('movies'); setScreen('home'); };
   const goLive = () => { setMode('live'); setScreen('live'); };
+  const goYouTube = () => { if (Platform.isTV) setScreen('youtube'); };
   const goSettings = () => setScreen('settings');
 
   const resolveStreamsFor = async (item: MediaItem) => {
@@ -119,6 +122,18 @@ function FilmaApp() {
     await resolveStreamsFor(item);
   };
 
+  const handleYouTubeVideo = async (video: YouTubeVideo) => {
+    setPlaybackError(undefined);
+    try {
+      // Apple does not expose a web view on tvOS, so the standards-compliant
+      // playback bridge uses YouTube's own watch URL. Android TV can later host
+      // the official IFrame Player without changing the browsing/data model.
+      await Linking.openURL(youtubeWatchUrl(video.id));
+    } catch (error) {
+      setPlaybackError(error instanceof Error ? error.message : 'Could not open this YouTube video.');
+    }
+  };
+
   const handleProgress = useCallback((positionSeconds: number, durationSeconds: number) => {
     if (selected && !selected.id.startsWith('live:')) updateProgress(selected, positionSeconds, durationSeconds);
   }, [selected, updateProgress]);
@@ -147,6 +162,7 @@ function FilmaApp() {
           <View style={styles.navButtons}>
             <FocusButton compact label={text.movies} active={screen === 'home'} onPress={goMovies} />
             <FocusButton compact label={text.liveTv} active={screen === 'live'} onPress={goLive} />
+            <FocusButton compact label={text.youtube} active={screen === 'youtube'} onPress={goYouTube} />
             <FocusButton compact label={text.settings} active={screen === 'settings'} onPress={goSettings} />
           </View>
         </View>
@@ -156,7 +172,7 @@ function FilmaApp() {
             <View style={styles.brandMark}><Text style={styles.brandMarkText}>F</Text></View>
             <Text style={styles.brand}>FILMA</Text>
           </View>
-          <Text style={styles.screenLabel}>{screen === 'home' ? text.movies : screen === 'live' ? text.liveTv : text.settings}</Text>
+          <Text style={styles.screenLabel}>{screen === 'home' ? text.movies : screen === 'live' ? text.liveTv : screen === 'youtube' ? text.youtube : text.settings}</Text>
         </View>
       )}
 
@@ -177,6 +193,7 @@ function FilmaApp() {
       <View style={styles.content}>
         {screen === 'home' ? <HomeScreen onSelect={item => void handleSelect(item)} onOpenSettings={goSettings} /> : null}
         {screen === 'live' ? <LiveTvScreen onSelect={item => void handleSelect(item)} onOpenSettings={goSettings} /> : null}
+        {screen === 'youtube' && Platform.isTV ? <YouTubeScreen onOpenVideo={video => void handleYouTubeVideo(video)} /> : null}
         {screen === 'settings' ? <SettingsScreen /> : null}
       </View>
 
