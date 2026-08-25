@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, Path, Rect } from 'react-native-svg';
 import { theme } from './theme';
+import { useResponsiveLayout } from './useResponsiveLayout';
 
 export type NavIconName = 'movies' | 'live' | 'youtube' | 'settings';
 
@@ -12,8 +13,8 @@ type Props = {
   onPress(): void;
 };
 
-function NavIcon({ name, color }: { name: NavIconName; color: string }) {
-  const common = { width: 22, height: 22, viewBox: '0 0 24 24' } as const;
+function NavIcon({ name, color, size }: { name: NavIconName; color: string; size: number }) {
+  const common = { width: size, height: size, viewBox: '0 0 24 24' } as const;
 
   if (name === 'movies') {
     return (
@@ -56,6 +57,23 @@ function NavIcon({ name, color }: { name: NavIconName; color: string }) {
 export function NavTab({ label, icon, active = false, onPress }: Props) {
   const [focused, setFocused] = useState(false);
   const iconColor = active || focused ? theme.accent : '#9ca6b9';
+  const layout = useResponsiveLayout();
+  const iconSize = layout.iconSize;
+
+  const rootStyle = useMemo(() => ({
+    minHeight: layout.isCompactPhone ? 50 : layout.isTablet ? 60 : 54,
+    borderRadius: layout.isCompactPhone ? 11 : 13,
+  }), [layout.isCompactPhone, layout.isTablet]);
+
+  const iconWrapStyle = useMemo(() => ({
+    width: iconSize + 8,
+    height: iconSize + 6,
+    borderRadius: 9,
+  }), [iconSize]);
+
+  const labelStyle = useMemo(() => ({
+    fontSize: layout.isCompactPhone ? 9 : layout.isTablet ? 11 : 10,
+  }), [layout.isCompactPhone, layout.isTablet]);
 
   return (
     <Pressable
@@ -66,12 +84,12 @@ export function NavTab({ label, icon, active = false, onPress }: Props) {
       onFocus={() => setFocused(true)}
       onBlur={() => setFocused(false)}
       onPress={onPress}
-      style={[styles.root, focused && styles.focused]}
+      style={[styles.root, rootStyle, focused && styles.focused]}
     >
-      <View style={[styles.iconWrap, active && styles.iconWrapActive]}>
-        <NavIcon name={icon} color={iconColor} />
+      <View style={[styles.iconWrap, iconWrapStyle, active && styles.iconWrapActive]}>
+        <NavIcon name={icon} color={iconColor} size={iconSize} />
       </View>
-      <Text numberOfLines={1} style={[styles.label, active && styles.labelActive, focused && styles.labelFocused]}>{label}</Text>
+      <Text numberOfLines={1} style={[styles.label, labelStyle, active && styles.labelActive, focused && styles.labelFocused]}>{label}</Text>
       {active ? <View style={styles.indicator} /> : null}
     </Pressable>
   );
@@ -80,29 +98,23 @@ export function NavTab({ label, icon, active = false, onPress }: Props) {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    minHeight: 62,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
-    borderRadius: 14,
+    gap: 3,
     position: 'relative',
   },
   focused: {
     backgroundColor: '#151b28',
   },
   iconWrap: {
-    width: 32,
-    height: 28,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 10,
   },
   iconWrapActive: {
     backgroundColor: 'rgba(247,58,95,0.11)',
   },
   label: {
     color: '#9ca6b9',
-    fontSize: 11,
     fontWeight: '700',
   },
   labelActive: {
@@ -115,8 +127,8 @@ const styles = StyleSheet.create({
   indicator: {
     position: 'absolute',
     bottom: 1,
-    width: 20,
-    height: 3,
+    width: 18,
+    height: 2,
     borderRadius: 2,
     backgroundColor: theme.accent,
   },
