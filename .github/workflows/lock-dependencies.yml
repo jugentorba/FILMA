@@ -2,7 +2,6 @@ name: Lock FILMA Dependencies
 
 on:
   push:
-    branches: [main, dropbox-auto-sync]
     paths:
       - 'package.json'
       - '.github/workflows/lock-dependencies.yml'
