@@ -2,7 +2,9 @@ import { useEventListener } from 'expo';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Modal, Platform, SafeAreaView, StyleSheet, Text, View } from 'react-native';
+import { stringsFor } from '../i18n';
 import { resolvedStreamsForItem } from '../services/streamResolver';
+import { useFilma } from '../store/FilmaContext';
 import type { MediaItem, WatchProgress } from '../types';
 import { FocusButton } from './FocusButton';
 import { theme } from './theme';
@@ -17,6 +19,8 @@ type Props = {
 };
 
 export function PlayerModal({ item, progress, onProgress, onClose, onToggleFavorite, favorite }: Props) {
+  const { state } = useFilma();
+  const text = stringsFor(state.preferences.appLanguage);
   const progressHandler = useRef(onProgress);
   progressHandler.current = onProgress;
   const replacingRef = useRef(false);
@@ -25,6 +29,24 @@ export function PlayerModal({ item, progress, onProgress, onClose, onToggleFavor
   const lastKnownPositionRef = useRef(progress?.completed ? 0 : (progress?.positionSeconds ?? 0));
   const [sourceMessage, setSourceMessage] = useState<string>();
   const [terminalError, setTerminalError] = useState<string>();
+
+  const copy = state.preferences.appLanguage === 'fr'
+    ? {
+        trying: (current: number, total: number) => `Essai d’une autre source (${current}/${total})…`,
+        failed: 'FILMA a essayé toutes les sources disponibles, mais aucune ne peut lire ce titre.',
+        player: 'Lecteur FILMA',
+      }
+    : state.preferences.appLanguage === 'sq'
+      ? {
+          trying: (current: number, total: number) => `Po provohet një burim tjetër (${current}/${total})…`,
+          failed: 'FILMA provoi të gjitha burimet e disponueshme, por asnjëri nuk mund ta luajë këtë titull.',
+          player: 'Luajtësi FILMA',
+        }
+      : {
+          trying: (current: number, total: number) => `Trying another source (${current}/${total})…`,
+          failed: 'FILMA tried every available provider, but none could play this title.',
+          player: 'FILMA player',
+        };
 
   const candidateUrls = useMemo(() => {
     const urls = [
@@ -54,13 +76,13 @@ export function PlayerModal({ item, progress, onProgress, onClose, onToggleFavor
 
         if (!nextUrl) {
           setSourceMessage(undefined);
-          setTerminalError(reason || 'FILMA tried every available provider, but none could play this title.');
+          setTerminalError(reason || copy.failed);
           return;
         }
 
         const nextNumber = candidateUrls.indexOf(nextUrl) + 1;
         setTerminalError(undefined);
-        setSourceMessage(`Trying another source (${nextNumber}/${candidateUrls.length})…`);
+        setSourceMessage(copy.trying(nextNumber, candidateUrls.length));
 
         try {
           const resumeAt = Math.max(lastKnownPositionRef.current, progress?.completed ? 0 : (progress?.positionSeconds ?? 0));
@@ -121,11 +143,11 @@ export function PlayerModal({ item, progress, onProgress, onClose, onToggleFavor
         <View style={styles.topBar}>
           <View style={styles.titleBlock}>
             <Text numberOfLines={1} style={styles.title}>{item.title}</Text>
-            <Text style={styles.subtitle}>{item.subtitle ?? 'FILMA player'}</Text>
+            <Text style={styles.subtitle}>{item.subtitle ?? copy.player}</Text>
           </View>
           <View style={styles.actions}>
-            <FocusButton compact label={favorite ? '♥ Saved' : '♡ Favorite'} active={favorite} onPress={onToggleFavorite} />
-            <FocusButton compact label="Close" onPress={onClose} />
+            <FocusButton compact label={`${favorite ? '♥' : '♡'} ${text.favorites}`} active={favorite} onPress={onToggleFavorite} />
+            <FocusButton compact label={text.dismiss} onPress={onClose} />
           </View>
         </View>
       </SafeAreaView>
