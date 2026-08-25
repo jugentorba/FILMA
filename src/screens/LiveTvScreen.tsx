@@ -18,16 +18,21 @@ export function LiveTvScreen({ onSelect, onOpenSettings }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>();
 
+  const activePlaylists = useMemo(
+    () => state.playlists.filter(source => source.enabled && !source.deletedAt),
+    [state.playlists],
+  );
+
   const refresh = async () => {
-    const sources = state.playlists.filter(source => source.enabled);
-    if (!sources.length) {
+    if (!activePlaylists.length) {
       setChannels([]);
+      setError(undefined);
       return;
     }
 
     setLoading(true);
     setError(undefined);
-    const results = await Promise.allSettled(sources.map(source => fetchPlaylist(source.url)));
+    const results = await Promise.allSettled(activePlaylists.map(source => fetchPlaylist(source.url)));
     const merged = new Map<string, LiveChannel>();
     for (const result of results) {
       if (result.status === 'fulfilled') {
@@ -45,7 +50,7 @@ export function LiveTvScreen({ onSelect, onOpenSettings }: Props) {
     void refresh();
     // Reload when configured playlist URLs change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.playlists.map(item => `${item.id}:${item.url}:${item.enabled}`).join('|')]);
+  }, [activePlaylists.map(item => `${item.id}:${item.url}:${item.enabled}:${item.updatedAt}`).join('|')]);
 
   const visibleChannels = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -55,7 +60,7 @@ export function LiveTvScreen({ onSelect, onOpenSettings }: Props) {
     );
   }, [channels, query]);
 
-  if (!state.playlists.length) {
+  if (!activePlaylists.length) {
     return (
       <View style={styles.empty}>
         <Text style={styles.title}>Live TV</Text>
@@ -72,7 +77,7 @@ export function LiveTvScreen({ onSelect, onOpenSettings }: Props) {
       <View style={styles.header}>
         <View>
           <Text style={styles.title}>Live TV</Text>
-          <Text style={styles.subtitle}>{channels.length} channels from {state.playlists.length} playlist(s)</Text>
+          <Text style={styles.subtitle}>{channels.length} channels from {activePlaylists.length} playlist(s)</Text>
         </View>
         <FocusButton compact label="Refresh" onPress={() => void refresh()} />
       </View>
