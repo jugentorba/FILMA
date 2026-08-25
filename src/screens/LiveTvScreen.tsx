@@ -33,7 +33,7 @@ export function LiveTvScreen({ onSelect, onOpenSettings }: Props) {
   const groupListRef = useRef<FlatList<{ name: string; count: number }>>(null);
   const channelListRef = useRef<FlatList<LiveChannel>>(null);
 
-  const copy = state.preferences.appLanguage === 'fr'
+  const copy = useMemo(() => state.preferences.appLanguage === 'fr'
     ? {
         title: 'TV en direct',
         addSource: 'Ajoutez votre propre playlist M3U ou M3U8 légale/publique. FILMA la lira et actualisera automatiquement la liste des chaînes.',
@@ -76,7 +76,7 @@ export function LiveTvScreen({ onSelect, onOpenSettings }: Props) {
           noMatch: 'No channels match this filter.',
           noSource: 'No configured playlist could be loaded. Check the playlist URLs in Settings.',
           unavailable: (count: number, working: number) => `${count} playlist${count === 1 ? '' : 's'} unavailable. FILMA is showing channels from ${working} working source${working === 1 ? '' : 's'}.`,
-        };
+        }, [state.preferences.appLanguage]);
 
   const activePlaylists = useMemo(
     () => state.playlists.filter(source => source.enabled && !source.deletedAt),
