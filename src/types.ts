@@ -12,6 +12,11 @@ export type AppPreferences = {
 export type MediaSource =
   | { kind: 'direct' }
   | {
+      kind: 'youtube';
+      videoId: string;
+      channelTitle?: string;
+    }
+  | {
       kind: 'stremio';
       manifestUrl: string;
       mediaType: string;
