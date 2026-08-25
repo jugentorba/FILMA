@@ -39,6 +39,7 @@ jobs:
             src/services/sourceDiscovery.ts \
             src/services/addonValidation.ts \
             src/services/m3u.ts \
+            src/services/youtube.ts \
             --ignoreConfig \
             --outDir .sync-test-build \
             --module commonjs \
@@ -49,6 +50,7 @@ jobs:
           node tests/sources.test.cjs
           node tests/m3u.test.cjs
           node tests/local-playlist.test.cjs
+          node tests/youtube.test.cjs
           rm -rf .sync-test-build
 
       - name: Expo config

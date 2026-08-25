@@ -5,6 +5,8 @@ const API_KEY = process.env.EXPO_PUBLIC_YOUTUBE_API_KEY?.trim();
 const RTSH_ARKIV_HANDLE = '@RTSHArkiv';
 const YOUTUBE_TIMEOUT_MS = 12_000;
 const YOUTUBE_MUSIC_CATEGORY_ID = '10';
+const RTSH_CACHE_MS = 30 * 60 * 1000;
+const RTSH_PLAYLIST_LIMIT = 6;
 
 export type YouTubeBrowseMode = 'videos' | 'music';
 
@@ -18,30 +20,70 @@ export type YouTubeVideo = {
   thumbnail?: string;
 };
 
+type ThumbnailSet = Record<string, { url?: string }>;
+
+type SearchSnippet = {
+  title?: string;
+  channelTitle?: string;
+  channelId?: string;
+  description?: string;
+  publishedAt?: string;
+  thumbnails?: ThumbnailSet;
+};
+
 type SearchItem = {
   id?: { videoId?: string };
-  snippet?: {
-    title?: string;
-    channelTitle?: string;
-    channelId?: string;
-    description?: string;
-    publishedAt?: string;
-    thumbnails?: Record<string, { url?: string }>;
-  };
+  snippet?: SearchSnippet;
 };
 
 type VideoItem = {
   id?: string;
-  snippet?: SearchItem['snippet'];
+  snippet?: SearchSnippet;
 };
 
 type ChannelItem = {
   id?: string;
 };
 
+type PlaylistItem = {
+  id?: string;
+  snippet?: {
+    title?: string;
+    description?: string;
+    thumbnails?: ThumbnailSet;
+  };
+  contentDetails?: {
+    itemCount?: number;
+  };
+};
+
+type PlaylistVideoItem = {
+  snippet?: {
+    title?: string;
+    description?: string;
+    publishedAt?: string;
+    thumbnails?: ThumbnailSet;
+    resourceId?: { videoId?: string };
+    videoOwnerChannelTitle?: string;
+    videoOwnerChannelId?: string;
+  };
+  contentDetails?: {
+    videoId?: string;
+  };
+};
+
 type SearchResponse = { items?: SearchItem[]; nextPageToken?: string };
 type VideosResponse = { items?: VideoItem[]; nextPageToken?: string };
 type ChannelsResponse = { items?: ChannelItem[] };
+type PlaylistsResponse = { items?: PlaylistItem[]; nextPageToken?: string };
+type PlaylistItemsResponse = { items?: PlaylistVideoItem[]; nextPageToken?: string };
+
+type CachedRtshMovies = {
+  fetchedAt: number;
+  videos: YouTubeVideo[];
+};
+
+let rtshMoviesCache: CachedRtshMovies | undefined;
 
 function decodeHtml(value: string): string {
   return value
@@ -52,7 +94,7 @@ function decodeHtml(value: string): string {
     .replace(/&gt;/g, '>');
 }
 
-function thumbnailFor(thumbnails?: Record<string, { url?: string }>): string | undefined {
+function thumbnailFor(thumbnails?: ThumbnailSet): string | undefined {
   return thumbnails?.maxres?.url
     ?? thumbnails?.standard?.url
     ?? thumbnails?.high?.url
@@ -84,6 +126,21 @@ function mapVideoItem(item: VideoItem): YouTubeVideo | null {
     title: decodeHtml(snippet.title),
     channelTitle: decodeHtml(snippet.channelTitle ?? 'YouTube'),
     channelId: snippet.channelId,
+    description: snippet.description ? decodeHtml(snippet.description) : undefined,
+    publishedAt: snippet.publishedAt,
+    thumbnail: thumbnailFor(snippet.thumbnails),
+  };
+}
+
+function mapPlaylistVideoItem(item: PlaylistVideoItem, fallbackChannelId: string): YouTubeVideo | null {
+  const id = item.contentDetails?.videoId ?? item.snippet?.resourceId?.videoId;
+  const snippet = item.snippet;
+  if (!id || !snippet?.title || snippet.title === 'Deleted video' || snippet.title === 'Private video') return null;
+  return {
+    id,
+    title: decodeHtml(snippet.title),
+    channelTitle: decodeHtml(snippet.videoOwnerChannelTitle ?? 'RTSH Arkiv'),
+    channelId: snippet.videoOwnerChannelId ?? fallbackChannelId,
     description: snippet.description ? decodeHtml(snippet.description) : undefined,
     publishedAt: snippet.publishedAt,
     thumbnail: thumbnailFor(snippet.thumbnails),
@@ -172,22 +229,81 @@ export async function searchYouTubeVideos(
   });
 }
 
-export async function fetchRtshArchiveMovies(): Promise<YouTubeVideo[]> {
+function normalizedTitle(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLocaleLowerCase();
+}
+
+export function isRtshFilmPlaylistTitle(title: string): boolean {
+  const normalized = normalizedTitle(title);
+  return /\bfilm(?:a|at|e|i|ave)?\b/.test(normalized)
+    || normalized.includes('kinostudio')
+    || normalized.includes('kinema');
+}
+
+function rtshPlaylistPriority(item: PlaylistItem): number {
+  const title = normalizedTitle(item.snippet?.title ?? '');
+  if (/\bfilma?\s+shqip/.test(title)) return 0;
+  if (title.includes('film') && title.includes('vjet')) return 1;
+  if (title.includes('film')) return 2;
+  if (title.includes('kinostudio')) return 3;
+  if (title.includes('kinema')) return 4;
+  return 99;
+}
+
+function dedupeVideos(videos: YouTubeVideo[]): YouTubeVideo[] {
+  const seen = new Set<string>();
+  return videos.filter(video => {
+    if (seen.has(video.id)) return false;
+    seen.add(video.id);
+    return true;
+  });
+}
+
+async function resolveRtshArchiveChannelId(): Promise<string | null> {
   const channels = await youtubeGet<ChannelsResponse>('channels', {
     part: 'id',
     forHandle: RTSH_ARKIV_HANDLE,
     maxResults: '1',
   });
-  const channelId = channels.items?.[0]?.id;
-  if (!channelId) return [];
+  return channels.items?.[0]?.id ?? null;
+}
 
+async function fetchRtshFilmPlaylists(channelId: string): Promise<PlaylistItem[]> {
+  const response = await youtubeGet<PlaylistsResponse>('playlists', {
+    part: 'snippet,contentDetails',
+    channelId,
+    maxResults: '50',
+  });
+
+  return (response.items ?? [])
+    .filter(item => Boolean(item.id && item.snippet?.title && isRtshFilmPlaylistTitle(item.snippet.title)))
+    .sort((a, b) => rtshPlaylistPriority(a) - rtshPlaylistPriority(b))
+    .slice(0, RTSH_PLAYLIST_LIMIT);
+}
+
+async function fetchPlaylistVideos(playlistId: string, channelId: string): Promise<YouTubeVideo[]> {
+  const response = await youtubeGet<PlaylistItemsResponse>('playlistItems', {
+    part: 'snippet,contentDetails',
+    playlistId,
+    maxResults: '50',
+  });
+  return (response.items ?? []).flatMap(item => {
+    const video = mapPlaylistVideoItem(item, channelId);
+    return video ? [video] : [];
+  });
+}
+
+async function fallbackRtshMovieSearch(channelId: string): Promise<YouTubeVideo[]> {
   const response = await youtubeGet<SearchResponse>('search', {
     part: 'snippet',
     type: 'video',
     channelId,
-    maxResults: '36',
+    maxResults: '50',
     q: 'film shqiptar',
-    order: 'date',
+    order: 'viewCount',
     relevanceLanguage: 'sq',
     safeSearch: 'moderate',
   });
@@ -196,6 +312,35 @@ export async function fetchRtshArchiveMovies(): Promise<YouTubeVideo[]> {
     const video = mapSearchItem(item);
     return video && video.channelId === channelId ? [video] : [];
   });
+}
+
+export async function fetchRtshArchiveMovies(): Promise<YouTubeVideo[]> {
+  if (rtshMoviesCache && Date.now() - rtshMoviesCache.fetchedAt < RTSH_CACHE_MS) {
+    return rtshMoviesCache.videos;
+  }
+
+  const channelId = await resolveRtshArchiveChannelId();
+  if (!channelId) return [];
+
+  let videos: YouTubeVideo[] = [];
+  try {
+    const playlists = await fetchRtshFilmPlaylists(channelId);
+    if (playlists.length) {
+      const results = await Promise.all(playlists.map(playlist => fetchPlaylistVideos(playlist.id!, channelId)));
+      videos = dedupeVideos(results.flat()).slice(0, 120);
+    }
+  } catch {
+    // The official channel search below remains a reliable fallback if playlist
+    // metadata is temporarily unavailable or YouTube changes playlist visibility.
+  }
+
+  if (videos.length < 12) {
+    const fallback = await fallbackRtshMovieSearch(channelId);
+    videos = dedupeVideos([...videos, ...fallback]).slice(0, 120);
+  }
+
+  rtshMoviesCache = { fetchedAt: Date.now(), videos };
+  return videos;
 }
 
 export function youtubeWatchUrl(videoId: string): string {
