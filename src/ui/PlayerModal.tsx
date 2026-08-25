@@ -2,6 +2,7 @@ import { useEventListener } from 'expo';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, Image, Linking, Modal, Platform, Pressable, SafeAreaView, StyleSheet, Text, useTVEventHandler, View } from 'react-native';
+import type { ViewStyle } from 'react-native';
 import { stringsFor } from '../i18n';
 import { resolvedStreamsForItem } from '../services/streamResolver';
 import { useFilma } from '../store/FilmaContext';
@@ -380,7 +381,7 @@ export function PlayerModal({
   const actionsStyle = useMemo(() => ({
     gap: layout.isCompactPhone ? 4 : 6,
   }), [layout.isCompactPhone]);
-  const channelPanelStyle = useMemo(() => ({
+  const channelPanelStyle = useMemo<ViewStyle>(() => ({
     width: layout.isTv ? 460 : layout.isTablet ? '58%' : '88%',
     maxWidth: layout.isTv ? 500 : 460,
     paddingTop: layout.isTv ? 34 : layout.isCompactPhone ? 18 : 24,
