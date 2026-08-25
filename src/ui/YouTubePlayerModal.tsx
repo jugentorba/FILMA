@@ -1,5 +1,6 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Linking, Modal, Platform, SafeAreaView, StyleSheet, Text, View } from 'react-native';
+import React, { useCallback, useState } from 'react';
+import { Linking, Modal, Platform, SafeAreaView, StyleSheet, Text, View } from 'react-native';
+import FilmaYouTubePlayer, { filmaYouTubePlayerAvailable } from '../../modules/filma-youtube-player';
 import { youtubeWatchUrl } from '../services/youtube';
 import { useFilma } from '../store/FilmaContext';
 import { FocusButton } from './FocusButton';
@@ -14,130 +15,116 @@ type Props = {
 
 export function YouTubePlayerModal({ videoId, title, channelTitle, onClose }: Props) {
   const { state } = useFilma();
-  const [opening, setOpening] = useState(true);
-  const [failed, setFailed] = useState(false);
-  const firstAttemptRef = useRef(false);
+  const [error, setError] = useState<string>();
+  const embedded = Platform.OS === 'android' && filmaYouTubePlayerAvailable;
 
   const copy = state.preferences.appLanguage === 'fr'
     ? {
-        opening: 'Ouverture dans YouTube…',
-        failed: 'FILMA n’a pas pu ouvrir cette vidéo automatiquement.',
-        retry: 'Réessayer',
-        browser: 'Ouvrir dans le navigateur',
+        unavailable: 'Le lecteur YouTube intégré n’est pas disponible dans cette version. Vous pouvez ouvrir la vidéo dans YouTube.',
+        externalError: 'FILMA n’a pas pu ouvrir YouTube.',
+        openYoutube: 'Ouvrir YouTube',
         close: 'Fermer',
       }
     : state.preferences.appLanguage === 'sq'
       ? {
-          opening: 'Po hapet në YouTube…',
-          failed: 'FILMA nuk arriti ta hapë automatikisht këtë video.',
-          retry: 'Provo përsëri',
-          browser: 'Hape në shfletues',
+          unavailable: 'Luajtësi i integruar i YouTube nuk është i disponueshëm në këtë version. Mund ta hapësh videon në YouTube.',
+          externalError: 'FILMA nuk arriti ta hapë YouTube.',
+          openYoutube: 'Hap YouTube',
           close: 'Mbyll',
         }
       : {
-          opening: 'Opening in YouTube…',
-          failed: 'FILMA could not open this video automatically.',
-          retry: 'Try again',
-          browser: 'Open in browser',
+          unavailable: 'The built-in YouTube player is not available in this build. You can still open the video in YouTube.',
+          externalError: 'FILMA could not open YouTube.',
+          openYoutube: 'Open YouTube',
           close: 'Close',
         };
 
-  const openBrowser = useCallback(async () => {
-    setOpening(true);
-    setFailed(false);
-    try {
-      await Linking.openURL(youtubeWatchUrl(videoId));
-      onClose();
-    } catch {
-      setFailed(true);
-      setOpening(false);
-    }
-  }, [onClose, videoId]);
-
-  const openPreferred = useCallback(async () => {
-    setOpening(true);
-    setFailed(false);
-
+  const openExternal = useCallback(async () => {
+    setError(undefined);
     if (Platform.OS === 'android') {
       try {
         await Linking.openURL(`vnd.youtube:${encodeURIComponent(videoId)}`);
-        onClose();
         return;
       } catch {
-        // The YouTube app may not be installed on this phone/TV. Fall through
-        // to the universal HTTPS URL so playback is still reachable.
+        // Fall through to the HTTPS player when the YouTube app is absent.
       }
     }
 
-    await openBrowser();
-  }, [onClose, openBrowser, videoId]);
-
-  useEffect(() => {
-    if (firstAttemptRef.current) return;
-    firstAttemptRef.current = true;
-    void openPreferred();
-  }, [openPreferred]);
+    try {
+      await Linking.openURL(youtubeWatchUrl(videoId));
+    } catch {
+      setError(copy.externalError);
+    }
+  }, [copy.externalError, videoId]);
 
   return (
-    <Modal visible animationType="fade" onRequestClose={onClose}>
+    <Modal visible animationType="fade" onRequestClose={onClose} presentationStyle="fullScreen">
       <SafeAreaView style={styles.root}>
-        <View style={styles.panel}>
-          <View style={styles.youtubeMark}><Text style={styles.youtubeMarkText}>▶</Text></View>
-          <Text numberOfLines={2} style={styles.title}>{title}</Text>
-          {channelTitle ? <Text numberOfLines={1} style={styles.channel}>{channelTitle}</Text> : null}
-
-          {opening && !failed ? (
-            <View style={styles.statusRow}>
-              <ActivityIndicator />
-              <Text style={styles.status}>{copy.opening}</Text>
-            </View>
-          ) : null}
-
-          {failed ? <Text style={styles.error}>{copy.failed}</Text> : null}
-
+        <View style={styles.header}>
+          <View style={styles.headingText}>
+            <Text numberOfLines={1} style={styles.title}>{title}</Text>
+            {channelTitle ? <Text numberOfLines={1} style={styles.channel}>{channelTitle}</Text> : null}
+          </View>
           <View style={styles.actions}>
-            {failed ? <FocusButton label={copy.retry} active preferredFocus onPress={() => void openPreferred()} /> : null}
-            <FocusButton label={copy.browser} onPress={() => void openBrowser()} />
-            <FocusButton label={copy.close} onPress={onClose} />
+            <FocusButton compact label={copy.openYoutube} onPress={() => void openExternal()} />
+            <FocusButton compact label={copy.close} active preferredFocus={!embedded} onPress={onClose} />
           </View>
         </View>
+
+        {embedded ? (
+          <View style={styles.playerShell}>
+            <FilmaYouTubePlayer videoId={videoId} style={styles.player} />
+          </View>
+        ) : (
+          <View style={styles.fallback}>
+            <View style={styles.youtubeMark}><Text style={styles.youtubeMarkText}>▶</Text></View>
+            <Text style={styles.fallbackText}>{copy.unavailable}</Text>
+            <FocusButton label={copy.openYoutube} active onPress={() => void openExternal()} />
+          </View>
+        )}
+
+        {error ? <Text style={styles.error}>{error}</Text> : null}
       </SafeAreaView>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  root: {
+  root: { flex: 1, backgroundColor: '#000' },
+  header: {
+    minHeight: Platform.isTV ? 76 : 58,
+    paddingHorizontal: Platform.isTV ? 34 : 14,
+    paddingVertical: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    backgroundColor: '#080b12',
+    borderBottomWidth: 1,
+    borderBottomColor: theme.border,
+  },
+  headingText: { flex: 1, minWidth: 0 },
+  title: { color: theme.text, fontWeight: '900', fontSize: Platform.isTV ? 20 : 15 },
+  channel: { color: theme.muted, fontSize: Platform.isTV ? 13 : 11, marginTop: 2 },
+  actions: { flexDirection: 'row', alignItems: 'center', gap: 7 },
+  playerShell: { flex: 1, backgroundColor: '#000' },
+  player: { flex: 1, width: '100%', backgroundColor: '#000' },
+  fallback: {
     flex: 1,
-    backgroundColor: theme.background,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: Platform.isTV ? 70 : 24,
-  },
-  panel: {
-    width: '100%',
-    maxWidth: 720,
-    borderRadius: Platform.isTV ? 24 : 18,
-    borderWidth: 1,
-    borderColor: theme.border,
-    backgroundColor: theme.surface,
-    padding: Platform.isTV ? 42 : 24,
-    alignItems: 'flex-start',
+    paddingHorizontal: 28,
+    gap: 20,
   },
   youtubeMark: {
-    width: Platform.isTV ? 64 : 54,
-    height: Platform.isTV ? 44 : 38,
-    borderRadius: 12,
+    width: Platform.isTV ? 76 : 58,
+    height: Platform.isTV ? 52 : 40,
+    borderRadius: 13,
     backgroundColor: '#ff0033',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 20,
   },
-  youtubeMarkText: { color: '#fff', fontWeight: '900', fontSize: Platform.isTV ? 22 : 18 },
-  title: { color: theme.text, fontWeight: '900', fontSize: Platform.isTV ? 30 : 22 },
-  channel: { color: theme.muted, marginTop: 8, fontSize: Platform.isTV ? 17 : 14 },
-  statusRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 24 },
-  status: { color: theme.text, fontWeight: '700' },
-  error: { color: '#fda4af', marginTop: 24, fontWeight: '700' },
-  actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 28 },
+  youtubeMarkText: { color: '#fff', fontSize: Platform.isTV ? 25 : 18, fontWeight: '900' },
+  fallbackText: { color: theme.muted, maxWidth: 640, textAlign: 'center', fontSize: Platform.isTV ? 18 : 14, lineHeight: Platform.isTV ? 26 : 20 },
+  error: { color: '#fda4af', backgroundColor: '#3b1018', paddingHorizontal: 14, paddingVertical: 10, textAlign: 'center' },
 });
