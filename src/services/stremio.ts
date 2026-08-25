@@ -54,6 +54,28 @@ export type StremioStream = {
   externalUrl?: string;
 };
 
+type ArchiveSearchDoc = {
+  identifier?: unknown;
+  title?: unknown;
+  year?: unknown;
+  subject?: unknown;
+  language?: unknown;
+  description?: unknown;
+};
+
+type ArchiveFile = {
+  name?: unknown;
+  format?: unknown;
+  source?: unknown;
+  size?: unknown;
+  private?: unknown;
+};
+
+type ArchiveMetadataPayload = {
+  metadata?: Record<string, unknown>;
+  files?: ArchiveFile[];
+};
+
 const LANGUAGE_ALIASES: Record<AudioLanguage, string[]> = {
   en: ['en', 'eng', 'english', 'anglais', 'anglisht'],
   fr: ['fr', 'fra', 'fre', 'french', 'français', 'francais', 'frengjisht'],
@@ -66,6 +88,35 @@ const LANGUAGE_ALIASES: Record<AudioLanguage, string[]> = {
 
 const BASE_AUDIO_LANGUAGES: AudioLanguage[] = ['fr', 'sq', 'en'];
 const STREMIO_TIMEOUT_MS = 12_000;
+const ARCHIVE_TIMEOUT_MS = 15_000;
+const ARCHIVE_ID_PREFIX = 'ia:';
+const ARCHIVE_CATALOG_ID = 'feature_films';
+const ARCHIVE_SEARCH_ENDPOINT = 'https://archive.org/advancedsearch.php';
+const ARCHIVE_METADATA_ENDPOINT = 'https://archive.org/metadata';
+const ARCHIVE_DOWNLOAD_ENDPOINT = 'https://archive.org/download';
+
+export const FILMA_ARCHIVE_MANIFEST_URL = 'filma://internet-archive/manifest.json';
+
+const FILMA_ARCHIVE_MANIFEST: StremioManifest = {
+  id: 'com.filma.archive',
+  name: 'FILMA Free',
+  version: '1.0.0',
+  resources: [
+    { name: 'catalog', types: ['movie'] },
+    { name: 'meta', types: ['movie'], idPrefixes: [ARCHIVE_ID_PREFIX] },
+    { name: 'stream', types: ['movie'], idPrefixes: [ARCHIVE_ID_PREFIX] },
+  ],
+  types: ['movie'],
+  catalogs: [{
+    type: 'movie',
+    id: ARCHIVE_CATALOG_ID,
+    name: 'Free classics',
+    extra: [
+      { name: 'search' },
+      { name: 'language', options: ['English', 'French', 'Albanian', 'Italian', 'Spanish', 'German', 'Turkish'] },
+    ],
+  }],
+};
 
 async function fetchWithTimeout(url: string, timeoutMs = STREMIO_TIMEOUT_MS): Promise<Response> {
   const controller = new AbortController();
@@ -74,7 +125,7 @@ async function fetchWithTimeout(url: string, timeoutMs = STREMIO_TIMEOUT_MS): Pr
     return await fetch(url, { signal: controller.signal });
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {
-      throw new Error(`Stremio request timed out after ${Math.round(timeoutMs / 1000)}s.`);
+      throw new Error(`Request timed out after ${Math.round(timeoutMs / 1000)}s.`);
     }
     throw error;
   } finally {
@@ -130,6 +181,177 @@ function optionForLanguage(options: string[] | undefined, language: AudioLanguag
     const normalized = normalizeText(option);
     return aliases.includes(normalized) || aliases.some(alias => normalized.includes(alias));
   });
+}
+
+function stringValue(value: unknown): string | undefined {
+  if (typeof value === 'string' && value.trim()) return value.trim();
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      const resolved = stringValue(entry);
+      if (resolved) return resolved;
+    }
+  }
+  return undefined;
+}
+
+function stringList(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return [...new Set(value.flatMap(entry => {
+      const text = stringValue(entry);
+      return text ? [text] : [];
+    }))];
+  }
+  const text = stringValue(value);
+  if (!text) return [];
+  return text.split(/\s*;\s*/).map(part => part.trim()).filter(Boolean);
+}
+
+function archiveIdentifier(id: string): string | null {
+  return id.startsWith(ARCHIVE_ID_PREFIX) && id.length > ARCHIVE_ID_PREFIX.length
+    ? id.slice(ARCHIVE_ID_PREFIX.length)
+    : null;
+}
+
+function archivePoster(identifier: string): string {
+  return `https://archive.org/services/img/${encodeURIComponent(identifier)}`;
+}
+
+function archiveMetaFromDocument(doc: ArchiveSearchDoc): StremioMeta | null {
+  const identifier = stringValue(doc.identifier);
+  if (!identifier) return null;
+  const title = stringValue(doc.title) ?? identifier;
+  const year = stringValue(doc.year);
+  const language = stringValue(doc.language);
+  const subtitle = [year, language].filter(Boolean).join(' · ') || 'Internet Archive';
+  return {
+    id: `${ARCHIVE_ID_PREFIX}${identifier}`,
+    type: 'movie',
+    name: title,
+    poster: archivePoster(identifier),
+    background: archivePoster(identifier),
+    releaseInfo: subtitle,
+    genres: stringList(doc.subject).slice(0, 6),
+    description: stringValue(doc.description),
+  };
+}
+
+function archiveSearchValue(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"').trim();
+}
+
+function archiveSearchUrl(extras: Record<string, string | number | undefined>): string {
+  const clauses = ['collection:feature_films', 'mediatype:movies'];
+  const search = typeof extras.search === 'string' ? archiveSearchValue(extras.search) : '';
+  const language = typeof extras.language === 'string' ? archiveSearchValue(extras.language) : '';
+  if (search) clauses.push(`(title:"${search}" OR description:"${search}")`);
+  if (language) clauses.push(`language:"${language}"`);
+
+  return [
+    `${ARCHIVE_SEARCH_ENDPOINT}?q=${encodeURIComponent(clauses.join(' AND '))}`,
+    'fl%5B%5D=identifier',
+    'fl%5B%5D=title',
+    'fl%5B%5D=year',
+    'fl%5B%5D=subject',
+    'fl%5B%5D=language',
+    'fl%5B%5D=description',
+    'rows=48',
+    'page=1',
+    'output=json',
+    'sort%5B%5D=downloads%20desc',
+  ].join('&');
+}
+
+async function fetchArchiveCatalog(extras: Record<string, string | number | undefined>): Promise<MediaItem[]> {
+  const response = await fetchWithTimeout(archiveSearchUrl(extras), ARCHIVE_TIMEOUT_MS);
+  if (!response.ok) throw new Error(`Internet Archive catalog HTTP ${response.status}`);
+  const payload = await response.json() as { response?: { docs?: ArchiveSearchDoc[] } };
+  return (payload.response?.docs ?? [])
+    .map(archiveMetaFromDocument)
+    .filter((meta): meta is StremioMeta => meta !== null)
+    .map(meta => mediaFromMeta(FILMA_ARCHIVE_MANIFEST_URL, 'movie', meta));
+}
+
+function archiveFileScore(file: ArchiveFile): number {
+  if (file.private === true) return -1;
+  const name = stringValue(file.name);
+  if (!name) return -1;
+  const lower = name.toLocaleLowerCase();
+  const mp4 = lower.endsWith('.mp4');
+  const m4v = lower.endsWith('.m4v');
+  const webm = lower.endsWith('.webm');
+  if (!mp4 && !m4v && !webm) return -1;
+
+  const format = normalizeText(stringValue(file.format) ?? '');
+  const source = normalizeText(stringValue(file.source) ?? '');
+  const rawSize = Number(stringValue(file.size) ?? 0);
+  let score = mp4 ? 400 : m4v ? 330 : 260;
+  if (format.includes('h.264') || format.includes('mpeg4') || format.includes('mpeg-4')) score += 130;
+  if (source === 'derivative') score += 35;
+  if (lower.includes('512kb')) score += 60;
+  if (lower.includes('720') || lower.includes('1080')) score += 25;
+  if (lower.includes('sample') || lower.includes('trailer')) score -= 500;
+  if (rawSize >= 20_000_000 && rawSize <= 1_500_000_000) score += 45;
+  if (rawSize > 2_500_000_000) score -= 80;
+  return score;
+}
+
+export function rankArchivePlayableFiles(files: ArchiveFile[]): ArchiveFile[] {
+  return files
+    .map((file, index) => ({ file, index, score: archiveFileScore(file) }))
+    .filter(entry => entry.score >= 0)
+    .sort((a, b) => b.score - a.score || a.index - b.index)
+    .map(entry => entry.file);
+}
+
+function archiveDownloadUrl(identifier: string, name: string): string {
+  const encodedName = name.split('/').map(part => encodeURIComponent(part)).join('/');
+  return `${ARCHIVE_DOWNLOAD_ENDPOINT}/${encodeURIComponent(identifier)}/${encodedName}`;
+}
+
+async function fetchArchiveMetadata(identifier: string): Promise<ArchiveMetadataPayload> {
+  const response = await fetchWithTimeout(`${ARCHIVE_METADATA_ENDPOINT}/${encodeURIComponent(identifier)}`, ARCHIVE_TIMEOUT_MS);
+  if (!response.ok) throw new Error(`Internet Archive metadata HTTP ${response.status}`);
+  return response.json() as Promise<ArchiveMetadataPayload>;
+}
+
+async function fetchArchiveMeta(id: string): Promise<StremioDetailedMeta> {
+  const identifier = archiveIdentifier(id);
+  if (!identifier) throw new Error('Invalid Internet Archive media identifier.');
+  const payload = await fetchArchiveMetadata(identifier);
+  const metadata = payload.metadata ?? {};
+  const title = stringValue(metadata.title) ?? identifier;
+  const year = stringValue(metadata.year ?? metadata.date);
+  const language = stringValue(metadata.language);
+  return {
+    id,
+    type: 'movie',
+    name: title,
+    poster: archivePoster(identifier),
+    background: archivePoster(identifier),
+    releaseInfo: [year, language].filter(Boolean).join(' · ') || 'Internet Archive',
+    genres: stringList(metadata.subject).slice(0, 8),
+    description: stringValue(metadata.description),
+  };
+}
+
+async function fetchArchiveStreams(id: string): Promise<StremioStream[]> {
+  const identifier = archiveIdentifier(id);
+  if (!identifier) return [];
+  const payload = await fetchArchiveMetadata(identifier);
+  const metadata = payload.metadata ?? {};
+  const language = stringValue(metadata.language);
+  return rankArchivePlayableFiles(payload.files ?? [])
+    .slice(0, 6)
+    .flatMap((file, index) => {
+      const name = stringValue(file.name);
+      if (!name) return [];
+      const format = stringValue(file.format) ?? name.split('.').pop()?.toUpperCase() ?? 'Video';
+      return [{
+        title: ['Internet Archive', language, format, `Source ${index + 1}`].filter(Boolean).join(' · '),
+        url: archiveDownloadUrl(identifier, name),
+      } satisfies StremioStream];
+    });
 }
 
 export function localMediaId(manifestUrl: string, type: string, mediaId: string): string {
@@ -193,6 +415,7 @@ export function catalogCanLoadWithoutSearch(
 }
 
 export async function fetchManifest(manifestUrl: string): Promise<StremioManifest> {
+  if (manifestUrl === FILMA_ARCHIVE_MANIFEST_URL) return FILMA_ARCHIVE_MANIFEST;
   const response = await fetchWithTimeout(manifestUrl);
   if (!response.ok) throw new Error(`Add-on manifest HTTP ${response.status}`);
   return response.json() as Promise<StremioManifest>;
@@ -204,6 +427,11 @@ export async function fetchCatalog(
   catalogId: string,
   extras: Record<string, string | number | undefined> = {},
 ): Promise<MediaItem[]> {
+  if (manifestUrl === FILMA_ARCHIVE_MANIFEST_URL) {
+    if (type !== 'movie' || catalogId !== ARCHIVE_CATALOG_ID) return [];
+    return fetchArchiveCatalog(extras);
+  }
+
   const extraArgs = Object.entries(extras)
     .filter((entry): entry is [string, string | number] => entry[1] !== undefined && entry[1] !== '')
     .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`)
@@ -222,6 +450,11 @@ export async function fetchMeta(
   type: string,
   id: string,
 ): Promise<StremioDetailedMeta> {
+  if (manifestUrl === FILMA_ARCHIVE_MANIFEST_URL) {
+    if (type !== 'movie') throw new Error('FILMA Free only provides movies.');
+    return fetchArchiveMeta(id);
+  }
+
   const url = `${addonBase(manifestUrl)}/meta/${encodeURIComponent(type)}/${encodeURIComponent(id)}.json`;
   const response = await fetchWithTimeout(url);
   if (!response.ok) throw new Error(`Metadata HTTP ${response.status}`);
@@ -259,6 +492,11 @@ export async function fetchStreams(
   type: string,
   id: string,
 ): Promise<StremioStream[]> {
+  if (manifestUrl === FILMA_ARCHIVE_MANIFEST_URL) {
+    if (type !== 'movie') return [];
+    return fetchArchiveStreams(id);
+  }
+
   const url = `${addonBase(manifestUrl)}/stream/${encodeURIComponent(type)}/${encodeURIComponent(id)}.json`;
   const response = await fetchWithTimeout(url);
   if (!response.ok) throw new Error(`Streams HTTP ${response.status}`);
