@@ -16,13 +16,11 @@ import type { MediaItem } from './src/types';
 import { EpisodePickerModal } from './src/ui/EpisodePickerModal';
 import { FocusButton } from './src/ui/FocusButton';
 import { PlayerModal } from './src/ui/PlayerModal';
-import { StreamPickerModal, type StreamChoice } from './src/ui/StreamPickerModal';
 import { YouTubePlayerModal } from './src/ui/YouTubePlayerModal';
 import { theme } from './src/ui/theme';
 
 type Screen = 'home' | 'live' | 'youtube' | 'settings';
 
-type PendingStreams = { item: MediaItem; streams: StreamChoice[] };
 type PendingEpisodes = { series: MediaItem; episodes: StremioVideo[] };
 
 function resolutionMessage(diagnostics: StreamResolutionDiagnostics): string {
@@ -54,7 +52,6 @@ function FilmaApp() {
   const [screen, setScreen] = useState<Screen>('home');
   const [selected, setSelected] = useState<MediaItem | null>(null);
   const [selectedYouTube, setSelectedYouTube] = useState<YouTubeVideo | null>(null);
-  const [pendingStreams, setPendingStreams] = useState<PendingStreams | null>(null);
   const [pendingEpisodes, setPendingEpisodes] = useState<PendingEpisodes | null>(null);
   const [resolvingTitle, setResolvingTitle] = useState<string>();
   const [playbackError, setPlaybackError] = useState<string>();
@@ -78,18 +75,16 @@ function FilmaApp() {
         state.preferences.preferredAudioLanguages,
       );
 
-      const streams: StreamChoice[] = resolution.streams.map(stream => ({
-        title: `${stream.providerName} · ${stream.title}`,
-        url: stream.url,
-      }));
-
-      if (!streams.length) {
+      const best = resolution.streams[0];
+      if (!best) {
         setPlaybackError(resolutionMessage(resolution.diagnostics));
-      } else if (streams.length === 1) {
-        setSelected({ ...item, streamUrl: streams[0].url });
-      } else {
-        setPendingStreams({ item, streams });
+        return;
       }
+
+      // Streams are already ranked by language/provider preference. Start the
+      // best candidate immediately; PlayerModal keeps the full ranked candidate
+      // list and automatically advances when the active source fails.
+      setSelected({ ...item, streamUrl: best.url });
     } catch (error) {
       setPlaybackError(error instanceof Error ? error.message : 'Could not resolve movie sources.');
     } finally {
@@ -240,15 +235,6 @@ function FilmaApp() {
             void resolveStreamsFor(item);
           }}
           onClose={() => setPendingEpisodes(null)}
-        />
-      ) : null}
-
-      {pendingStreams ? (
-        <StreamPickerModal
-          title={pendingStreams.item.title}
-          streams={pendingStreams.streams}
-          onChoose={stream => { setSelected({ ...pendingStreams.item, streamUrl: stream.url }); setPendingStreams(null); }}
-          onClose={() => setPendingStreams(null)}
         />
       ) : null}
 
