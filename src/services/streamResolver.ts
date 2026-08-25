@@ -141,7 +141,7 @@ export async function resolveStreamsAcrossAddons(
   const identity = canonicalIdentity(item);
   if (!identity) return { streams: [], diagnostics };
 
-  const providerCandidates = await Promise.all(activeAddons.map(async addon: AddonSource): Promise<ProviderCandidates> => {
+  const providerCandidates = await Promise.all(activeAddons.map(async (addon: AddonSource): Promise<ProviderCandidates> => {
     try {
       const manifest = await manifestFor(addon.manifestUrl);
       diagnostics.manifestsLoaded += 1;
@@ -190,9 +190,6 @@ export async function resolveStreamsAcrossAddons(
   diagnostics.directPlayableEntries = directMerged.length;
   const rankedDirect = dedupeStreams(rankStreamsByPreferredAudio(directMerged, preferredAudioLanguages));
 
-  // If a direct HTTP/HLS stream exists, keep playback fully inside FILMA.
-  // Otherwise retain legal provider hand-off links (for example official
-  // "where to watch" providers) instead of presenting a dead-end error.
   const resolved = rankedDirect.length
     ? rankedDirect
     : dedupeStreams(rankStreamsByPreferredAudio(
