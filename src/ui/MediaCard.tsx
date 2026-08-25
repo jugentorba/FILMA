@@ -7,10 +7,12 @@ type Props = {
   item: MediaItem;
   progress?: WatchProgress;
   favorite?: boolean;
+  preferredFocus?: boolean;
+  onFocus?(): void;
   onPress(): void;
 };
 
-export function MediaCard({ item, progress, favorite = false, onPress }: Props) {
+export function MediaCard({ item, progress, favorite = false, preferredFocus = false, onFocus, onPress }: Props) {
   const [focused, setFocused] = useState(false);
   const [posterFailed, setPosterFailed] = useState(false);
   const ratio = progress?.durationSeconds
@@ -22,8 +24,14 @@ export function MediaCard({ item, progress, favorite = false, onPress }: Props) 
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={item.title}
+      accessibilityHint={progress?.positionSeconds ? 'Continue watching' : 'Open title'}
+      accessibilityState={{ selected: focused }}
+      hasTVPreferredFocus={Platform.isTV && preferredFocus}
       onPress={onPress}
-      onFocus={() => setFocused(true)}
+      onFocus={() => {
+        setFocused(true);
+        onFocus?.();
+      }}
       onBlur={() => setFocused(false)}
       style={[styles.card, Platform.isTV && focused && styles.focused]}
     >
@@ -75,7 +83,7 @@ const styles = StyleSheet.create({
   },
   artFocused: {
     borderColor: theme.accent,
-    borderWidth: 3,
+    borderWidth: 4,
   },
   poster: {
     width: '100%',
