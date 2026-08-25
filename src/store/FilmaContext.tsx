@@ -3,7 +3,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 import type { CloudSyncAdapter } from '../services/sync';
 import { makeSyncEnvelope, mergeStates } from '../services/sync';
 import { loadState, saveState } from '../services/storage';
-import type { AddonSource, AppMode, FilmaState, PlaylistSource } from '../types';
+import type { AddonSource, AppMode, FilmaState, MediaItem, MediaResumeSnapshot, PlaylistSource } from '../types';
 
 const DEVICE_KEY = 'filma.device.id';
 
@@ -13,7 +13,7 @@ type FilmaContextValue = {
   state: FilmaState;
   setMode(mode: AppMode): void;
   toggleFavorite(mediaId: string): void;
-  updateProgress(mediaId: string, positionSeconds: number, durationSeconds: number): void;
+  updateProgress(item: MediaItem, positionSeconds: number, durationSeconds: number): void;
   addPlaylist(name: string, url: string): void;
   removePlaylist(id: string): void;
   addAddon(name: string, manifestUrl: string): void;
@@ -29,6 +29,19 @@ function makeId(prefix: string): string {
 
 function now(): string {
   return new Date().toISOString();
+}
+
+function resumeSnapshot(item: MediaItem): MediaResumeSnapshot {
+  return {
+    id: item.id,
+    title: item.title,
+    subtitle: item.subtitle,
+    poster: item.poster,
+    backdrop: item.backdrop,
+    source: item.source,
+    genres: item.genres,
+    year: item.year,
+  };
 }
 
 async function loadDeviceId(): Promise<string> {
@@ -96,17 +109,18 @@ export function FilmaProvider({ children }: { children: React.ReactNode }) {
     });
   }, [commitState]);
 
-  const updateProgress = useCallback((mediaId: string, positionSeconds: number, durationSeconds: number) => {
+  const updateProgress = useCallback((item: MediaItem, positionSeconds: number, durationSeconds: number) => {
     commitState(current => ({
       ...current,
       progress: {
         ...current.progress,
-        [mediaId]: {
-          mediaId,
+        [item.id]: {
+          mediaId: item.id,
           positionSeconds: Math.max(0, positionSeconds),
           durationSeconds: Math.max(0, durationSeconds),
           updatedAt: now(),
           deviceId,
+          item: resumeSnapshot(item),
         },
       },
     }));
@@ -164,8 +178,6 @@ export function FilmaProvider({ children }: { children: React.ReactNode }) {
     const merged = remote ? mergeStates(localAtStart, remote.state) : localAtStart;
     await adapter.push(makeSyncEnvelope(merged));
 
-    // A local action may have happened while the network write was running.
-    // Preserve it locally and immediately publish one follow-up envelope.
     const latestLocal = stateRef.current;
     const finalState = latestLocal === localAtStart ? merged : mergeStates(latestLocal, merged);
     if (latestLocal !== localAtStart) {
