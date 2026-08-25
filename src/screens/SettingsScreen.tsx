@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useFilma } from '../store/FilmaContext';
 import { FocusButton } from '../ui/FocusButton';
@@ -11,6 +11,9 @@ export function SettingsScreen() {
   const [addonName, setAddonName] = useState('');
   const [manifestUrl, setManifestUrl] = useState('');
   const [message, setMessage] = useState<string>();
+
+  const playlists = useMemo(() => state.playlists.filter(item => !item.deletedAt), [state.playlists]);
+  const addons = useMemo(() => state.addons.filter(item => !item.deletedAt), [state.addons]);
 
   const addPlaylistNow = () => {
     const url = playlistUrl.trim();
@@ -67,7 +70,7 @@ export function SettingsScreen() {
         />
         <View style={styles.actionRow}><FocusButton label="Add playlist" active onPress={addPlaylistNow} /></View>
 
-        {state.playlists.map(item => (
+        {playlists.map(item => (
           <View key={item.id} style={styles.sourceRow}>
             <View style={styles.sourceText}>
               <Text style={styles.sourceName}>{item.name}</Text>
@@ -100,7 +103,7 @@ export function SettingsScreen() {
         />
         <View style={styles.actionRow}><FocusButton label="Add add-on" active onPress={addAddonNow} /></View>
 
-        {state.addons.map(item => (
+        {addons.map(item => (
           <View key={item.id} style={styles.sourceRow}>
             <View style={styles.sourceText}>
               <Text style={styles.sourceName}>{item.name}</Text>
@@ -114,7 +117,7 @@ export function SettingsScreen() {
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Cross-device sync</Text>
         <Text style={styles.help}>
-          The merge engine is enabled in the project. A Dropbox transport can use the same data model without a paid FILMA server.
+          FILMA keeps watch progress and source changes merge-safe across devices. Dropbox transport is available in the project and can be connected without a paid FILMA server.
         </Text>
         <Text style={styles.device}>This installation: {deviceId}</Text>
       </View>
