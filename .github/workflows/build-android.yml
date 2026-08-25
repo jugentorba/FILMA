@@ -5,6 +5,12 @@ on:
   push:
     branches: [main]
     paths:
+      - 'App.tsx'
+      - 'src/**'
+      - 'package.json'
+      - 'yarn.lock'
+      - 'app.json'
+      - 'index.ts'
       - '.github/workflows/build-android.yml'
 
 concurrency:
