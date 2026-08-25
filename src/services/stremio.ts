@@ -281,6 +281,7 @@ function archiveFileScore(file: ArchiveFile): number {
   const m4v = lower.endsWith('.m4v');
   const webm = lower.endsWith('.webm');
   if (!mp4 && !m4v && !webm) return -1;
+  if (lower.includes('sample') || lower.includes('trailer')) return -1;
 
   const format = normalizeText(stringValue(file.format) ?? '');
   const source = normalizeText(stringValue(file.source) ?? '');
@@ -290,7 +291,6 @@ function archiveFileScore(file: ArchiveFile): number {
   if (source === 'derivative') score += 35;
   if (lower.includes('512kb')) score += 60;
   if (lower.includes('720') || lower.includes('1080')) score += 25;
-  if (lower.includes('sample') || lower.includes('trailer')) score -= 500;
   if (rawSize >= 20_000_000 && rawSize <= 1_500_000_000) score += 45;
   if (rawSize > 2_500_000_000) score -= 80;
   return score;
