@@ -1,0 +1,51 @@
+name: Verify YouTube Android TV Player
+
+on:
+  push:
+    branches: [youtube-android-tv-player]
+    paths:
+      - 'App.tsx'
+      - 'src/ui/YouTubePlayerModal.android.tsx'
+      - 'src/ui/YouTubePlayerModal.tsx'
+      - 'modules/filma-youtube-player/**'
+      - '.github/workflows/verify-youtube-player.yml'
+
+concurrency:
+  group: filma-youtube-player-verify
+  cancel-in-progress: true
+
+jobs:
+  build-android-tv:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.13.1'
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install locked dependencies
+        run: yarn install --frozen-lockfile --non-interactive
+
+      - name: Generate Android TV project
+        run: EXPO_TV=1 npx expo prebuild --platform android --clean --no-install
+
+      - name: Verify local module was autolinked
+        run: |
+          npx expo-modules-autolinking resolve --platform android | tee /tmp/autolinking.json
+          grep -q 'FilmaYouTubePlayerModule' /tmp/autolinking.json
+
+      - name: Compile Android TV release
+        run: |
+          chmod +x android/gradlew
+          cd android
+          ./gradlew assembleRelease --no-daemon
