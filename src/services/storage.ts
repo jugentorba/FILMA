@@ -1,35 +1,36 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { FilmaState } from '../types';
+import { defaultState, normalizeState } from './stateSchema';
 
-const STORAGE_KEY = 'filma.state.v1';
+const STORAGE_KEY = 'filma.state.v2';
+const LEGACY_STORAGE_KEY = 'filma.state.v1';
 
-export const defaultState: FilmaState = {
-  mode: 'movies',
-  progress: {},
-  favorites: {},
-  playlists: [],
-  addons: [],
-};
-
-export async function loadState(): Promise<FilmaState> {
-  const raw = await AsyncStorage.getItem(STORAGE_KEY);
-  if (!raw) return defaultState;
+async function readState(key: string): Promise<FilmaState | null> {
+  const raw = await AsyncStorage.getItem(key);
+  if (!raw) return null;
 
   try {
-    const parsed = JSON.parse(raw) as Partial<FilmaState>;
-    return {
-      ...defaultState,
-      ...parsed,
-      progress: parsed.progress ?? {},
-      favorites: parsed.favorites ?? {},
-      playlists: parsed.playlists ?? [],
-      addons: parsed.addons ?? [],
-    };
+    return normalizeState(JSON.parse(raw));
   } catch {
-    return defaultState;
+    return null;
   }
+}
+
+export async function loadState(): Promise<FilmaState> {
+  const current = await readState(STORAGE_KEY);
+  if (current) return current;
+
+  const legacy = await readState(LEGACY_STORAGE_KEY);
+  if (legacy) {
+    await saveState(legacy);
+    return legacy;
+  }
+
+  return { ...defaultState };
 }
 
 export async function saveState(state: FilmaState): Promise<void> {
   await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 }
+
+export { defaultState };
