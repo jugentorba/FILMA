@@ -1,5 +1,5 @@
 import { StatusBar } from 'expo-status-bar';
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { ActivityIndicator, Linking, Platform, SafeAreaView, StyleSheet, Text, View } from 'react-native';
 import { stringsFor } from './src/i18n';
 import { HomeScreen } from './src/screens/HomeScreen';
@@ -12,7 +12,7 @@ import { type YouTubeVideo, youtubeWatchUrl } from './src/services/youtube';
 import { DeviceModeProvider, useDeviceMode } from './src/store/DeviceModeContext';
 import { DropboxSyncProvider } from './src/store/DropboxSyncContext';
 import { FilmaProvider, useFilma } from './src/store/FilmaContext';
-import type { MediaItem } from './src/types';
+import type { AppLanguage, MediaItem } from './src/types';
 import { EpisodePickerModal } from './src/ui/EpisodePickerModal';
 import { FocusButton } from './src/ui/FocusButton';
 import { PlayerModal } from './src/ui/PlayerModal';
@@ -23,32 +23,97 @@ type Screen = 'home' | 'live' | 'youtube' | 'settings';
 
 type PendingEpisodes = { series: MediaItem; episodes: StremioVideo[] };
 
-function resolutionMessage(diagnostics: StreamResolutionDiagnostics): string {
-  if (diagnostics.enabledProviders === 0) {
-    return 'No enabled movie source is configured. Add a stream-capable Stremio-compatible source in Settings.';
+type PlaybackCopy = {
+  noEnabledSource: string;
+  manifestsUnavailable: string;
+  noStreamResource: string;
+  noCompatibleProvider: string;
+  noProviderResponse: string;
+  indirectEntries(count: number): string;
+  noPlayableStream: string;
+  missingMediaIdentity: string;
+  resolveFailed: string;
+  youtubeOpenFailed: string;
+  youtubeAppleTvUnavailable: string;
+  itemNotPlayable: string;
+  noEpisodes: string;
+  episodesFailed: string;
+};
+
+function playbackCopyFor(language: AppLanguage): PlaybackCopy {
+  if (language === 'fr') {
+    return {
+      noEnabledSource: 'Aucune source de films active n’est configurée. Ajoutez une source Stremio compatible avec la lecture dans les Réglages.',
+      manifestsUnavailable: 'FILMA n’a pu charger aucun manifeste de source de films. Vérifiez les URL et votre connexion.',
+      noStreamResource: 'Les extensions configurées fournissent des catalogues ou des métadonnées, mais aucune ne fournit de ressource de lecture.',
+      noCompatibleProvider: 'Des sources de lecture existent, mais aucune n’annonce la prise en charge de ce film, épisode ou identifiant.',
+      noProviderResponse: 'Des sources compatibles ont été trouvées, mais aucune n’a renvoyé une réponse de lecture valide.',
+      indirectEntries: count => `Les fournisseurs ont renvoyé ${count} source${count === 1 ? '' : 's'}, mais aucune n’est un flux HTTP/HLS direct lisible dans FILMA.`,
+      noPlayableStream: 'Aucun flux lisible n’a été renvoyé pour ce titre.',
+      missingMediaIdentity: 'Ce contenu ne fournit pas un identifiant média compatible avec Stremio.',
+      resolveFailed: 'FILMA n’a pas pu résoudre les sources de lecture.',
+      youtubeOpenFailed: 'FILMA n’a pas pu ouvrir cette vidéo YouTube.',
+      youtubeAppleTvUnavailable: 'YouTube ne peut pas être ouvert sur cet Apple TV. Installez ou mettez à jour l’app YouTube depuis l’App Store de l’Apple TV, puis réessayez.',
+      itemNotPlayable: 'Ce contenu ne fournit pas de source lisible.',
+      noEpisodes: 'Cette série n’a renvoyé aucune liste d’épisodes.',
+      episodesFailed: 'FILMA n’a pas pu charger les épisodes de cette série.',
+    };
   }
-  if (diagnostics.manifestsLoaded === 0) {
-    return 'FILMA could not load any configured movie-source manifest. Check the source URLs and your connection.';
+
+  if (language === 'sq') {
+    return {
+      noEnabledSource: 'Nuk ka asnjë burim aktiv filmash. Shto te Cilësimet një burim Stremio që ofron transmetim.',
+      manifestsUnavailable: 'FILMA nuk arriti të ngarkojë asnjë manifest të burimeve të filmave. Kontrollo URL-të dhe lidhjen me internetin.',
+      noStreamResource: 'Shtesat e konfiguruara japin katalogë ose metadata, por asnjëra nuk ofron burim transmetimi.',
+      noCompatibleProvider: 'Ka burime transmetimi, por asnjëri nuk deklaron mbështetje për këtë film, episod ose ID.',
+      noProviderResponse: 'U gjetën burime të përputhshme, por asnjëri nuk ktheu përgjigje të vlefshme transmetimi.',
+      indirectEntries: count => `Burimet kthyen ${count} hyrje, por asnjëra nuk është transmetim i drejtpërdrejtë HTTP/HLS që FILMA mund ta luajë.`,
+      noPlayableStream: 'Nuk u gjet asnjë transmetim i luajtshëm për këtë titull.',
+      missingMediaIdentity: 'Ky përmbajtje nuk ka një identitet media të përputhshëm me Stremio.',
+      resolveFailed: 'FILMA nuk arriti të gjejë burimet e transmetimit.',
+      youtubeOpenFailed: 'FILMA nuk arriti ta hapë këtë video në YouTube.',
+      youtubeAppleTvUnavailable: 'YouTube nuk mund të hapet në këtë Apple TV. Instalo ose përditëso aplikacionin YouTube nga App Store i Apple TV dhe provo përsëri.',
+      itemNotPlayable: 'Ky përmbajtje nuk ofron një burim të luajtshëm.',
+      noEpisodes: 'Ky serial nuk ktheu asnjë listë episodesh.',
+      episodesFailed: 'FILMA nuk arriti të ngarkojë episodet e këtij seriali.',
+    };
   }
-  if (diagnostics.streamCapableProviders === 0) {
-    return 'The configured add-ons provide catalogs or metadata, but none advertise a stream resource.';
-  }
-  if (diagnostics.compatibleProviders === 0) {
-    return 'Stream providers are configured, but none advertise support for this movie/episode type or ID.';
-  }
-  if (diagnostics.providerResponses === 0) {
-    return 'Compatible stream providers were found, but none returned a successful stream response.';
-  }
+
+  return {
+    noEnabledSource: 'No enabled movie source is configured. Add a stream-capable Stremio-compatible source in Settings.',
+    manifestsUnavailable: 'FILMA could not load any movie-source manifest. Check the source URLs and your connection.',
+    noStreamResource: 'The configured add-ons provide catalogs or metadata, but none advertise a stream resource.',
+    noCompatibleProvider: 'Stream providers are configured, but none advertise support for this movie, episode, or ID.',
+    noProviderResponse: 'Compatible stream providers were found, but none returned a successful stream response.',
+    indirectEntries: count => `Providers returned ${count} source entr${count === 1 ? 'y' : 'ies'}, but none was a direct HTTP/HLS stream FILMA can play in-app.`,
+    noPlayableStream: 'No playable stream was returned for this title.',
+    missingMediaIdentity: 'This item does not provide a Stremio-compatible media identity.',
+    resolveFailed: 'FILMA could not resolve movie sources.',
+    youtubeOpenFailed: 'FILMA could not open this YouTube video.',
+    youtubeAppleTvUnavailable: 'YouTube cannot be opened on this Apple TV. Install or update the YouTube app from the Apple TV App Store, then try again.',
+    itemNotPlayable: 'This item does not provide a playable source.',
+    noEpisodes: 'This series source returned no episode list.',
+    episodesFailed: 'FILMA could not load this series episode list.',
+  };
+}
+
+function resolutionMessage(diagnostics: StreamResolutionDiagnostics, copy: PlaybackCopy): string {
+  if (diagnostics.enabledProviders === 0) return copy.noEnabledSource;
+  if (diagnostics.manifestsLoaded === 0) return copy.manifestsUnavailable;
+  if (diagnostics.streamCapableProviders === 0) return copy.noStreamResource;
+  if (diagnostics.compatibleProviders === 0) return copy.noCompatibleProvider;
+  if (diagnostics.providerResponses === 0) return copy.noProviderResponse;
   if (diagnostics.totalReturnedEntries > 0 && diagnostics.directPlayableEntries === 0) {
-    return `Providers returned ${diagnostics.totalReturnedEntries} source entr${diagnostics.totalReturnedEntries === 1 ? 'y' : 'ies'}, but none was a direct HTTP/HLS stream FILMA can play in-app.`;
+    return copy.indirectEntries(diagnostics.totalReturnedEntries);
   }
-  return 'No playable stream was returned by the configured providers for this title.';
+  return copy.noPlayableStream;
 }
 
 function FilmaApp() {
   const { ready, state, setMode, updateProgress, toggleFavorite } = useFilma();
   const { isTvMode } = useDeviceMode();
   const text = stringsFor(state.preferences.appLanguage);
+  const playbackCopy = useMemo(() => playbackCopyFor(state.preferences.appLanguage), [state.preferences.appLanguage]);
   const [screen, setScreen] = useState<Screen>('home');
   const [selected, setSelected] = useState<MediaItem | null>(null);
   const [selectedYouTube, setSelectedYouTube] = useState<YouTubeVideo | null>(null);
@@ -63,7 +128,7 @@ function FilmaApp() {
 
   const resolveStreamsFor = async (item: MediaItem) => {
     if (item.source?.kind !== 'stremio') {
-      setPlaybackError('This item does not provide a Stremio-compatible media identity.');
+      setPlaybackError(playbackCopy.missingMediaIdentity);
       return;
     }
 
@@ -77,16 +142,13 @@ function FilmaApp() {
 
       const best = resolution.streams[0];
       if (!best) {
-        setPlaybackError(resolutionMessage(resolution.diagnostics));
+        setPlaybackError(resolutionMessage(resolution.diagnostics, playbackCopy));
         return;
       }
 
-      // Streams are already ranked by language/provider preference. Start the
-      // best candidate immediately; PlayerModal keeps the full ranked candidate
-      // list and automatically advances when the active source fails.
       setSelected({ ...item, streamUrl: best.url });
     } catch (error) {
-      setPlaybackError(error instanceof Error ? error.message : 'Could not resolve movie sources.');
+      setPlaybackError(error instanceof Error && error.message ? `${playbackCopy.resolveFailed} ${error.message}` : playbackCopy.resolveFailed);
     } finally {
       setResolvingTitle(undefined);
     }
@@ -100,10 +162,26 @@ function FilmaApp() {
       return;
     }
 
+    const watchUrl = youtubeWatchUrl(video.id);
+
+    if (isTvMode && Platform.OS === 'ios') {
+      try {
+        const canOpen = await Linking.canOpenURL(watchUrl);
+        if (!canOpen) {
+          setPlaybackError(playbackCopy.youtubeAppleTvUnavailable);
+          return;
+        }
+        await Linking.openURL(watchUrl);
+      } catch {
+        setPlaybackError(playbackCopy.youtubeAppleTvUnavailable);
+      }
+      return;
+    }
+
     try {
-      await Linking.openURL(youtubeWatchUrl(video.id));
-    } catch (error) {
-      setPlaybackError(error instanceof Error ? error.message : 'Could not open this YouTube video.');
+      await Linking.openURL(watchUrl);
+    } catch {
+      setPlaybackError(playbackCopy.youtubeOpenFailed);
     }
   };
 
@@ -122,7 +200,7 @@ function FilmaApp() {
     }
 
     if (item.source?.kind !== 'stremio') {
-      setPlaybackError('This item does not provide a playable source.');
+      setPlaybackError(playbackCopy.itemNotPlayable);
       return;
     }
 
@@ -132,12 +210,12 @@ function FilmaApp() {
         const meta = await fetchMeta(item.source.manifestUrl, item.source.mediaType, item.source.mediaId);
         const episodes = (meta.videos ?? []).filter(video => Boolean(video.id && video.title));
         if (!episodes.length) {
-          setPlaybackError('This series source returned no episode list.');
+          setPlaybackError(playbackCopy.noEpisodes);
           return;
         }
         setPendingEpisodes({ series: item, episodes });
       } catch (error) {
-        setPlaybackError(error instanceof Error ? error.message : 'Could not load series episodes.');
+        setPlaybackError(error instanceof Error && error.message ? `${playbackCopy.episodesFailed} ${error.message}` : playbackCopy.episodesFailed);
       } finally {
         setResolvingTitle(undefined);
       }
