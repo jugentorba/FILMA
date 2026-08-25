@@ -2,7 +2,6 @@ name: FILMA CI
 
 on:
   push:
-    branches: [main, sync-v2-hardening]
   pull_request:
 
 concurrency:
