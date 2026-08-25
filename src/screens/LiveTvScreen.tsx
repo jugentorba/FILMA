@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, FlatList, Image, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { playlistFetchUrl } from '../services/iptvAuth';
 import { channelIdentity, fetchPlaylist, mergeLiveChannels } from '../services/m3u';
 import { useFilma } from '../store/FilmaContext';
 import type { LiveChannel, MediaItem } from '../types';
@@ -201,7 +202,8 @@ export function LiveTvScreen({ onOpenSettings }: Props) {
 
     const results = await Promise.all(activePlaylists.map(async source => {
       try {
-        const loaded = await fetchPlaylist(source.url);
+        const url = await playlistFetchUrl(source);
+        const loaded = await fetchPlaylist(url);
         const country = source.countryGroup || source.countryName || 'Other';
         const enriched = loaded.map(channel => ({
           ...channel,
