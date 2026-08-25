@@ -16,6 +16,7 @@ import type { FilmaState, MediaItem } from '../types';
 import { FocusButton } from '../ui/FocusButton';
 import { MediaCard } from '../ui/MediaCard';
 import { theme } from '../ui/theme';
+import { useResponsiveLayout } from '../ui/useResponsiveLayout';
 
 type Props = {
   onSelect(item: MediaItem): void;
@@ -90,13 +91,34 @@ function pickBrowseCatalogs(catalogs: StremioCatalog[], preferredAudioLanguages:
 
 function MediaRow({ title, data, state, onSelect }: MediaRowProps) {
   const listRef = useRef<FlatList<MediaItem>>(null);
+  const layout = useResponsiveLayout();
+
+  const sectionStyle = useMemo(() => ({
+    paddingTop: layout.isTv ? 28 : layout.isCompactPhone ? 17 : layout.isTablet ? 24 : 21,
+  }), [layout.isCompactPhone, layout.isTablet, layout.isTv]);
+  const headingStyle = useMemo(() => ({
+    paddingHorizontal: layout.horizontalPadding,
+    marginBottom: layout.isCompactPhone ? 8 : 11,
+  }), [layout.horizontalPadding, layout.isCompactPhone]);
+  const titleStyle = useMemo(() => ({
+    fontSize: layout.isTv ? 24 : layout.isCompactPhone ? 17 : layout.isTablet ? 21 : 19,
+  }), [layout.isCompactPhone, layout.isTablet, layout.isTv]);
+  const countStyle = useMemo(() => ({
+    minWidth: layout.isCompactPhone ? 23 : 27,
+    height: layout.isCompactPhone ? 20 : 23,
+    borderRadius: layout.isCompactPhone ? 10 : 12,
+  }), [layout.isCompactPhone]);
+  const rowStyle = useMemo(() => ({
+    paddingLeft: layout.horizontalPadding,
+    paddingRight: layout.isTv ? Math.max(24, layout.horizontalPadding / 2) : Math.max(6, layout.horizontalPadding / 2),
+  }), [layout.horizontalPadding, layout.isTv]);
 
   return (
-    <View style={styles.section}>
-      <View style={styles.sectionHeading}>
-        <Text style={styles.sectionTitle}>{title}</Text>
-        <View style={styles.sectionCountBadge}>
-          <Text style={styles.sectionCount}>{data.length}</Text>
+    <View style={[styles.section, sectionStyle]}>
+      <View style={[styles.sectionHeading, headingStyle]}>
+        <Text style={[styles.sectionTitle, titleStyle]}>{title}</Text>
+        <View style={[styles.sectionCountBadge, countStyle]}>
+          <Text style={[styles.sectionCount, layout.isCompactPhone && styles.sectionCountCompact]}>{data.length}</Text>
         </View>
       </View>
       <FlatList
@@ -105,8 +127,8 @@ function MediaRow({ title, data, state, onSelect }: MediaRowProps) {
         data={data}
         keyExtractor={item => item.id}
         showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.rowContent}
-        initialNumToRender={Platform.isTV ? 10 : 6}
+        contentContainerStyle={[styles.rowContent, rowStyle]}
+        initialNumToRender={layout.isTv ? 10 : layout.isTablet ? 8 : 6}
         windowSize={7}
         onScrollToIndexFailed={({ index, averageItemLength }) => {
           listRef.current?.scrollToOffset({ offset: Math.max(0, index * averageItemLength), animated: true });
@@ -132,6 +154,7 @@ function MediaRow({ title, data, state, onSelect }: MediaRowProps) {
 
 export function HomeScreen({ onSelect, onOpenYouTubeVideo, onOpenSettings }: Props) {
   const { state } = useFilma();
+  const layout = useResponsiveLayout();
   const text = stringsFor(state.preferences.appLanguage);
   const [addonRows, setAddonRows] = useState<CatalogRow[]>([]);
   const [searchTargets, setSearchTargets] = useState<SearchTarget[]>([]);
@@ -393,29 +416,106 @@ export function HomeScreen({ onSelect, onOpenYouTubeVideo, onOpenSettings }: Pro
         ? (addonError ?? text.sourceLoadError)
         : text.homeEmptyText;
 
+  const contentStyle = useMemo(() => ({
+    paddingBottom: layout.isTv ? 76 : 100,
+  }), [layout.isTv]);
+  const heroStyle = useMemo(() => ({
+    minHeight: layout.isTv ? 470 : layout.isCompactPhone ? 285 : layout.isTablet ? 390 : 335,
+  }), [layout.isCompactPhone, layout.isTablet, layout.isTv]);
+  const heroContentStyle = useMemo(() => ({
+    paddingHorizontal: layout.horizontalPadding,
+    paddingBottom: layout.isTv ? 44 : layout.isCompactPhone ? 24 : layout.isTablet ? 34 : 29,
+    paddingTop: layout.isTv ? 105 : layout.isCompactPhone ? 62 : layout.isTablet ? 88 : 72,
+    maxWidth: layout.isTv ? 860 : layout.isTablet ? 720 : undefined,
+  }), [layout.horizontalPadding, layout.isCompactPhone, layout.isTablet, layout.isTv]);
+  const heroTitleStyle = useMemo(() => ({
+    fontSize: layout.isTv ? 52 : layout.isCompactPhone ? 28 : layout.isTablet ? 40 : 33,
+    lineHeight: layout.isTv ? 58 : layout.isCompactPhone ? 33 : layout.isTablet ? 46 : 39,
+    marginTop: layout.isCompactPhone ? 8 : 11,
+  }), [layout.isCompactPhone, layout.isTablet, layout.isTv]);
+  const heroMetaStyle = useMemo(() => ({
+    marginTop: layout.isCompactPhone ? 7 : 10,
+    fontSize: layout.isTv ? 16 : layout.isCompactPhone ? 11 : layout.isTablet ? 14 : 12,
+  }), [layout.isCompactPhone, layout.isTablet, layout.isTv]);
+  const emptyHeroStyle = useMemo(() => ({
+    minHeight: layout.isTv ? 370 : layout.isCompactPhone ? 245 : layout.isTablet ? 330 : 285,
+    paddingHorizontal: layout.horizontalPadding,
+    paddingVertical: layout.isTv ? 54 : layout.isCompactPhone ? 30 : 40,
+  }), [layout.horizontalPadding, layout.isCompactPhone, layout.isTablet, layout.isTv]);
+  const emptyTitleStyle = useMemo(() => ({
+    fontSize: layout.isTv ? 42 : layout.isCompactPhone ? 25 : layout.isTablet ? 34 : 29,
+    lineHeight: layout.isTv ? 48 : layout.isCompactPhone ? 30 : layout.isTablet ? 40 : 35,
+  }), [layout.isCompactPhone, layout.isTablet, layout.isTv]);
+  const emptyTextStyle = useMemo(() => ({
+    fontSize: layout.isTv ? 17 : layout.isCompactPhone ? 13 : layout.isTablet ? 15 : 14,
+    lineHeight: layout.isTv ? 25 : layout.isCompactPhone ? 19 : 22,
+  }), [layout.isCompactPhone, layout.isTablet, layout.isTv]);
+  const exploreAreaStyle = useMemo(() => ({
+    paddingHorizontal: layout.horizontalPadding,
+    paddingTop: layout.isTv ? 22 : layout.isCompactPhone ? 15 : 19,
+  }), [layout.horizontalPadding, layout.isCompactPhone, layout.isTv]);
+  const exploreLabelStyle = useMemo(() => ({
+    fontSize: layout.isTv ? 20 : layout.isCompactPhone ? 15 : layout.isTablet ? 18 : 17,
+    marginBottom: layout.isCompactPhone ? 7 : 9,
+  }), [layout.isCompactPhone, layout.isTablet, layout.isTv]);
+  const searchAreaStyle = useMemo(() => ({
+    paddingHorizontal: layout.horizontalPadding,
+    paddingTop: layout.isCompactPhone ? 10 : 13,
+    flexDirection: (layout.isTv || layout.isTablet ? 'row' : 'column') as 'row' | 'column',
+    gap: layout.isCompactPhone ? 8 : 10,
+    alignItems: (layout.isTv || layout.isTablet ? 'center' : 'stretch') as 'center' | 'stretch',
+  }), [layout.horizontalPadding, layout.isCompactPhone, layout.isTablet, layout.isTv]);
+  const searchShellStyle = useMemo(() => ({
+    minHeight: layout.isTv ? 52 : layout.isCompactPhone ? 40 : layout.isTablet ? 48 : 44,
+    gap: layout.isCompactPhone ? 7 : 9,
+    paddingHorizontal: layout.isCompactPhone ? 11 : 14,
+    borderRadius: layout.isCompactPhone ? 12 : 15,
+  }), [layout.isCompactPhone, layout.isTablet, layout.isTv]);
+  const searchIconStyle = useMemo(() => ({
+    fontSize: layout.isTv ? 22 : layout.isCompactPhone ? 18 : 20,
+  }), [layout.isCompactPhone, layout.isTv]);
+  const searchTextStyle = useMemo(() => ({
+    fontSize: layout.isTv ? 17 : layout.isCompactPhone ? 13 : layout.isTablet ? 15 : 14,
+  }), [layout.isCompactPhone, layout.isTablet, layout.isTv]);
+  const audioChipStyle = useMemo(() => ({
+    minHeight: layout.isTv ? 50 : layout.isCompactPhone ? 40 : layout.isTablet ? 48 : 44,
+    maxWidth: layout.isTv ? 330 : layout.isTablet ? 300 : undefined,
+    borderRadius: layout.isCompactPhone ? 12 : 15,
+    paddingHorizontal: layout.isCompactPhone ? 11 : 14,
+  }), [layout.isCompactPhone, layout.isTablet, layout.isTv]);
+  const messageBoxStyle = useMemo(() => ({
+    marginHorizontal: layout.horizontalPadding,
+    marginTop: layout.isCompactPhone ? 18 : 24,
+    padding: layout.isTv ? 20 : layout.isCompactPhone ? 13 : 16,
+  }), [layout.horizontalPadding, layout.isCompactPhone, layout.isTv]);
+  const loadingRowStyle = useMemo(() => ({
+    paddingHorizontal: layout.horizontalPadding,
+    paddingTop: layout.isCompactPhone ? 20 : 26,
+  }), [layout.horizontalPadding, layout.isCompactPhone]);
+
   return (
-    <ScrollView style={styles.root} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+    <ScrollView style={styles.root} contentContainerStyle={[styles.content, contentStyle]} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
       {hero ? (
-        <ImageBackground source={hero.backdrop ? { uri: hero.backdrop } : undefined} style={styles.hero} imageStyle={styles.heroImage}>
+        <ImageBackground source={hero.backdrop ? { uri: hero.backdrop } : undefined} style={[styles.hero, heroStyle]} imageStyle={styles.heroImage}>
           <View style={styles.heroShade} />
-          <View style={styles.heroContent}>
+          <View style={[styles.heroContent, heroContentStyle]}>
             <View style={styles.heroBadgeRow}>
-              <View style={styles.heroTypeBadge}><Text style={styles.heroTypeText}>{heroTypeLabel.toUpperCase()}</Text></View>
-              <Text style={styles.eyebrow}>{text.homeEyebrow}</Text>
+              <View style={[styles.heroTypeBadge, layout.isCompactPhone && styles.heroTypeBadgeCompact]}><Text style={[styles.heroTypeText, layout.isCompactPhone && styles.heroTypeTextCompact]}>{heroTypeLabel.toUpperCase()}</Text></View>
+              <Text style={[styles.eyebrow, layout.isCompactPhone && styles.eyebrowCompact]}>{text.homeEyebrow}</Text>
             </View>
-            <Text numberOfLines={2} style={styles.heroTitle}>{hero.title}</Text>
-            <Text numberOfLines={2} style={styles.heroMeta}>
+            <Text numberOfLines={2} style={[styles.heroTitle, heroTitleStyle]}>{hero.title}</Text>
+            <Text numberOfLines={2} style={[styles.heroMeta, heroMetaStyle]}>
               {[hero.year, hero.genres?.slice(0, 3).join('  •  ')].filter(Boolean).join('   ') || hero.subtitle || 'FILMA'}
             </Text>
             {heroProgressRatio > 0 ? (
-              <View style={styles.heroProgressBlock}>
+              <View style={[styles.heroProgressBlock, layout.isCompactPhone && styles.heroProgressBlockCompact]}>
                 <View style={styles.heroProgressTrack}>
                   <View style={[styles.heroProgressFill, { width: `${Math.round(heroProgressRatio * 100)}%` }]} />
                 </View>
                 <Text style={styles.heroProgressText}>{Math.round(heroProgressRatio * 100)}% {browseCopy.progress}</Text>
               </View>
             ) : null}
-            <View style={styles.heroActions}>
+            <View style={[styles.heroActions, layout.isCompactPhone && styles.heroActionsCompact]}>
               <FocusButton
                 label={`▶ ${heroCanContinue ? text.continue : text.play}`}
                 active
@@ -426,13 +526,13 @@ export function HomeScreen({ onSelect, onOpenYouTubeVideo, onOpenSettings }: Pro
           </View>
         </ImageBackground>
       ) : (
-        <View style={styles.emptyHero}>
-          <Text style={styles.eyebrow}>{text.homeEyebrow}</Text>
+        <View style={[styles.emptyHero, emptyHeroStyle]}>
+          <Text style={[styles.eyebrow, layout.isCompactPhone && styles.eyebrowCompact]}>{text.homeEyebrow}</Text>
           {loadingAddons ? <ActivityIndicator style={styles.emptySpinner} /> : null}
-          <Text style={styles.emptyTitle}>{emptyTitle}</Text>
-          <Text style={styles.emptyText}>{emptyText}</Text>
+          <Text style={[styles.emptyTitle, emptyTitleStyle]}>{emptyTitle}</Text>
+          <Text style={[styles.emptyText, emptyTextStyle]}>{emptyText}</Text>
           {!loadingAddons ? (
-            <View style={styles.heroActions}>
+            <View style={[styles.heroActions, layout.isCompactPhone && styles.heroActionsCompact]}>
               {activeAddons.length ? (
                 <>
                   <FocusButton label={text.retry} active preferredFocus onPress={() => setReloadVersion(value => value + 1)} />
@@ -451,33 +551,33 @@ export function HomeScreen({ onSelect, onOpenYouTubeVideo, onOpenSettings }: Pro
         </View>
       )}
 
-      <View style={styles.exploreArea}>
-        <Text style={styles.exploreLabel}>{browseCopy.explore}</Text>
-        <View style={styles.browseButtons}>
+      <View style={[styles.exploreArea, exploreAreaStyle]}>
+        <Text style={[styles.exploreLabel, exploreLabelStyle]}>{browseCopy.explore}</Text>
+        <View style={[styles.browseButtons, layout.isCompactPhone && styles.browseButtonsCompact]}>
           <FocusButton compact label={browseCopy.all} active={browseMode === 'all'} onPress={() => setBrowseMode('all')} />
           <FocusButton compact label={browseCopy.movies} active={browseMode === 'movie'} onPress={() => setBrowseMode('movie')} />
           <FocusButton compact label={browseCopy.series} active={browseMode === 'series'} onPress={() => setBrowseMode('series')} />
         </View>
       </View>
 
-      <View style={styles.searchArea}>
-        <View style={styles.searchShell}>
-          <Text style={styles.searchIcon}>⌕</Text>
+      <View style={[styles.searchArea, searchAreaStyle]}>
+        <View style={[styles.searchShell, searchShellStyle]}>
+          <Text style={[styles.searchIcon, searchIconStyle]}>⌕</Text>
           <TextInput
             value={query}
             onChangeText={setQuery}
             placeholder={text.searchPlaceholder}
             placeholderTextColor={theme.muted}
-            style={styles.search}
+            style={[styles.search, searchTextStyle]}
             autoCorrect={false}
             autoCapitalize="none"
             returnKeyType="search"
           />
           {searching ? <ActivityIndicator size="small" /> : null}
         </View>
-        <View style={styles.audioChip}>
-          <Text style={styles.audioChipLabel}>{text.preferredAudio}</Text>
-          <Text numberOfLines={1} style={styles.audioChipValue}>{audioSummary}</Text>
+        <View style={[styles.audioChip, audioChipStyle]}>
+          <Text style={[styles.audioChipLabel, layout.isCompactPhone && styles.audioChipLabelCompact]}>{text.preferredAudio}</Text>
+          <Text numberOfLines={1} style={[styles.audioChipValue, layout.isCompactPhone && styles.audioChipValueCompact]}>{audioSummary}</Text>
         </View>
       </View>
 
@@ -485,9 +585,9 @@ export function HomeScreen({ onSelect, onOpenYouTubeVideo, onOpenSettings }: Pro
         searchResults.length ? (
           <MediaRow title={`${text.searchResults} · ${searchResults.length}`} data={searchResults} state={state} onSelect={onSelect} />
         ) : !searching ? (
-          <View style={styles.messageBox}>
-            <Text style={styles.messageTitle}>{text.noSearchResults}</Text>
-            {searchError ? <Text style={styles.messageText}>{searchError}</Text> : null}
+          <View style={[styles.messageBox, messageBoxStyle]}>
+            <Text style={[styles.messageTitle, layout.isCompactPhone && styles.messageTitleCompact]}>{text.noSearchResults}</Text>
+            {searchError ? <Text style={[styles.messageText, layout.isCompactPhone && styles.messageTextCompact]}>{searchError}</Text> : null}
           </View>
         ) : null
       ) : (
@@ -510,7 +610,7 @@ export function HomeScreen({ onSelect, onOpenYouTubeVideo, onOpenSettings }: Pro
       )}
 
       {loadingAddons && hero ? (
-        <View style={styles.loadingRow}>
+        <View style={[styles.loadingRow, loadingRowStyle]}>
           <ActivityIndicator />
           <Text style={styles.loadingText}>{text.loadingCatalogs}</Text>
         </View>
@@ -521,9 +621,8 @@ export function HomeScreen({ onSelect, onOpenYouTubeVideo, onOpenSettings }: Pro
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: theme.background },
-  content: { paddingBottom: Platform.isTV ? 90 : 118 },
+  content: {},
   hero: {
-    minHeight: Platform.isTV ? 530 : 410,
     justifyContent: 'flex-end',
     backgroundColor: '#10131d',
   },
@@ -532,13 +631,8 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFill,
     backgroundColor: Platform.isTV ? 'rgba(7,9,15,0.45)' : 'rgba(7,9,15,0.58)',
   },
-  heroContent: {
-    paddingHorizontal: Platform.isTV ? 64 : 20,
-    paddingBottom: Platform.isTV ? 58 : 36,
-    paddingTop: Platform.isTV ? 130 : 90,
-    maxWidth: Platform.isTV ? 940 : undefined,
-  },
-  heroBadgeRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  heroContent: {},
+  heroBadgeRow: { flexDirection: 'row', alignItems: 'center', gap: 9 },
   heroTypeBadge: {
     paddingHorizontal: 9,
     paddingVertical: 5,
@@ -547,91 +641,76 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.18)',
   },
+  heroTypeBadgeCompact: { paddingHorizontal: 7, paddingVertical: 4 },
   heroTypeText: { color: '#f6f8fb', fontSize: 10, fontWeight: '900', letterSpacing: 1 },
+  heroTypeTextCompact: { fontSize: 8, letterSpacing: 0.7 },
   emptyHero: {
-    minHeight: Platform.isTV ? 430 : 340,
-    paddingHorizontal: Platform.isTV ? 64 : 22,
-    paddingVertical: Platform.isTV ? 70 : 46,
     justifyContent: 'center',
     backgroundColor: '#0c101a',
     borderBottomWidth: 1,
     borderBottomColor: theme.border,
   },
-  emptySpinner: { alignSelf: 'flex-start', marginTop: 22 },
-  eyebrow: { color: theme.accent, fontWeight: '900', letterSpacing: 2.4, fontSize: 12 },
+  emptySpinner: { alignSelf: 'flex-start', marginTop: 18 },
+  eyebrow: { color: theme.accent, fontWeight: '900', letterSpacing: 2.2, fontSize: 11 },
+  eyebrowCompact: { fontSize: 9, letterSpacing: 1.5 },
   heroTitle: {
     color: theme.text,
-    fontSize: Platform.isTV ? 60 : 40,
-    lineHeight: Platform.isTV ? 66 : 46,
     fontWeight: '900',
-    marginTop: 13,
     maxWidth: 820,
-    letterSpacing: -1.2,
+    letterSpacing: -1,
   },
-  heroMeta: { color: '#d8deea', marginTop: 12, fontSize: Platform.isTV ? 18 : 14, fontWeight: '700' },
-  heroProgressBlock: { width: Platform.isTV ? 420 : '82%', maxWidth: 420, marginTop: 18 },
-  heroProgressTrack: { height: 5, borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.28)', overflow: 'hidden' },
+  heroMeta: { color: '#d8deea', fontWeight: '700' },
+  heroProgressBlock: { width: Platform.isTV ? 400 : '80%', maxWidth: 400, marginTop: 15 },
+  heroProgressBlockCompact: { width: '72%', marginTop: 11 },
+  heroProgressTrack: { height: 4, borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.28)', overflow: 'hidden' },
   heroProgressFill: { height: '100%', borderRadius: 999, backgroundColor: theme.accent },
-  heroProgressText: { color: '#d6dce7', fontSize: 11, fontWeight: '800', marginTop: 6 },
-  heroActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 24 },
-  emptyTitle: { color: theme.text, fontSize: Platform.isTV ? 48 : 34, lineHeight: Platform.isTV ? 54 : 40, fontWeight: '900', marginTop: 12 },
-  emptyText: { color: theme.muted, maxWidth: 720, fontSize: Platform.isTV ? 19 : 16, lineHeight: Platform.isTV ? 28 : 24, marginTop: 12 },
-  exploreArea: {
-    paddingHorizontal: Platform.isTV ? 64 : 20,
-    paddingTop: Platform.isTV ? 28 : 22,
-  },
-  exploreLabel: { color: theme.text, fontSize: Platform.isTV ? 22 : 18, fontWeight: '900', marginBottom: 10 },
-  browseButtons: { flexDirection: 'row', flexWrap: 'wrap', gap: 9 },
-  searchArea: {
-    paddingHorizontal: Platform.isTV ? 64 : 20,
-    paddingTop: 16,
-    flexDirection: Platform.isTV ? 'row' : 'column',
-    gap: 12,
-    alignItems: Platform.isTV ? 'center' : 'stretch',
-  },
+  heroProgressText: { color: '#d6dce7', fontSize: 10, fontWeight: '800', marginTop: 5 },
+  heroActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 9, marginTop: 20 },
+  heroActionsCompact: { gap: 6, marginTop: 14 },
+  emptyTitle: { color: theme.text, fontWeight: '900', marginTop: 10 },
+  emptyText: { color: theme.muted, maxWidth: 720, marginTop: 10 },
+  exploreArea: {},
+  exploreLabel: { color: theme.text, fontWeight: '900' },
+  browseButtons: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  browseButtonsCompact: { gap: 5 },
+  searchArea: {},
   searchShell: {
     flex: 1,
-    minHeight: Platform.isTV ? 62 : 54,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 16,
-    borderRadius: 18,
     borderWidth: 1,
     borderColor: '#323b50',
     backgroundColor: '#121724',
   },
-  searchIcon: { color: theme.muted, fontSize: 24, fontWeight: '700' },
-  search: { flex: 1, color: theme.text, fontSize: Platform.isTV ? 19 : 16, paddingVertical: 0 },
+  searchIcon: { color: theme.muted, fontWeight: '700' },
+  search: { flex: 1, color: theme.text, paddingVertical: 0 },
   audioChip: {
-    minHeight: 54,
-    maxWidth: Platform.isTV ? 360 : undefined,
-    borderRadius: 18,
     borderWidth: 1,
     borderColor: theme.border,
     backgroundColor: theme.surface,
-    paddingHorizontal: 16,
     justifyContent: 'center',
   },
-  audioChipLabel: { color: theme.muted, fontSize: 11, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1.1 },
-  audioChipValue: { color: theme.text, marginTop: 3, fontWeight: '800' },
-  section: { paddingTop: Platform.isTV ? 34 : 28 },
-  sectionHeading: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: Platform.isTV ? 64 : 20, marginBottom: 14 },
-  sectionTitle: { color: theme.text, fontSize: Platform.isTV ? 27 : 22, fontWeight: '900', letterSpacing: -0.3 },
-  sectionCountBadge: { minWidth: 28, height: 24, borderRadius: 12, paddingHorizontal: 7, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.surfaceRaised },
-  sectionCount: { color: theme.muted, fontSize: 12, fontWeight: '900' },
-  rowContent: { paddingLeft: Platform.isTV ? 64 : 20, paddingRight: Platform.isTV ? 40 : 8 },
-  loadingRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: Platform.isTV ? 64 : 20, paddingTop: 30 },
+  audioChipLabel: { color: theme.muted, fontSize: 10, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1 },
+  audioChipLabelCompact: { fontSize: 8, letterSpacing: 0.7 },
+  audioChipValue: { color: theme.text, marginTop: 3, fontWeight: '800', fontSize: 13 },
+  audioChipValueCompact: { fontSize: 11, marginTop: 2 },
+  section: {},
+  sectionHeading: { flexDirection: 'row', alignItems: 'center', gap: 9 },
+  sectionTitle: { color: theme.text, fontWeight: '900', letterSpacing: -0.2 },
+  sectionCountBadge: { paddingHorizontal: 6, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.surfaceRaised },
+  sectionCount: { color: theme.muted, fontSize: 11, fontWeight: '900' },
+  sectionCountCompact: { fontSize: 9 },
+  rowContent: {},
+  loadingRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   loadingText: { color: theme.muted, fontWeight: '700' },
   messageBox: {
-    marginHorizontal: Platform.isTV ? 64 : 20,
-    marginTop: 28,
-    padding: Platform.isTV ? 24 : 18,
-    borderRadius: 18,
+    borderRadius: 15,
     borderWidth: 1,
     borderColor: theme.border,
     backgroundColor: theme.surface,
   },
-  messageTitle: { color: theme.text, fontSize: 18, fontWeight: '900' },
-  messageText: { color: theme.muted, marginTop: 7, lineHeight: 21 },
+  messageTitle: { color: theme.text, fontSize: 17, fontWeight: '900' },
+  messageTitleCompact: { fontSize: 14 },
+  messageText: { color: theme.muted, marginTop: 6, lineHeight: 20 },
+  messageTextCompact: { fontSize: 12, lineHeight: 17 },
 });
