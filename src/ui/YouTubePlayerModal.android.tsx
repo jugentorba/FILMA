@@ -1,6 +1,8 @@
 import React from 'react';
 import { Modal, StyleSheet, Text, View } from 'react-native';
 import FilmaYouTubePlayer from '../../modules/filma-youtube-player';
+import { stringsFor } from '../i18n';
+import { useFilma } from '../store/FilmaContext';
 import { FocusButton } from './FocusButton';
 import { theme } from './theme';
 
@@ -12,6 +14,9 @@ type Props = {
 };
 
 export function YouTubePlayerModal({ videoId, title, channelTitle, onClose }: Props) {
+  const { state } = useFilma();
+  const text = stringsFor(state.preferences.appLanguage);
+
   return (
     <Modal visible animationType="fade" presentationStyle="fullScreen" onRequestClose={onClose} hardwareAccelerated>
       <View style={styles.root}>
@@ -20,7 +25,7 @@ export function YouTubePlayerModal({ videoId, title, channelTitle, onClose }: Pr
             <Text numberOfLines={1} style={styles.title}>{title}</Text>
             {channelTitle ? <Text numberOfLines={1} style={styles.channel}>{channelTitle}</Text> : null}
           </View>
-          <FocusButton compact label="Close" onPress={onClose} />
+          <FocusButton compact label={text.dismiss} onPress={onClose} />
         </View>
         <View style={styles.playerShell}>
           <FilmaYouTubePlayer videoId={videoId} style={styles.player} />
