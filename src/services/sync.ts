@@ -74,6 +74,7 @@ function mergeTimestampedArrays<T extends { id: string; updatedAt: string }>(loc
 const FALLBACK_PREFERENCES: AppPreferences = {
   appLanguage: 'en',
   preferredAudioLanguages: [],
+  interfaceDensity: 'compact',
   updatedAt: '1970-01-01T00:00:00.000Z',
 };
 
