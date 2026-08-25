@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { deleteXtreamCredentials, saveXtreamCredentials, validateXtreamAccount } from '../services/iptvAuth';
+import { deleteLocalPlaylistFile } from '../services/localPlaylist';
 import { CONTINUE_WATCHING_MIN_SECONDS, isPlaybackComplete } from '../services/progress';
 import { automaticTvPlaylists, discoverOfficialMovieProviders } from '../services/sourceDiscovery';
 import type { CloudSyncAdapter } from '../services/sync';
@@ -27,6 +28,7 @@ type FilmaContextValue = {
   toggleFavorite(mediaId: string): void;
   updateProgress(item: MediaItem, positionSeconds: number, durationSeconds: number): void;
   addPlaylist(name: string, url: string): void;
+  addLocalPlaylist(name: string, uri: string): void;
   addXtreamPlaylist(name: string, baseUrl: string, username: string, password: string): Promise<void>;
   setPlaylistEnabled(id: string, enabled: boolean): void;
   removePlaylist(id: string): void;
@@ -64,6 +66,24 @@ function stripAutomaticSources(input: FilmaState): FilmaState {
   const addons = input.addons.filter(source => !source.id.startsWith(AUTO_MOVIE_PREFIX));
   if (playlists.length === input.playlists.length && addons.length === input.addons.length) return input;
   return { ...input, playlists, addons };
+}
+
+function syncableState(input: FilmaState): FilmaState {
+  const clean = stripAutomaticSources(input);
+  const playlists = clean.playlists.filter(source => source.kind !== 'file');
+  return playlists.length === clean.playlists.length ? clean : { ...clean, playlists };
+}
+
+function restoreLocalPlaylists(synced: FilmaState, local: FilmaState): FilmaState {
+  const localFiles = local.playlists.filter(source => source.kind === 'file');
+  if (!localFiles.length) return synced;
+  return {
+    ...synced,
+    playlists: [
+      ...synced.playlists.filter(source => source.kind !== 'file'),
+      ...localFiles,
+    ],
+  };
 }
 
 function appendRuntimeAddons(configured: AddonSource[], automatic: AddonSource[]): AddonSource[] {
@@ -275,6 +295,20 @@ export function FilmaProvider({ children }: { children: React.ReactNode }) {
     commitState(current => ({ ...current, playlists: [...current.playlists, playlist] }));
   }, [commitState]);
 
+  const addLocalPlaylist = useCallback((name: string, uri: string) => {
+    const at = now();
+    const playlist: PlaylistSource = {
+      id: makeId('file-playlist'),
+      name,
+      url: uri,
+      enabled: true,
+      createdAt: at,
+      updatedAt: at,
+      kind: 'file',
+    };
+    commitState(current => ({ ...current, playlists: [...current.playlists, playlist] }));
+  }, [commitState]);
+
   const addXtreamPlaylist = useCallback(async (name: string, baseUrl: string, username: string, password: string) => {
     const validated = await validateXtreamAccount(baseUrl, username, password);
     const id = makeId('xtream');
@@ -307,6 +341,8 @@ export function FilmaProvider({ children }: { children: React.ReactNode }) {
     const source = stateRef.current.playlists.find(item => item.id === id && !item.deletedAt);
     if (source?.kind === 'xtream') {
       void deleteXtreamCredentials(source).catch(() => undefined);
+    } else if (source?.kind === 'file') {
+      void deleteLocalPlaylistFile(source).catch(() => undefined);
     }
     const at = now();
     commitState(current => ({
@@ -351,18 +387,23 @@ export function FilmaProvider({ children }: { children: React.ReactNode }) {
   }, [commitState]);
 
   const syncWith = useCallback(async (adapter: CloudSyncAdapter) => {
+    const stateAtStart = stateRef.current;
+    const localAtStart = syncableState(stateAtStart);
     const remote = await adapter.pull();
-    const localAtStart = stripAutomaticSources(stateRef.current);
-    const remoteState = remote ? stripAutomaticSources(remote.state) : null;
+    const remoteState = remote ? syncableState(remote.state) : null;
     const merged = remoteState ? mergeStates(localAtStart, remoteState) : localAtStart;
     await adapter.push(makeSyncEnvelope(merged));
 
-    const latestLocal = stripAutomaticSources(stateRef.current);
-    const finalState = latestLocal === localAtStart ? merged : mergeStates(latestLocal, merged);
-    if (latestLocal !== localAtStart) {
-      await adapter.push(makeSyncEnvelope(finalState));
+    const latestState = stateRef.current;
+    const latestSyncable = syncableState(latestState);
+    const finalSyncedState = latestState === stateAtStart
+      ? merged
+      : mergeStates(latestSyncable, merged);
+    if (latestState !== stateAtStart) {
+      await adapter.push(makeSyncEnvelope(finalSyncedState));
     }
 
+    const finalState = restoreLocalPlaylists(finalSyncedState, latestState);
     stateRef.current = finalState;
     setState(finalState);
   }, []);
@@ -380,6 +421,7 @@ export function FilmaProvider({ children }: { children: React.ReactNode }) {
     toggleFavorite,
     updateProgress,
     addPlaylist,
+    addLocalPlaylist,
     addXtreamPlaylist,
     setPlaylistEnabled,
     removePlaylist,
@@ -389,6 +431,7 @@ export function FilmaProvider({ children }: { children: React.ReactNode }) {
     syncWith,
   }), [
     addAddon,
+    addLocalPlaylist,
     addPlaylist,
     addXtreamPlaylist,
     clearAudioLanguages,
