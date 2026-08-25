@@ -84,6 +84,46 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+      - name: Build unsigned iPhone/iPad device app
+        shell: bash
+        run: |
+          set -euo pipefail
+          workspace=$(find ios -maxdepth 1 -name '*.xcworkspace' | head -1)
+          xcodebuild \
+            -workspace "$workspace" \
+            -scheme FILMA \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$RUNNER_TEMP/FILMA-iOS-Device-DerivedData" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            build
+
+      - name: Package unsigned iPhone/iPad IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          app="$RUNNER_TEMP/FILMA-iOS-Device-DerivedData/Build/Products/Release-iphoneos/FILMA.app"
+          if [ ! -d "$app" ]; then
+            echo 'FILMA iphoneos .app build product was not found.' >&2
+            find "$RUNNER_TEMP/FILMA-iOS-Device-DerivedData/Build/Products" -maxdepth 3 -type d -name '*.app' -print || true
+            exit 1
+          fi
+          rm -rf Payload FILMA-iOS-Unsigned.ipa
+          mkdir -p Payload
+          ditto "$app" Payload/FILMA.app
+          zip -qry FILMA-iOS-Unsigned.ipa Payload
+          rm -rf Payload
+
+      - name: Upload unsigned iPhone/iPad IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: FILMA-iOS-Unsigned-IPA
+          path: FILMA-iOS-Unsigned.ipa
+          if-no-files-found: error
+          retention-days: 30
+
       - name: Generate Apple TV project
         run: EXPO_TV=1 npx expo prebuild --platform ios --clean --no-install
 
