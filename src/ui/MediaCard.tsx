@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Image, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { MediaItem, WatchProgress } from '../types';
 import { theme } from './theme';
+import { useResponsiveLayout } from './useResponsiveLayout';
 
 type Props = {
   item: MediaItem;
@@ -16,6 +17,7 @@ export function MediaCard({ item, progress, favorite = false, preferredFocus = f
   const [focused, setFocused] = useState(false);
   const [pressed, setPressed] = useState(false);
   const [posterFailed, setPosterFailed] = useState(false);
+  const layout = useResponsiveLayout();
   const ratio = progress?.durationSeconds
     ? Math.min(1, Math.max(0, progress.positionSeconds / progress.durationSeconds))
     : 0;
@@ -24,6 +26,26 @@ export function MediaCard({ item, progress, favorite = false, preferredFocus = f
     ? item.source.mediaType === 'series' ? 'SERIES' : 'MOVIE'
     : undefined;
   const meta = [item.year, item.genres?.[0]].filter(Boolean).join('  •  ') || item.subtitle || 'FILMA';
+
+  const cardSize = useMemo(() => {
+    const width = layout.mediaCardWidth;
+    return {
+      card: { width, marginRight: layout.isTv ? 18 : layout.isCompactPhone ? 9 : 11 },
+      art: { height: Math.round(width * 1.47), borderRadius: layout.isTv ? 16 : 13 },
+      title: {
+        fontSize: layout.isTv ? 16 : layout.isCompactPhone ? 12 : layout.isTablet ? 14 : 13,
+        lineHeight: layout.isTv ? 20 : layout.isCompactPhone ? 16 : 18,
+        minHeight: layout.isTv ? 40 : layout.isCompactPhone ? 32 : 36,
+      },
+      meta: { fontSize: layout.isTv ? 12 : layout.isCompactPhone ? 10 : 11 },
+      favoriteBadge: {
+        width: layout.isTv ? 31 : layout.isCompactPhone ? 25 : 27,
+        height: layout.isTv ? 31 : layout.isCompactPhone ? 25 : 27,
+      },
+      favoriteText: { fontSize: layout.isTv ? 18 : layout.isCompactPhone ? 14 : 16 },
+      monogram: { fontSize: layout.isTv ? 46 : layout.isCompactPhone ? 31 : 35 },
+    };
+  }, [layout.isCompactPhone, layout.isTablet, layout.isTv, layout.mediaCardWidth]);
 
   return (
     <Pressable
@@ -42,11 +64,12 @@ export function MediaCard({ item, progress, favorite = false, preferredFocus = f
       onBlur={() => setFocused(false)}
       style={[
         styles.card,
+        cardSize.card,
         Platform.isTV && focused && styles.focused,
         !Platform.isTV && pressed && styles.pressed,
       ]}
     >
-      <View style={[styles.art, Platform.isTV && focused && styles.artFocused]}>
+      <View style={[styles.art, cardSize.art, Platform.isTV && focused && styles.artFocused]}>
         {showPoster ? (
           <Image
             source={{ uri: item.poster }}
@@ -56,7 +79,7 @@ export function MediaCard({ item, progress, favorite = false, preferredFocus = f
           />
         ) : (
           <View style={styles.fallback}>
-            <Text style={styles.monogram}>{item.title.slice(0, 2).toUpperCase()}</Text>
+            <Text style={[styles.monogram, cardSize.monogram]}>{item.title.slice(0, 2).toUpperCase()}</Text>
           </View>
         )}
 
@@ -67,8 +90,8 @@ export function MediaCard({ item, progress, favorite = false, preferredFocus = f
             </View>
           ) : <View />}
           {favorite ? (
-            <View style={styles.favoriteBadge}>
-              <Text style={styles.favorite}>♥</Text>
+            <View style={[styles.favoriteBadge, cardSize.favoriteBadge]}>
+              <Text style={[styles.favorite, cardSize.favoriteText]}>♥</Text>
             </View>
           ) : null}
         </View>
@@ -82,20 +105,18 @@ export function MediaCard({ item, progress, favorite = false, preferredFocus = f
         ) : null}
       </View>
 
-      <Text numberOfLines={2} style={styles.title}>{item.title}</Text>
-      <Text numberOfLines={1} style={styles.meta}>{meta}</Text>
+      <Text numberOfLines={2} style={[styles.title, cardSize.title]}>{item.title}</Text>
+      <Text numberOfLines={1} style={[styles.meta, cardSize.meta]}>{meta}</Text>
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   card: {
-    width: Platform.isTV ? 202 : 148,
-    marginRight: Platform.isTV ? 24 : 13,
-    paddingBottom: 10,
+    paddingBottom: 8,
   },
   focused: {
-    transform: [{ scale: 1.055 }],
+    transform: [{ scale: 1.045 }],
     zIndex: 3,
   },
   pressed: {
@@ -104,8 +125,6 @@ const styles = StyleSheet.create({
   },
   art: {
     width: '100%',
-    height: Platform.isTV ? 294 : 220,
-    borderRadius: Platform.isTV ? 18 : 15,
     backgroundColor: theme.surfaceRaised,
     borderWidth: Platform.isTV ? 1 : 0,
     borderColor: theme.border,
@@ -113,7 +132,7 @@ const styles = StyleSheet.create({
   },
   artFocused: {
     borderColor: '#ffffff',
-    borderWidth: 4,
+    borderWidth: 3,
   },
   poster: {
     width: '100%',
@@ -127,35 +146,32 @@ const styles = StyleSheet.create({
   },
   monogram: {
     color: '#dfe5ef',
-    fontSize: Platform.isTV ? 52 : 38,
     fontWeight: '900',
     letterSpacing: -2,
     opacity: 0.85,
   },
   topBadges: {
     position: 'absolute',
-    top: 9,
-    left: 9,
-    right: 9,
+    top: 8,
+    left: 8,
+    right: 8,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
   typeBadge: {
-    paddingHorizontal: 7,
-    paddingVertical: 4,
-    borderRadius: 7,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 6,
     backgroundColor: 'rgba(5,8,14,0.76)',
   },
   typeText: {
     color: '#e9edf5',
-    fontSize: 9,
+    fontSize: 8,
     fontWeight: '900',
-    letterSpacing: 0.8,
+    letterSpacing: 0.7,
   },
   favoriteBadge: {
-    width: Platform.isTV ? 34 : 29,
-    height: Platform.isTV ? 34 : 29,
     borderRadius: 99,
     alignItems: 'center',
     justifyContent: 'center',
@@ -163,13 +179,12 @@ const styles = StyleSheet.create({
   },
   favorite: {
     color: theme.accent,
-    fontSize: Platform.isTV ? 20 : 17,
   },
   progressArea: {
     position: 'absolute',
-    left: 10,
-    right: 10,
-    bottom: 10,
+    left: 9,
+    right: 9,
+    bottom: 9,
     padding: 3,
     borderRadius: 999,
     backgroundColor: 'rgba(4,7,12,0.74)',
@@ -188,15 +203,11 @@ const styles = StyleSheet.create({
   title: {
     color: theme.text,
     fontWeight: '800',
-    fontSize: Platform.isTV ? 18 : 14,
-    lineHeight: Platform.isTV ? 22 : 18,
-    marginTop: 10,
-    minHeight: Platform.isTV ? 44 : 36,
+    marginTop: 8,
   },
   meta: {
     color: theme.muted,
-    fontSize: Platform.isTV ? 13 : 11,
-    marginTop: 3,
+    marginTop: 2,
     fontWeight: '600',
   },
 });
