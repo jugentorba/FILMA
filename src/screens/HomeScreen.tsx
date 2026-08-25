@@ -207,6 +207,11 @@ export function HomeScreen({ onSelect, onOpenYouTubeVideo, onOpenSettings }: Pro
       poster: video.thumbnail,
       backdrop: video.thumbnail,
       genres: ['Albanian', 'Archive'],
+      source: {
+        kind: 'youtube',
+        videoId: video.id,
+        channelTitle: video.channelTitle,
+      },
     })),
   [albanianArchiveVideos]);
 
@@ -222,8 +227,8 @@ export function HomeScreen({ onSelect, onOpenYouTubeVideo, onOpenSettings }: Pro
 
   const allLoadedItems = useMemo(() => {
     const resumeItems: MediaItem[] = Object.values(state.progress).flatMap(progress => progress.item ? [progress.item] : []);
-    return dedupe([...resumeItems, ...addonRows.flatMap(row => row.items)]);
-  }, [addonRows, state.progress]);
+    return dedupe([...resumeItems, ...albanianArchiveItems, ...addonRows.flatMap(row => row.items)]);
+  }, [addonRows, albanianArchiveItems, state.progress]);
 
   const continueWatching = useMemo(
     () => allLoadedItems
