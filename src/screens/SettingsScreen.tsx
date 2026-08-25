@@ -22,7 +22,7 @@ export function SettingsScreen() {
     setAddonEnabled,
     removeAddon,
   } = useFilma();
-  const { tvModeEnabled, setTvModeEnabled } = useDeviceMode();
+  const { isTvMode, setTvModeEnabled } = useDeviceMode();
   const dropbox = useDropboxSync();
   const text = stringsFor(state.preferences.appLanguage);
   const [playlistName, setPlaylistName] = useState('');
@@ -37,23 +37,29 @@ export function SettingsScreen() {
 
   const tvModeCopy = state.preferences.appLanguage === 'fr'
     ? {
-        title: 'Mode TV',
-        help: 'Active les fonctions réservées à la TV sur ce téléphone pour tester YouTube sans Android TV ni Apple TV. L’interface reste adaptée au tactile.',
-        on: 'Mode TV activé',
-        off: 'Activer le mode TV',
+        title: 'Mode de l’appareil',
+        help: 'Choisis Téléphone ou Mode TV. Le Mode TV permet de tester les fonctions TV et YouTube directement sur ce téléphone.',
+        phone: 'Téléphone',
+        tv: 'Mode TV',
+        on: 'Mode TV actif',
+        off: 'Mode téléphone actif',
       }
     : state.preferences.appLanguage === 'sq'
       ? {
-          title: 'Modaliteti TV',
-          help: 'Aktivizon funksionet e TV-së në këtë telefon që të testosh YouTube pa Android TV ose Apple TV. Ndërfaqja mbetet e përshtatur për prekje.',
+          title: 'Modaliteti i pajisjes',
+          help: 'Zgjidh Telefon ose Modalitet TV. Modaliteti TV të lejon të testosh funksionet e TV-së dhe YouTube direkt në këtë telefon.',
+          phone: 'Telefon',
+          tv: 'Modalitet TV',
           on: 'Modaliteti TV aktiv',
-          off: 'Aktivizo modalitetin TV',
+          off: 'Modaliteti telefon aktiv',
         }
       : {
-          title: 'TV mode',
-          help: 'Enables TV-only features on this phone so you can test YouTube without Android TV or Apple TV. The interface stays touch-friendly.',
-          on: 'TV mode enabled',
-          off: 'Enable TV mode',
+          title: 'Device mode',
+          help: 'Choose Phone or TV Mode. TV Mode lets you test TV features and YouTube directly on this phone.',
+          phone: 'Phone',
+          tv: 'TV Mode',
+          on: 'TV Mode active',
+          off: 'Phone mode active',
         };
 
   const addPlaylistNow = () => {
@@ -107,6 +113,29 @@ export function SettingsScreen() {
 
       <View style={styles.card}>
         <View style={styles.cardHeader}>
+          <View style={styles.iconBadge}><Text style={styles.iconText}>TV</Text></View>
+          <View style={styles.cardHeaderText}>
+            <Text style={styles.cardTitle}>{tvModeCopy.title}</Text>
+            <Text style={styles.help}>{tvModeCopy.help}</Text>
+          </View>
+        </View>
+        <View style={styles.optionRow}>
+          <FocusButton
+            label={tvModeCopy.phone}
+            active={!isTvMode}
+            onPress={() => setTvModeEnabled(false)}
+          />
+          <FocusButton
+            label={tvModeCopy.tv}
+            active={isTvMode}
+            onPress={() => setTvModeEnabled(true)}
+          />
+        </View>
+        <Text style={styles.lastSync}>{isTvMode ? tvModeCopy.on : tvModeCopy.off}</Text>
+      </View>
+
+      <View style={styles.card}>
+        <View style={styles.cardHeader}>
           <View style={styles.iconBadge}><Text style={styles.iconText}>Aa</Text></View>
           <View style={styles.cardHeaderText}>
             <Text style={styles.cardTitle}>{text.languageTitle}</Text>
@@ -147,25 +176,6 @@ export function SettingsScreen() {
           ))}
         </View>
       </View>
-
-      {!Platform.isTV ? (
-        <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            <View style={styles.iconBadge}><Text style={styles.iconText}>TV</Text></View>
-            <View style={styles.cardHeaderText}>
-              <Text style={styles.cardTitle}>{tvModeCopy.title}</Text>
-              <Text style={styles.help}>{tvModeCopy.help}</Text>
-            </View>
-          </View>
-          <View style={styles.optionRow}>
-            <FocusButton
-              label={tvModeEnabled ? tvModeCopy.on : tvModeCopy.off}
-              active={tvModeEnabled}
-              onPress={() => setTvModeEnabled(!tvModeEnabled)}
-            />
-          </View>
-        </View>
-      ) : null}
 
       <View style={styles.card}>
         <View style={styles.cardHeader}>
@@ -321,6 +331,7 @@ export function SettingsScreen() {
 
       <View style={styles.deviceCard}>
         <Text style={styles.deviceTitle}>{text.advanced}</Text>
+        <Text style={styles.device}>FILMA 0.1.1 · build 2</Text>
         <Text style={styles.device}>{text.device}: {deviceId}</Text>
       </View>
     </ScrollView>
