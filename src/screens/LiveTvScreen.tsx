@@ -4,6 +4,7 @@ import { fetchPlaylist, mergeLiveChannels } from '../services/m3u';
 import { useFilma } from '../store/FilmaContext';
 import type { LiveChannel, MediaItem } from '../types';
 import { FocusButton } from '../ui/FocusButton';
+import { PlayerModal } from '../ui/PlayerModal';
 import { theme } from '../ui/theme';
 
 type Props = {
@@ -20,7 +21,7 @@ type SourceHealth = {
   error?: string;
 };
 
-type ChannelCardProps = {
+type ChannelRowProps = {
   channel: LiveChannel;
   index: number;
   onFocus(index: number): void;
@@ -29,7 +30,18 @@ type ChannelCardProps = {
 
 const AUTO_REFRESH_MS = 5 * 60 * 1000;
 
-function ChannelCard({ channel, index, onFocus, onPress }: ChannelCardProps) {
+function asMediaItem(channel: LiveChannel): MediaItem {
+  return {
+    id: `live:${channel.id}`,
+    title: channel.name,
+    subtitle: [channel.group, channel.country].filter(Boolean).join(' · ') || 'Live TV',
+    poster: channel.logo,
+    streamUrl: channel.url,
+    alternateStreamUrls: channel.alternateUrls,
+  };
+}
+
+function ChannelRow({ channel, index, onFocus, onPress }: ChannelRowProps) {
   const [focused, setFocused] = useState(false);
   const [logoFailed, setLogoFailed] = useState(false);
   const backupCount = channel.alternateUrls?.length ?? 0;
@@ -45,82 +57,94 @@ function ChannelCard({ channel, index, onFocus, onPress }: ChannelCardProps) {
       }}
       onBlur={() => setFocused(false)}
       onPress={onPress}
-      style={[styles.channelCard, focused && styles.channelCardFocused]}
+      style={[styles.channelRow, focused && styles.channelRowFocused]}
     >
-      <View style={styles.logoPanel}>
+      <View style={styles.logoBox}>
         {channel.logo && !logoFailed ? (
           <Image source={{ uri: channel.logo }} style={styles.logo} resizeMode="contain" onError={() => setLogoFailed(true)} />
         ) : (
-          <View style={styles.logoFallback}>
-            <Text style={styles.logoFallbackText}>{channel.name.slice(0, 2).toUpperCase()}</Text>
-          </View>
+          <Text style={styles.logoFallback}>{channel.name.slice(0, 2).toUpperCase()}</Text>
         )}
-        <View style={styles.liveBadge}><Text style={styles.liveBadgeText}>LIVE</Text></View>
-        {backupCount > 0 ? (
-          <View style={styles.backupBadge}><Text style={styles.backupBadgeText}>+{backupCount}</Text></View>
-        ) : null}
       </View>
-      <Text numberOfLines={2} style={styles.channelName}>{channel.name}</Text>
-      <Text numberOfLines={1} style={styles.channelGroup}>{channel.group || 'FILMA TV'}</Text>
+
+      <View style={styles.channelText}>
+        <Text numberOfLines={1} style={styles.channelName}>{channel.name}</Text>
+        <Text numberOfLines={1} style={styles.channelMeta}>
+          {[channel.group, channel.country].filter(Boolean).join(' · ') || 'FILMA TV'}
+        </Text>
+      </View>
+
+      <View style={styles.rowBadges}>
+        {backupCount ? <Text style={styles.backupBadge}>+{backupCount}</Text> : null}
+        <Text style={styles.liveBadge}>LIVE</Text>
+        <Text style={styles.chevron}>›</Text>
+      </View>
     </Pressable>
   );
 }
 
-export function LiveTvScreen({ onSelect, onOpenSettings }: Props) {
+export function LiveTvScreen({ onOpenSettings }: Props) {
   const { state } = useFilma();
   const [channels, setChannels] = useState<LiveChannel[]>([]);
   const [query, setQuery] = useState('');
+  const [selectedCountry, setSelectedCountry] = useState('Albania');
   const [selectedGroup, setSelectedGroup] = useState('all');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>();
   const [sourceHealth, setSourceHealth] = useState<SourceHealth[]>([]);
+  const [playingChannel, setPlayingChannel] = useState<LiveChannel | null>(null);
+  const [playbackQueue, setPlaybackQueue] = useState<LiveChannel[]>([]);
+  const [playbackIndex, setPlaybackIndex] = useState(0);
+  const countryListRef = useRef<FlatList<{ name: string; count: number }>>(null);
   const groupListRef = useRef<FlatList<{ name: string; count: number }>>(null);
   const channelListRef = useRef<FlatList<LiveChannel>>(null);
-  const columns = Platform.isTV ? 4 : 2;
 
   const copy = useMemo(() => state.preferences.appLanguage === 'fr'
     ? {
         title: 'TV en direct',
+        combinedAlbania: 'Albanie regroupe les chaînes d’Albanie et du Kosovo.',
         addSource: 'Ajoutez votre propre playlist M3U ou M3U8 légale/publique. FILMA la lira et actualisera automatiquement la liste des chaînes.',
         openSettings: 'Ouvrir les réglages',
         refreshing: 'Actualisation…',
         refresh: 'Actualiser',
         channels: 'chaînes',
         sourcesOnline: 'sources en ligne',
-        search: 'Rechercher des chaînes ou groupes',
+        search: 'Rechercher une chaîne',
         all: 'Toutes',
         noMatch: 'Aucune chaîne ne correspond à ce filtre.',
         noSource: 'Aucune playlist configurée n’a pu être chargée. Vérifiez les URL dans les Réglages.',
-        unavailable: (count: number, working: number) => `${count} playlist${count === 1 ? '' : 's'} indisponible${count === 1 ? '' : 's'}. FILMA affiche les chaînes des ${working} source${working === 1 ? '' : 's'} disponible${working === 1 ? '' : 's'}.`,
+        unavailable: (count: number, working: number) => `${count} playlist${count === 1 ? '' : 's'} indisponible${count === 1 ? '' : 's'}. FILMA utilise ${working} source${working === 1 ? '' : 's'} disponible${working === 1 ? '' : 's'}.`,
       }
     : state.preferences.appLanguage === 'sq'
       ? {
           title: 'TV Live',
+          combinedAlbania: 'Shqipëria përfshin kanalet e Shqipërisë dhe Kosovës.',
           addSource: 'Shto playlistën tënde ligjore/publike M3U ose M3U8. FILMA do ta lexojë dhe do ta rifreskojë automatikisht listën e kanaleve.',
           openSettings: 'Hap cilësimet',
           refreshing: 'Duke rifreskuar…',
           refresh: 'Rifresko',
           channels: 'kanale',
           sourcesOnline: 'burime online',
-          search: 'Kërko kanale ose grupe',
+          search: 'Kërko një kanal',
           all: 'Të gjitha',
           noMatch: 'Asnjë kanal nuk përputhet me këtë filtër.',
           noSource: 'Asnjë playlistë e konfiguruar nuk u ngarkua. Kontrollo URL-të te Cilësimet.',
-          unavailable: (count: number, working: number) => `${count} playlist${count === 1 ? 'ë' : 'a'} nuk është e disponueshme. FILMA po shfaq kanalet nga ${working} burim${working === 1 ? '' : 'e'} që funksionojnë.`,
+          unavailable: (count: number, working: number) => `${count} playlist${count === 1 ? 'ë' : 'a'} nuk është e disponueshme. FILMA po përdor ${working} burim${working === 1 ? '' : 'e'} që funksionojnë.`,
         }
       : {
           title: 'Live TV',
+          combinedAlbania: 'Albania includes channels from both Albania and Kosovo.',
           addSource: 'Add your own legal/public M3U or M3U8 playlist. FILMA will parse it and refresh the channel list automatically.',
           openSettings: 'Open Settings',
           refreshing: 'Refreshing…',
           refresh: 'Refresh',
           channels: 'channels',
           sourcesOnline: 'sources online',
-          search: 'Search channels or groups',
+          search: 'Search a channel',
           all: 'All',
           noMatch: 'No channels match this filter.',
           noSource: 'No configured playlist could be loaded. Check the playlist URLs in Settings.',
-          unavailable: (count: number, working: number) => `${count} playlist${count === 1 ? '' : 's'} unavailable. FILMA is showing channels from ${working} working source${working === 1 ? '' : 's'}.`,
+          unavailable: (count: number, working: number) => `${count} playlist${count === 1 ? '' : 's'} unavailable. FILMA is using ${working} working source${working === 1 ? '' : 's'}.`,
         }, [state.preferences.appLanguage]);
 
   const activePlaylists = useMemo(
@@ -142,20 +166,25 @@ export function LiveTvScreen({ onSelect, onOpenSettings }: Props) {
     const results = await Promise.all(activePlaylists.map(async source => {
       try {
         const loaded = await fetchPlaylist(source.url);
+        const country = source.countryGroup || source.countryName || 'Other';
+        const enriched = loaded.map(channel => ({
+          ...channel,
+          country,
+          countryCode: source.countryCode,
+          sourceName: source.name,
+        }));
         return {
-          source,
-          channels: loaded,
+          channels: enriched,
           health: {
             id: source.id,
             name: source.name,
             ok: true,
-            channelCount: loaded.length,
+            channelCount: enriched.length,
             checkedAt: new Date().toISOString(),
           } satisfies SourceHealth,
         };
       } catch (reason) {
         return {
-          source,
           channels: [] as LiveChannel[],
           health: {
             id: source.id,
@@ -184,28 +213,50 @@ export function LiveTvScreen({ onSelect, onOpenSettings }: Props) {
     setLoading(false);
   }, [activePlaylists, copy]);
 
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
+  useEffect(() => { void refresh(); }, [refresh]);
 
   useEffect(() => {
     if (!activePlaylists.length) return;
-    const timer = setInterval(() => {
-      void refresh();
-    }, AUTO_REFRESH_MS);
+    const timer = setInterval(() => { void refresh(); }, AUTO_REFRESH_MS);
     return () => clearInterval(timer);
   }, [activePlaylists.length, refresh]);
 
-  const groups = useMemo(() => {
+  const countries = useMemo(() => {
     const counts = new Map<string, number>();
     for (const channel of channels) {
+      const country = channel.country?.trim() || 'Other';
+      counts.set(country, (counts.get(country) ?? 0) + 1);
+    }
+    const priority = (name: string) => name === 'Albania' ? 0 : name === 'France' ? 1 : 2;
+    return [...counts.entries()]
+      .sort((a, b) => priority(a[0]) - priority(b[0]) || a[0].localeCompare(b[0]))
+      .map(([name, count]) => ({ name, count }));
+  }, [channels]);
+
+  useEffect(() => {
+    if (!countries.length) return;
+    if (!countries.some(country => country.name === selectedCountry)) {
+      setSelectedCountry(countries[0].name);
+      setSelectedGroup('all');
+    }
+  }, [countries, selectedCountry]);
+
+  const countryChannels = useMemo(
+    () => channels.filter(channel => (channel.country || 'Other') === selectedCountry),
+    [channels, selectedCountry],
+  );
+
+  const groups = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const channel of countryChannels) {
       const group = channel.group?.trim();
       if (group) counts.set(group, (counts.get(group) ?? 0) + 1);
     }
+    const sportsFirst = (name: string) => /sport/i.test(name) ? 0 : 1;
     return [...counts.entries()]
-      .sort((a, b) => a[0].localeCompare(b[0]))
+      .sort((a, b) => sportsFirst(a[0]) - sportsFirst(b[0]) || a[0].localeCompare(b[0]))
       .map(([name, count]) => ({ name, count }));
-  }, [channels]);
+  }, [countryChannels]);
 
   useEffect(() => {
     if (selectedGroup !== 'all' && !groups.some(group => group.name === selectedGroup)) {
@@ -215,19 +266,32 @@ export function LiveTvScreen({ onSelect, onOpenSettings }: Props) {
 
   const visibleChannels = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase();
-    return channels.filter(channel => {
+    return countryChannels.filter(channel => {
       if (selectedGroup !== 'all' && channel.group !== selectedGroup) return false;
       if (!needle) return true;
       return channel.name.toLocaleLowerCase().includes(needle)
         || channel.group?.toLocaleLowerCase().includes(needle);
     });
-  }, [channels, query, selectedGroup]);
+  }, [countryChannels, query, selectedGroup]);
 
   const groupItems = useMemo(
-    () => [{ name: 'all', count: channels.length }, ...groups],
-    [channels.length, groups],
+    () => [{ name: 'all', count: countryChannels.length }, ...groups],
+    [countryChannels.length, groups],
   );
   const healthySources = sourceHealth.filter(item => item.ok).length;
+
+  const openChannel = (channel: LiveChannel, index: number) => {
+    setPlaybackQueue(visibleChannels);
+    setPlaybackIndex(index);
+    setPlayingChannel(channel);
+  };
+
+  const zapChannel = (delta: number) => {
+    if (!playbackQueue.length) return;
+    const nextIndex = (playbackIndex + delta + playbackQueue.length) % playbackQueue.length;
+    setPlaybackIndex(nextIndex);
+    setPlayingChannel(playbackQueue[nextIndex]);
+  };
 
   if (!activePlaylists.length) {
     return (
@@ -251,6 +315,33 @@ export function LiveTvScreen({ onSelect, onOpenSettings }: Props) {
         <FocusButton compact label={loading ? copy.refreshing : copy.refresh} onPress={() => void refresh()} />
       </View>
 
+      <FlatList
+        ref={countryListRef}
+        horizontal
+        data={countries}
+        keyExtractor={item => item.name}
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.countryRow}
+        renderItem={({ item, index }) => (
+          <FocusButton
+            compact
+            label={`${item.name} (${item.count})`}
+            active={selectedCountry === item.name}
+            preferredFocus={item.name === 'Albania'}
+            onFocus={() => {
+              if (Platform.isTV) countryListRef.current?.scrollToIndex({ index, viewPosition: 0.3, animated: true });
+            }}
+            onPress={() => {
+              setSelectedCountry(item.name);
+              setSelectedGroup('all');
+              channelListRef.current?.scrollToOffset({ offset: 0, animated: false });
+            }}
+          />
+        )}
+      />
+
+      {selectedCountry === 'Albania' ? <Text style={styles.countryHint}>{copy.combinedAlbania}</Text> : null}
+
       <TextInput
         value={query}
         onChangeText={setQuery}
@@ -268,19 +359,13 @@ export function LiveTvScreen({ onSelect, onOpenSettings }: Props) {
         keyExtractor={item => item.name}
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.groupRow}
-        onScrollToIndexFailed={({ index, averageItemLength }) => {
-          groupListRef.current?.scrollToOffset({ offset: Math.max(0, index * averageItemLength), animated: true });
-        }}
         renderItem={({ item, index }) => (
           <FocusButton
             compact
             label={`${item.name === 'all' ? copy.all : item.name} (${item.count})`}
             active={selectedGroup === item.name}
-            preferredFocus={item.name === 'all'}
             onFocus={() => {
-              if (Platform.isTV) {
-                groupListRef.current?.scrollToIndex({ index, viewPosition: 0.3, animated: true });
-              }
+              if (Platform.isTV) groupListRef.current?.scrollToIndex({ index, viewPosition: 0.3, animated: true });
             }}
             onPress={() => {
               setSelectedGroup(item.name);
@@ -294,39 +379,38 @@ export function LiveTvScreen({ onSelect, onOpenSettings }: Props) {
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
       <FlatList
-        key={`live-grid-${columns}`}
         ref={channelListRef}
         data={visibleChannels}
-        numColumns={columns}
         keyExtractor={item => item.id}
         contentContainerStyle={styles.list}
-        columnWrapperStyle={styles.channelGridRow}
-        initialNumToRender={Platform.isTV ? 16 : 10}
-        windowSize={Platform.isTV ? 9 : 6}
-        onScrollToIndexFailed={({ index, averageItemLength }) => {
-          channelListRef.current?.scrollToOffset({ offset: Math.max(0, Math.floor(index / columns) * averageItemLength), animated: true });
-        }}
+        initialNumToRender={Platform.isTV ? 20 : 12}
+        windowSize={Platform.isTV ? 10 : 7}
         renderItem={({ item, index }) => (
-          <ChannelCard
+          <ChannelRow
             channel={item}
             index={index}
             onFocus={focusedIndex => {
-              if (Platform.isTV) {
-                channelListRef.current?.scrollToIndex({ index: focusedIndex, viewPosition: 0.48, animated: true });
-              }
+              if (Platform.isTV) channelListRef.current?.scrollToIndex({ index: focusedIndex, viewPosition: 0.45, animated: true });
             }}
-            onPress={() => onSelect({
-              id: `live:${item.id}`,
-              title: item.name,
-              subtitle: item.group ?? copy.title,
-              poster: item.logo,
-              streamUrl: item.url,
-              alternateStreamUrls: item.alternateUrls,
-            })}
+            onPress={() => openChannel(item, index)}
           />
         )}
         ListEmptyComponent={<Text style={styles.emptyList}>{copy.noMatch}</Text>}
       />
+
+      {playingChannel ? (
+        <PlayerModal
+          key={playingChannel.id}
+          item={asMediaItem(playingChannel)}
+          favorite={false}
+          onProgress={() => undefined}
+          onToggleFavorite={() => undefined}
+          onClose={() => setPlayingChannel(null)}
+          onPreviousChannel={() => zapChannel(-1)}
+          onNextChannel={() => zapChannel(1)}
+          channelPosition={`${playbackIndex + 1}/${playbackQueue.length}`}
+        />
+      ) : null}
     </View>
   );
 }
@@ -346,121 +430,59 @@ const styles = StyleSheet.create({
     backgroundColor: theme.background,
     gap: 20,
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 20,
-  },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 20 },
   headerText: { flex: 1 },
-  title: {
-    color: theme.text,
-    fontSize: Platform.isTV ? 42 : 30,
-    fontWeight: '900',
-    letterSpacing: -0.8,
-  },
-  subtitle: {
-    color: theme.muted,
-    fontSize: Platform.isTV ? 16 : 14,
-    marginTop: 6,
-  },
-  emptyText: {
-    color: theme.muted,
-    maxWidth: 680,
-    fontSize: Platform.isTV ? 19 : 16,
-    lineHeight: Platform.isTV ? 28 : 24,
-  },
+  title: { color: theme.text, fontSize: Platform.isTV ? 42 : 30, fontWeight: '900', letterSpacing: -0.8 },
+  subtitle: { color: theme.muted, fontSize: Platform.isTV ? 16 : 14, marginTop: 6 },
+  emptyText: { color: theme.muted, maxWidth: 680, fontSize: Platform.isTV ? 19 : 16, lineHeight: Platform.isTV ? 28 : 24 },
+  countryRow: { gap: 10, paddingTop: 18, paddingBottom: 8, paddingRight: 20 },
+  countryHint: { color: theme.muted, fontSize: 13, marginBottom: 2 },
   search: {
-    marginTop: 20,
-    marginBottom: 10,
-    minHeight: Platform.isTV ? 58 : 52,
+    marginTop: 10,
+    marginBottom: 6,
+    minHeight: Platform.isTV ? 56 : 50,
     borderWidth: 1,
     borderColor: '#323b50',
-    borderRadius: 16,
+    borderRadius: 15,
     backgroundColor: '#121724',
     color: theme.text,
     paddingHorizontal: 16,
     fontSize: Platform.isTV ? 18 : 16,
   },
-  groupRow: {
-    gap: 10,
-    paddingVertical: 10,
-    paddingRight: 20,
-  },
+  groupRow: { gap: 8, paddingVertical: 9, paddingRight: 20 },
   loader: { marginTop: 40 },
-  list: {
-    paddingTop: 12,
-    paddingBottom: Platform.isTV ? 80 : 110,
-  },
-  channelGridRow: {
-    gap: Platform.isTV ? 16 : 10,
-    marginBottom: Platform.isTV ? 20 : 14,
-  },
-  channelCard: {
-    width: Platform.isTV ? '23.6%' : '48.5%',
-    padding: Platform.isTV ? 8 : 5,
-    borderRadius: 17,
+  list: { paddingTop: 8, paddingBottom: Platform.isTV ? 80 : 110, gap: 8 },
+  channelRow: {
+    minHeight: Platform.isTV ? 82 : 70,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: Platform.isTV ? 14 : 10,
+    paddingVertical: 8,
+    borderRadius: 16,
     borderWidth: 2,
-    borderColor: 'transparent',
-    backgroundColor: theme.surface,
+    borderColor: '#1f2635',
+    backgroundColor: '#101521',
   },
-  channelCardFocused: {
-    borderColor: theme.accent,
-    backgroundColor: theme.surfaceRaised,
-    transform: [{ scale: 1.035 }],
-    zIndex: 2,
-  },
-  logoPanel: {
-    width: '100%',
-    aspectRatio: 16 / 9,
+  channelRowFocused: { borderColor: theme.accent, backgroundColor: '#161c2a', transform: [{ scale: 1.012 }] },
+  logoBox: {
+    width: Platform.isTV ? 62 : 52,
+    height: Platform.isTV ? 62 : 52,
     borderRadius: 12,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
     overflow: 'hidden',
-    backgroundColor: '#f4f6fa',
-    alignItems: 'center',
-    justifyContent: 'center',
+    marginRight: 12,
   },
-  logo: { width: '78%', height: '78%' },
-  logoFallback: { flex: 1, width: '100%', alignItems: 'center', justifyContent: 'center', backgroundColor: '#171d2b' },
-  logoFallbackText: { color: '#e5e9f1', fontSize: Platform.isTV ? 34 : 24, fontWeight: '900', letterSpacing: -1 },
-  liveBadge: {
-    position: 'absolute',
-    left: 8,
-    top: 8,
-    paddingHorizontal: 7,
-    paddingVertical: 4,
-    borderRadius: 6,
-    backgroundColor: theme.accent,
-  },
-  liveBadgeText: { color: '#fff', fontSize: 9, fontWeight: '900', letterSpacing: 0.7 },
-  backupBadge: {
-    position: 'absolute',
-    right: 8,
-    top: 8,
-    minWidth: 26,
-    height: 24,
-    paddingHorizontal: 6,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(5,8,14,0.78)',
-  },
-  backupBadgeText: { color: '#fff', fontSize: 10, fontWeight: '900' },
-  channelName: {
-    color: theme.text,
-    fontSize: Platform.isTV ? 17 : 14,
-    lineHeight: Platform.isTV ? 21 : 18,
-    minHeight: Platform.isTV ? 42 : 36,
-    fontWeight: '800',
-    marginTop: 10,
-  },
-  channelGroup: { color: theme.muted, fontSize: 11, marginTop: 3, marginBottom: 3, fontWeight: '700' },
-  error: {
-    color: '#fda4af',
-    marginVertical: 10,
-  },
-  emptyList: {
-    color: theme.muted,
-    paddingVertical: 34,
-    textAlign: 'center',
-  },
+  logo: { width: '86%', height: '86%' },
+  logoFallback: { color: '#111827', fontSize: 16, fontWeight: '900' },
+  channelText: { flex: 1, minWidth: 0 },
+  channelName: { color: theme.text, fontSize: Platform.isTV ? 20 : 16, fontWeight: '800' },
+  channelMeta: { color: theme.muted, fontSize: Platform.isTV ? 14 : 12, marginTop: 4 },
+  rowBadges: { flexDirection: 'row', alignItems: 'center', gap: 8, marginLeft: 10 },
+  liveBadge: { color: '#fff', backgroundColor: '#dc264f', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 7, fontSize: 11, fontWeight: '900' },
+  backupBadge: { color: theme.text, backgroundColor: '#252d3d', paddingHorizontal: 7, paddingVertical: 4, borderRadius: 7, fontSize: 11, fontWeight: '800' },
+  chevron: { color: theme.muted, fontSize: 28, marginLeft: 2 },
+  error: { color: '#fda4af', marginVertical: 8 },
+  emptyList: { color: theme.muted, paddingVertical: 28, textAlign: 'center' },
 });
