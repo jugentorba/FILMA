@@ -58,10 +58,11 @@ export function PlayerModal({ item, progress, onProgress, onClose, onToggleFavor
   const candidateUrls = useMemo(() => {
     const urls = [
       item.streamUrl,
+      ...(item.alternateStreamUrls ?? []),
       ...resolvedStreamsForItem(item.id).map(stream => stream.url),
     ].filter((url): url is string => Boolean(url));
     return [...new Set(urls)];
-  }, [item.id, item.streamUrl]);
+  }, [item.alternateStreamUrls, item.id, item.streamUrl]);
 
   const player = useVideoPlayer(item.streamUrl ?? null, instance => {
     instance.timeUpdateEventInterval = 5;
