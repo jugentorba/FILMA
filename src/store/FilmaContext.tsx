@@ -5,13 +5,13 @@ import { automaticTvPlaylists, discoverOfficialMovieProviders } from '../service
 import type { CloudSyncAdapter } from '../services/sync';
 import { makeSyncEnvelope, mergeStates } from '../services/sync';
 import { loadState, saveState } from '../services/storage';
-import type { AddonSource, AppLanguage, AppMode, AppPreferences, AudioLanguage, FilmaState, MediaItem, MediaResumeSnapshot, PlaylistSource } from '../types';
+import type { AddonSource, AppLanguage, AppMode, AppPreferences, AudioLanguage, FilmaState, InterfaceDensity, MediaItem, MediaResumeSnapshot, PlaylistSource } from '../types';
 
 const DEVICE_KEY = 'filma.device.id';
 const AUTO_MOVIE_PREFIX = 'auto-stremio:';
 const AUTO_TV_PREFIX = 'auto-tv:';
 
-type PreferencePatch = Partial<Pick<AppPreferences, 'appLanguage' | 'preferredAudioLanguages'>>;
+type PreferencePatch = Partial<Pick<AppPreferences, 'appLanguage' | 'preferredAudioLanguages' | 'interfaceDensity'>>;
 
 type FilmaContextValue = {
   ready: boolean;
@@ -22,6 +22,7 @@ type FilmaContextValue = {
   setAppLanguage(language: AppLanguage): void;
   toggleAudioLanguage(language: AudioLanguage): void;
   clearAudioLanguages(): void;
+  setInterfaceDensity(density: InterfaceDensity): void;
   toggleFavorite(mediaId: string): void;
   updateProgress(item: MediaItem, positionSeconds: number, durationSeconds: number): void;
   addPlaylist(name: string, url: string): void;
@@ -105,6 +106,7 @@ export function FilmaProvider({ children }: { children: React.ReactNode }) {
     preferences: {
       appLanguage: 'en',
       preferredAudioLanguages: [],
+      interfaceDensity: 'compact',
       updatedAt: '1970-01-01T00:00:00.000Z',
     },
     progress: {},
@@ -203,6 +205,10 @@ export function FilmaProvider({ children }: { children: React.ReactNode }) {
 
   const clearAudioLanguages = useCallback(() => {
     updatePreferences({ preferredAudioLanguages: [] });
+  }, [updatePreferences]);
+
+  const setInterfaceDensity = useCallback((density: InterfaceDensity) => {
+    updatePreferences({ interfaceDensity: density });
   }, [updatePreferences]);
 
   const toggleFavorite = useCallback((mediaId: string) => {
@@ -345,6 +351,7 @@ export function FilmaProvider({ children }: { children: React.ReactNode }) {
     setAppLanguage,
     toggleAudioLanguage,
     clearAudioLanguages,
+    setInterfaceDensity,
     toggleFavorite,
     updateProgress,
     addPlaylist,
@@ -365,6 +372,7 @@ export function FilmaProvider({ children }: { children: React.ReactNode }) {
     removePlaylist,
     setAddonEnabled,
     setAppLanguage,
+    setInterfaceDensity,
     setMode,
     setPlaylistEnabled,
     syncWith,
