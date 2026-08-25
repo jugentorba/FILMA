@@ -1,5 +1,5 @@
-import React from 'react';
-import { Modal, Platform, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
+import React, { useRef } from 'react';
+import { FlatList, Modal, Platform, SafeAreaView, StyleSheet, Text, View } from 'react-native';
 import { FocusButton } from './FocusButton';
 import { theme } from './theme';
 
@@ -16,22 +16,37 @@ type Props = {
 };
 
 export function StreamPickerModal({ title, streams, onChoose, onClose }: Props) {
+  const listRef = useRef<FlatList<StreamChoice>>(null);
+
   return (
     <Modal visible animationType="fade" transparent onRequestClose={onClose}>
       <SafeAreaView style={styles.overlay}>
         <View style={styles.card}>
           <Text style={styles.eyebrow}>CHOOSE STREAM</Text>
           <Text style={styles.title}>{title}</Text>
-          <ScrollView contentContainerStyle={styles.list}>
-            {streams.map((stream, index) => (
+          <FlatList
+            ref={listRef}
+            data={streams}
+            keyExtractor={(stream, index) => `${stream.url}:${index}`}
+            contentContainerStyle={styles.list}
+            initialNumToRender={Platform.isTV ? 12 : 8}
+            onScrollToIndexFailed={({ index, averageItemLength }) => {
+              listRef.current?.scrollToOffset({ offset: Math.max(0, index * averageItemLength), animated: true });
+            }}
+            renderItem={({ item: stream, index }) => (
               <FocusButton
-                key={`${stream.url}:${index}`}
                 label={stream.title}
+                preferredFocus={index === 0}
+                onFocus={() => {
+                  if (Platform.isTV) {
+                    listRef.current?.scrollToIndex({ index, viewPosition: 0.42, animated: true });
+                  }
+                }}
                 onPress={() => onChoose(stream)}
                 style={styles.stream}
               />
-            ))}
-          </ScrollView>
+            )}
+          />
           <FocusButton compact label="Cancel" onPress={onClose} />
         </View>
       </SafeAreaView>
