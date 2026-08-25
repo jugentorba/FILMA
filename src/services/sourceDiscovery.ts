@@ -9,10 +9,7 @@ const DISCOVERY_TIMESTAMP = '1970-01-01T00:00:00.000Z';
 const OFFICIAL_INDEX_CACHE_MS = 30 * 60 * 1000;
 const OFFICIAL_INDEX_TIMEOUT_MS = 10_000;
 
-const UNSUPPORTED_AUTOMATIC_PROVIDER_IDS = new Set([
-  'org.stremio.pubdomainmovies',
-  'org.stremio.local',
-]);
+const UNSUPPORTED_AUTOMATIC_PROVIDER_IDS = new Set(['org.stremio.pubdomainmovies', 'org.stremio.local']);
 
 type OfficialAddonIndexEntry = {
   manifest?: StremioManifest;
@@ -50,6 +47,7 @@ const ALBANIA_GROUP_SOURCES: CountrySource[] = [
 const BASE_AUDIO_LANGUAGES: AudioLanguage[] = ['fr', 'sq', 'en'];
 
 let officialProviderCache: CachedOfficialProviders | undefined;
+let refreshInFlight: Promise<void> | undefined;
 
 async function fetchOfficialIndex(): Promise<Response> {
   const controller = new AbortController();
@@ -132,20 +130,21 @@ function fallbackWatchHub(): DiscoveredMovieProvider {
   };
 }
 
+function coreProviders(): DiscoveredMovieProvider[] {
+  return [filmaArchiveProvider(), fallbackCinemeta(), fallbackWatchHub()];
+}
+
 function ensureCoreProviders(providers: DiscoveredMovieProvider[]): DiscoveredMovieProvider[] {
   const byId = new Map(providers.map(provider => [provider.id, provider] as const));
   byId.set('auto-stremio:com.filma.archive', filmaArchiveProvider());
   if (!byId.has('auto-stremio:com.linvo.cinemeta')) byId.set('auto-stremio:com.linvo.cinemeta', fallbackCinemeta());
   if (!byId.has('auto-stremio:org.stremio.watchhub')) byId.set('auto-stremio:org.stremio.watchhub', fallbackWatchHub());
-
   const ordered = [
     byId.get('auto-stremio:com.filma.archive')!,
     byId.get('auto-stremio:com.linvo.cinemeta')!,
     byId.get('auto-stremio:org.stremio.watchhub')!,
   ];
-  for (const provider of providers) {
-    if (!ordered.some(item => item.id === provider.id)) ordered.push(provider);
-  }
+  for (const provider of providers) if (!ordered.some(item => item.id === provider.id)) ordered.push(provider);
   return ordered;
 }
 
@@ -166,26 +165,36 @@ export function mergeMovieProviders(configured: AddonSource[], automatic: AddonS
   ]);
 }
 
+async function refreshOfficialProviders(): Promise<void> {
+  if (refreshInFlight) return refreshInFlight;
+  refreshInFlight = (async () => {
+    try {
+      const response = await fetchOfficialIndex();
+      if (!response.ok) return;
+      const payload = await response.json() as unknown;
+      if (!Array.isArray(payload)) return;
+      const providers = ensureCoreProviders(dedupeProviders(
+        payload.map(entry => providerFromEntry(entry as OfficialAddonIndexEntry))
+          .filter((provider): provider is DiscoveredMovieProvider => provider !== null),
+      ));
+      officialProviderCache = { fetchedAt: Date.now(), providers };
+    } catch {
+      // Core providers remain available even if refresh fails.
+    } finally {
+      refreshInFlight = undefined;
+    }
+  })();
+  return refreshInFlight;
+}
+
 export async function discoverOfficialMovieProviders(): Promise<DiscoveredMovieProvider[]> {
-  if (officialProviderCache && Date.now() - officialProviderCache.fetchedAt < OFFICIAL_INDEX_CACHE_MS) {
+  if (!officialProviderCache) {
+    officialProviderCache = { fetchedAt: Date.now(), providers: coreProviders() };
+    void refreshOfficialProviders();
     return officialProviderCache.providers;
   }
-  try {
-    const response = await fetchOfficialIndex();
-    if (!response.ok) throw new Error(`Official add-on index HTTP ${response.status}`);
-    const payload = await response.json() as unknown;
-    if (!Array.isArray(payload)) throw new Error('Official add-on index had an unexpected format.');
-    const providers = ensureCoreProviders(dedupeProviders(
-      payload.map(entry => providerFromEntry(entry as OfficialAddonIndexEntry))
-        .filter((provider): provider is DiscoveredMovieProvider => provider !== null),
-    ));
-    officialProviderCache = { fetchedAt: Date.now(), providers };
-    return providers;
-  } catch {
-    const providers = [filmaArchiveProvider(), fallbackCinemeta(), fallbackWatchHub()];
-    officialProviderCache = { fetchedAt: Date.now(), providers };
-    return providers;
-  }
+  if (Date.now() - officialProviderCache.fetchedAt >= OFFICIAL_INDEX_CACHE_MS) void refreshOfficialProviders();
+  return officialProviderCache.providers;
 }
 
 export async function discoverAutomaticCatalogProviders(): Promise<AddonSource[]> {
@@ -213,12 +222,8 @@ function playlistForCountry(source: CountrySource): PlaylistSource {
 export function automaticTvPlaylists(preferredAudioLanguages: AudioLanguage[], _appLanguage: AppLanguage): PlaylistSource[] {
   const requested = preferredAudioLanguages.length ? preferredAudioLanguages : BASE_AUDIO_LANGUAGES;
   const countrySources: CountrySource[] = [...ALBANIA_GROUP_SOURCES];
-  for (const language of requested) {
-    if (language !== 'sq') countrySources.push(...(COUNTRY_SOURCES_BY_LANGUAGE[language] ?? []));
-  }
-  if (!countrySources.some(source => source.code === 'fr')) {
-    countrySources.push({ code: 'fr', countryName: 'France', countryGroup: 'France' });
-  }
+  for (const language of requested) if (language !== 'sq') countrySources.push(...(COUNTRY_SOURCES_BY_LANGUAGE[language] ?? []));
+  if (!countrySources.some(source => source.code === 'fr')) countrySources.push({ code: 'fr', countryName: 'France', countryGroup: 'France' });
   const seen = new Set<string>();
   return countrySources.filter(source => {
     if (seen.has(source.code)) return false;
