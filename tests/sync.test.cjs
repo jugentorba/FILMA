@@ -50,6 +50,25 @@ function empty(mode = 'movies') {
 }
 
 {
+  const xtream = normalizeState({
+    ...empty(),
+    playlists: [{
+      id: 'xtream-1',
+      name: 'Provider TV',
+      url: 'https://provider.example',
+      enabled: true,
+      createdAt: at(1),
+      updatedAt: at(2),
+      kind: 'xtream',
+      credentialsKey: 'filma.iptv.xtream.v1.xtream-1',
+    }],
+  });
+
+  assert.equal(xtream.playlists[0].kind, 'xtream', 'Xtream source type survives state normalization');
+  assert.equal(xtream.playlists[0].credentialsKey, 'filma.iptv.xtream.v1.xtream-1', 'Xtream SecureStore reference survives sync/state migration');
+}
+
+{
   const normalized = normalizeState({
     ...empty(),
     preferences: {
