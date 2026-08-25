@@ -210,7 +210,7 @@ export function HomeScreen({ onSelect, onOpenYouTubeVideo, onOpenSettings }: Pro
     })),
   [albanianArchiveVideos]);
 
-  const albanianArchiveByItemId = useMemo(() => new Map(
+  const albanianArchiveByItemId = useMemo<Map<string, YouTubeVideo>>(() => new Map(
     albanianArchiveVideos.map(video => [`youtube:${video.id}`, video] as const),
   ), [albanianArchiveVideos]);
 
