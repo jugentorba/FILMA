@@ -1,34 +1,83 @@
-import type { FilmaState, SyncEnvelope, WatchProgress } from '../types';
+import type {
+  AddonSource,
+  Favorite,
+  FilmaState,
+  PlaylistSource,
+  SyncEnvelope,
+  WatchProgress,
+} from '../types';
 
 export function makeSyncEnvelope(state: FilmaState): SyncEnvelope {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     updatedAt: new Date().toISOString(),
     state,
   };
 }
 
-function newestProgress(a?: WatchProgress, b?: WatchProgress): WatchProgress | undefined {
-  if (!a) return b;
-  if (!b) return a;
-  return new Date(a.updatedAt).getTime() >= new Date(b.updatedAt).getTime() ? a : b;
+function time(value: string): number {
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function newest<T extends { updatedAt: string }>(local?: T, remote?: T): T | undefined {
+  if (!local) return remote;
+  if (!remote) return local;
+  return time(local.updatedAt) >= time(remote.updatedAt) ? local : remote;
+}
+
+function mergeProgress(
+  local: Record<string, WatchProgress>,
+  remote: Record<string, WatchProgress>,
+): Record<string, WatchProgress> {
+  const keys = new Set([...Object.keys(local), ...Object.keys(remote)]);
+  const result: Record<string, WatchProgress> = {};
+
+  for (const key of keys) {
+    const merged = newest(local[key], remote[key]);
+    if (merged) result[key] = merged;
+  }
+
+  return result;
+}
+
+function mergeFavorites(
+  local: Record<string, Favorite>,
+  remote: Record<string, Favorite>,
+): Record<string, Favorite> {
+  const keys = new Set([...Object.keys(local), ...Object.keys(remote)]);
+  const result: Record<string, Favorite> = {};
+
+  for (const key of keys) {
+    const merged = newest(local[key], remote[key]);
+    if (merged) result[key] = merged;
+  }
+
+  return result;
+}
+
+function mergeTimestampedArrays<T extends { id: string; updatedAt: string }>(local: T[], remote: T[]): T[] {
+  const localById = new Map(local.map(item => [item.id, item]));
+  const remoteById = new Map(remote.map(item => [item.id, item]));
+  const orderedIds = [
+    ...local.map(item => item.id),
+    ...remote.map(item => item.id).filter(id => !localById.has(id)),
+  ];
+
+  return orderedIds.flatMap(id => {
+    const merged = newest(localById.get(id), remoteById.get(id));
+    return merged ? [merged] : [];
+  });
 }
 
 export function mergeStates(local: FilmaState, remote: FilmaState): FilmaState {
-  const progressKeys = new Set([...Object.keys(local.progress), ...Object.keys(remote.progress)]);
-  const progress: FilmaState['progress'] = {};
-
-  for (const key of progressKeys) {
-    const merged = newestProgress(local.progress[key], remote.progress[key]);
-    if (merged) progress[key] = merged;
-  }
-
   return {
+    // Screen selection remains device-local. Watch state and source configuration sync.
     mode: local.mode,
-    progress,
-    favorites: { ...remote.favorites, ...local.favorites },
-    playlists: local.playlists.length ? local.playlists : remote.playlists,
-    addons: local.addons.length ? local.addons : remote.addons,
+    progress: mergeProgress(local.progress, remote.progress),
+    favorites: mergeFavorites(local.favorites, remote.favorites),
+    playlists: mergeTimestampedArrays<PlaylistSource>(local.playlists, remote.playlists),
+    addons: mergeTimestampedArrays<AddonSource>(local.addons, remote.addons),
   };
 }
 
