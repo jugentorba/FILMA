@@ -3,6 +3,7 @@ import { Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-n
 import QRCode from 'react-native-qrcode-svg';
 import { APP_LANGUAGE_OPTIONS, AUDIO_LANGUAGE_OPTIONS, stringsFor } from '../i18n';
 import { validatePlaybackAddon } from '../services/addonValidation';
+import { importLocalPlaylistFile } from '../services/localPlaylist';
 import { useDeviceMode } from '../store/DeviceModeContext';
 import { useDropboxSync } from '../store/DropboxSyncContext';
 import { useFilma } from '../store/FilmaContext';
@@ -19,6 +20,7 @@ export function SettingsScreen() {
     clearAudioLanguages,
     setInterfaceDensity,
     addPlaylist,
+    addLocalPlaylist,
     addXtreamPlaylist,
     setPlaylistEnabled,
     removePlaylist,
@@ -32,6 +34,7 @@ export function SettingsScreen() {
   const text = stringsFor(state.preferences.appLanguage);
   const [playlistName, setPlaylistName] = useState('');
   const [playlistUrl, setPlaylistUrl] = useState('');
+  const [importingPlaylist, setImportingPlaylist] = useState(false);
   const [xtreamName, setXtreamName] = useState('');
   const [xtreamServer, setXtreamServer] = useState('');
   const [xtreamUsername, setXtreamUsername] = useState('');
@@ -106,6 +109,13 @@ export function SettingsScreen() {
         playlistUrlError: 'L’URL de la playlist doit commencer par http:// ou https://',
         playlistAdded: 'Playlist ajoutée.',
         m3uTitle: 'Playlist M3U / M3U8',
+        fileTitle: 'Fichier M3U / M3U8',
+        fileHelp: 'Importe un fichier depuis cet appareil. FILMA le conserve localement pour qu’il fonctionne encore après un redémarrage. Le fichier n’est pas envoyé vers Dropbox.',
+        importFile: 'Importer un fichier',
+        importingFile: 'Importation…',
+        fileImported: (count: number) => `Playlist importée · ${count} chaîne${count === 1 ? '' : 's'}.`,
+        fileImportError: 'FILMA n’a pas pu importer ce fichier.',
+        localFile: 'Fichier local',
         xtreamTitle: 'Xtream Codes',
         xtreamHelp: 'Connecte un fournisseur Xtream avec l’adresse du serveur, le nom d’utilisateur et le mot de passe. Les identifiants restent chiffrés sur cet appareil et ne sont pas envoyés vers Dropbox.',
         xtreamServer: 'Adresse du serveur (https://provider.example)',
@@ -142,6 +152,13 @@ export function SettingsScreen() {
           playlistUrlError: 'URL-ja e playlistës duhet të fillojë me http:// ose https://',
           playlistAdded: 'Playlista u shtua.',
           m3uTitle: 'Playlist M3U / M3U8',
+          fileTitle: 'Skedar M3U / M3U8',
+          fileHelp: 'Importo një skedar nga kjo pajisje. FILMA e ruan lokalisht që të vazhdojë të punojë edhe pas rihapjes së aplikacionit. Skedari nuk dërgohet në Dropbox.',
+          importFile: 'Importo skedar',
+          importingFile: 'Duke importuar…',
+          fileImported: (count: number) => `Playlista u importua · ${count} kanal${count === 1 ? '' : 'e'}.`,
+          fileImportError: 'FILMA nuk arriti ta importojë këtë skedar.',
+          localFile: 'Skedar lokal',
           xtreamTitle: 'Xtream Codes',
           xtreamHelp: 'Lidh një ofrues Xtream me adresën e serverit, emrin e përdoruesit dhe fjalëkalimin. Kredencialet ruhen të sigurta vetëm në këtë pajisje dhe nuk dërgohen në Dropbox.',
           xtreamServer: 'Adresa e serverit (https://provider.example)',
@@ -177,6 +194,13 @@ export function SettingsScreen() {
           playlistUrlError: 'Playlist URL must start with http:// or https://',
           playlistAdded: 'Playlist added.',
           m3uTitle: 'M3U / M3U8 playlist',
+          fileTitle: 'M3U / M3U8 file',
+          fileHelp: 'Import a file from this device. FILMA keeps a persistent local copy so it still works after the app restarts. The file is not uploaded to Dropbox.',
+          importFile: 'Import file',
+          importingFile: 'Importing…',
+          fileImported: (count: number) => `Playlist imported · ${count} channel${count === 1 ? '' : 's'}.`,
+          fileImportError: 'FILMA could not import this file.',
+          localFile: 'Local file',
           xtreamTitle: 'Xtream Codes',
           xtreamHelp: 'Connect an Xtream provider with its server address, username and password. Credentials stay encrypted on this device and are not uploaded to Dropbox.',
           xtreamServer: 'Server address (https://provider.example)',
@@ -218,6 +242,22 @@ export function SettingsScreen() {
     setPlaylistName('');
     setPlaylistUrl('');
     showMessage(copy.playlistAdded);
+  };
+
+  const importPlaylistNow = async () => {
+    if (importingPlaylist) return;
+    setImportingPlaylist(true);
+    try {
+      const imported = await importLocalPlaylistFile();
+      if (!imported) return;
+      addLocalPlaylist(imported.name, imported.uri);
+      showMessage(copy.fileImported(imported.channelCount));
+    } catch (reason) {
+      const detail = reason instanceof Error && reason.message ? ` ${reason.message}` : '';
+      showMessage(`${copy.fileImportError}${detail}`, true);
+    } finally {
+      setImportingPlaylist(false);
+    }
   };
 
   const addXtreamNow = async () => {
@@ -503,7 +543,7 @@ export function SettingsScreen() {
           <View style={styles.iconBadge}><Text style={styles.iconText}>TV</Text></View>
           <View style={styles.cardHeaderText}>
             <Text style={styles.cardTitle}>{text.liveSources}</Text>
-            <Text style={styles.help}>M3U / M3U8 · Xtream Codes</Text>
+            <Text style={styles.help}>M3U / M3U8 · {copy.localFile} · Xtream Codes</Text>
           </View>
         </View>
 
@@ -520,6 +560,18 @@ export function SettingsScreen() {
           style={styles.input}
         />
         <View style={styles.actionRow}><FocusButton label={text.addPlaylist} active onPress={addPlaylistNow} /></View>
+
+        {!Platform.isTV ? (
+          <>
+            <View style={styles.divider} />
+            <Text style={styles.fieldLabel}>{copy.fileTitle}</Text>
+            <Text style={styles.help}>{copy.fileHelp}</Text>
+            <View style={styles.formSpacer} />
+            <View style={styles.actionRow}>
+              <FocusButton label={importingPlaylist ? copy.importingFile : copy.importFile} active onPress={() => void importPlaylistNow()} />
+            </View>
+          </>
+        ) : null}
 
         <View style={styles.divider} />
         <Text style={styles.fieldLabel}>{copy.xtreamTitle}</Text>
@@ -561,7 +613,13 @@ export function SettingsScreen() {
 
         {playlists.map(item => {
           const automatic = item.id.startsWith('auto-tv:');
-          const typeLabel = item.kind === 'xtream' ? 'Xtream' : automatic ? copy.automatic : 'M3U';
+          const typeLabel = item.kind === 'xtream'
+            ? 'Xtream'
+            : item.kind === 'file'
+              ? copy.localFile
+              : automatic
+                ? copy.automatic
+                : 'M3U';
           return (
             <View key={item.id} style={styles.sourceRow}>
               <View style={styles.sourceText}>
@@ -576,7 +634,7 @@ export function SettingsScreen() {
                     <Text style={styles.sourceTypeText}>{typeLabel}</Text>
                   </View>
                 </View>
-                <Text numberOfLines={1} style={styles.sourceUrl}>{item.url}</Text>
+                <Text numberOfLines={1} style={styles.sourceUrl}>{item.kind === 'file' ? copy.localFile : item.url}</Text>
               </View>
               {!automatic ? (
                 <View style={styles.sourceActions}>
