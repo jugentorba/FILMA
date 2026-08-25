@@ -4,6 +4,8 @@ import { Platform } from 'react-native';
 
 const TV_MODE_KEY = 'filma.device.tvMode';
 
+type DeviceModeOverride = 'auto' | 'phone' | 'tv';
+
 type DeviceModeContextValue = {
   tvModeEnabled: boolean;
   isTvMode: boolean;
@@ -13,26 +15,33 @@ type DeviceModeContextValue = {
 const DeviceModeContext = createContext<DeviceModeContextValue | null>(null);
 
 export function DeviceModeProvider({ children }: { children: React.ReactNode }) {
-  const [tvModeEnabled, setTvModeEnabledState] = useState(false);
+  const [override, setOverride] = useState<DeviceModeOverride>('auto');
 
   useEffect(() => {
-    if (Platform.isTV) return;
     void AsyncStorage.getItem(TV_MODE_KEY).then(value => {
-      setTvModeEnabledState(value === '1');
+      if (value === '1' || value === 'tv') setOverride('tv');
+      else if (value === '0' || value === 'phone') setOverride('phone');
+      else setOverride('auto');
     }).catch(() => undefined);
   }, []);
 
   const setTvModeEnabled = useCallback((enabled: boolean) => {
-    if (Platform.isTV) return;
-    setTvModeEnabledState(enabled);
-    void AsyncStorage.setItem(TV_MODE_KEY, enabled ? '1' : '0').catch(() => undefined);
+    const next: DeviceModeOverride = enabled ? 'tv' : 'phone';
+    setOverride(next);
+    void AsyncStorage.setItem(TV_MODE_KEY, next).catch(() => undefined);
   }, []);
 
+  const isTvMode = override === 'tv'
+    ? true
+    : override === 'phone'
+      ? false
+      : Platform.isTV;
+
   const value = useMemo<DeviceModeContextValue>(() => ({
-    tvModeEnabled,
-    isTvMode: Platform.isTV || tvModeEnabled,
+    tvModeEnabled: isTvMode,
+    isTvMode,
     setTvModeEnabled,
-  }), [setTvModeEnabled, tvModeEnabled]);
+  }), [isTvMode, setTvModeEnabled]);
 
   return <DeviceModeContext.Provider value={value}>{children}</DeviceModeContext.Provider>;
 }
