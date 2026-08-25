@@ -3,7 +3,7 @@ name: FILMA Apple Native Builds
 on:
   workflow_dispatch:
   push:
-    branches: [main, filma-next-cleanup]
+    branches: [main]
     paths:
       - '.github/workflows/build-apple.yml'
       - 'App.tsx'
