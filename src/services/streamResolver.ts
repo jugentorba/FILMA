@@ -33,15 +33,9 @@ export type StreamResolution = {
   diagnostics: StreamResolutionDiagnostics;
 };
 
-type ManifestCacheEntry = {
-  manifest: StremioManifest;
-  fetchedAt: number;
-};
-
-type ProviderCandidates = {
-  direct: ResolvedStream[];
-  external: ResolvedStream[];
-};
+type ManifestCacheEntry = { manifest: StremioManifest; fetchedAt: number };
+type ProviderCandidates = { direct: ResolvedStream[]; external: ResolvedStream[] };
+type MediaIdentity = { type: string; id: string };
 
 const MANIFEST_CACHE_TTL_MS = 5 * 60 * 1000;
 const EXTERNAL_PROVIDER_PREFIX = 'external-provider:';
@@ -79,12 +73,9 @@ function providerSupports(manifest: StremioManifest, mediaType: string, id: stri
   return true;
 }
 
-function canonicalIdentity(item: MediaItem): { type: string; id: string } | null {
+function canonicalIdentity(item: MediaItem): MediaIdentity | null {
   if (item.source?.kind !== 'stremio') return null;
-  return {
-    type: item.source.mediaType,
-    id: item.source.videoId ?? item.source.mediaId,
-  };
+  return { type: item.source.mediaType, id: item.source.videoId ?? item.source.mediaId };
 }
 
 function itemProvider(item: MediaItem): AddonSource | null {
@@ -109,25 +100,11 @@ function dedupeStreams(streams: ResolvedStream[]): ResolvedStream[] {
   });
 }
 
-export async function resolveStreamsAcrossAddons(
-  item: MediaItem,
-  addons: AddonSource[],
-  preferredAudioLanguages: AudioLanguage[],
-): Promise<StreamResolution> {
-  recentStreamCandidates.delete(item.id);
-
-  const configured = addons.filter(addon => addon.enabled && !addon.deletedAt);
-  const automatic = await discoverAutomaticStreamProviders().catch(() => [] as AddonSource[]);
-  const sourceProvider = itemProvider(item);
-  const activeAddons = mergeMovieProviders(
-    configured,
-    [...automatic, ...(sourceProvider ? [sourceProvider] : [])],
-  );
-
-  const diagnostics: StreamResolutionDiagnostics = {
-    configuredProviders: configured.length,
-    automaticProviders: automatic.length,
-    enabledProviders: activeAddons.length,
+function emptyDiagnostics(configuredProviders: number): StreamResolutionDiagnostics {
+  return {
+    configuredProviders,
+    automaticProviders: 0,
+    enabledProviders: 0,
     manifestsLoaded: 0,
     streamCapableProviders: 0,
     compatibleProviders: 0,
@@ -137,11 +114,14 @@ export async function resolveStreamsAcrossAddons(
     externalOnlyEntries: 0,
     failedProviders: 0,
   };
+}
 
-  const identity = canonicalIdentity(item);
-  if (!identity) return { streams: [], diagnostics };
-
-  const providerCandidates = await Promise.all(activeAddons.map(async (addon: AddonSource): Promise<ProviderCandidates> => {
+async function resolveProviderBatch(
+  providers: AddonSource[],
+  identity: MediaIdentity,
+  diagnostics: StreamResolutionDiagnostics,
+): Promise<ProviderCandidates[]> {
+  return Promise.all(providers.map(async addon => {
     try {
       const manifest = await manifestFor(addon.manifestUrl);
       diagnostics.manifestsLoaded += 1;
@@ -153,7 +133,6 @@ export async function resolveStreamsAcrossAddons(
       const streams = await fetchStreams(addon.manifestUrl, identity.type, identity.id);
       diagnostics.providerResponses += 1;
       diagnostics.totalReturnedEntries += streams.length;
-
       const direct: ResolvedStream[] = [];
       const external: ResolvedStream[] = [];
 
@@ -165,10 +144,7 @@ export async function resolveStreamsAcrossAddons(
             providerName: manifest.name || addon.name,
             providerManifestUrl: addon.manifestUrl,
           });
-          continue;
-        }
-
-        if (stream.externalUrl && /^https?:\/\//i.test(stream.externalUrl)) {
+        } else if (stream.externalUrl && /^https?:\/\//i.test(stream.externalUrl)) {
           diagnostics.externalOnlyEntries += 1;
           external.push({
             title: stream.title,
@@ -178,25 +154,69 @@ export async function resolveStreamsAcrossAddons(
           });
         }
       }
-
       return { direct, external };
     } catch {
       diagnostics.failedProviders += 1;
       return { direct: [], external: [] };
     }
   }));
+}
 
-  const directMerged = providerCandidates.flatMap(candidate => candidate.direct);
-  diagnostics.directPlayableEntries = directMerged.length;
-  const rankedDirect = dedupeStreams(rankStreamsByPreferredAudio(directMerged, preferredAudioLanguages));
+function rankedDirect(candidates: ProviderCandidates[], preferredAudioLanguages: AudioLanguage[]): ResolvedStream[] {
+  return dedupeStreams(rankStreamsByPreferredAudio(
+    candidates.flatMap(candidate => candidate.direct),
+    preferredAudioLanguages,
+  ));
+}
 
-  const resolved = rankedDirect.length
-    ? rankedDirect
-    : dedupeStreams(rankStreamsByPreferredAudio(
-        providerCandidates.flatMap(candidate => candidate.external),
-        preferredAudioLanguages,
-      ));
+function rankedExternal(candidates: ProviderCandidates[], preferredAudioLanguages: AudioLanguage[]): ResolvedStream[] {
+  return dedupeStreams(rankStreamsByPreferredAudio(
+    candidates.flatMap(candidate => candidate.external),
+    preferredAudioLanguages,
+  ));
+}
 
+export async function resolveStreamsAcrossAddons(
+  item: MediaItem,
+  addons: AddonSource[],
+  preferredAudioLanguages: AudioLanguage[],
+): Promise<StreamResolution> {
+  recentStreamCandidates.delete(item.id);
+
+  const configured = addons.filter(addon => addon.enabled && !addon.deletedAt);
+  const diagnostics = emptyDiagnostics(configured.length);
+  const identity = canonicalIdentity(item);
+  if (!identity) return { streams: [], diagnostics };
+
+  const sourceProvider = itemProvider(item);
+  const primaryProviders = mergeMovieProviders(configured, sourceProvider ? [sourceProvider] : []);
+  diagnostics.enabledProviders = primaryProviders.length;
+
+  // Start fallback discovery in parallel, but do not block the item's own source.
+  const automaticPromise = discoverAutomaticStreamProviders().catch(() => [] as AddonSource[]);
+  const primaryCandidates = await resolveProviderBatch(primaryProviders, identity, diagnostics);
+  const primaryDirect = rankedDirect(primaryCandidates, preferredAudioLanguages);
+
+  if (primaryDirect.length) {
+    diagnostics.directPlayableEntries = primaryDirect.length;
+    recentStreamCandidates.set(item.id, primaryDirect);
+    return { streams: primaryDirect, diagnostics };
+  }
+
+  const automatic = await automaticPromise;
+  diagnostics.automaticProviders = automatic.length;
+  const primaryUrls = new Set(primaryProviders.map(provider => provider.manifestUrl.trim().toLocaleLowerCase()));
+  const secondaryProviders = mergeMovieProviders([], automatic).filter(provider =>
+    !primaryUrls.has(provider.manifestUrl.trim().toLocaleLowerCase()),
+  );
+  diagnostics.enabledProviders = primaryProviders.length + secondaryProviders.length;
+
+  const secondaryCandidates = await resolveProviderBatch(secondaryProviders, identity, diagnostics);
+  const allCandidates = [...primaryCandidates, ...secondaryCandidates];
+  const direct = rankedDirect(allCandidates, preferredAudioLanguages);
+  diagnostics.directPlayableEntries = direct.length;
+
+  const resolved = direct.length ? direct : rankedExternal(allCandidates, preferredAudioLanguages);
   recentStreamCandidates.set(item.id, resolved);
   return { streams: resolved, diagnostics };
 }
