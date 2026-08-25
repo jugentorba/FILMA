@@ -15,6 +15,7 @@ import { FilmaProvider, useFilma } from './src/store/FilmaContext';
 import type { AppLanguage, MediaItem } from './src/types';
 import { EpisodePickerModal } from './src/ui/EpisodePickerModal';
 import { FocusButton } from './src/ui/FocusButton';
+import { NavTab } from './src/ui/NavTab';
 import { PlayerModal } from './src/ui/PlayerModal';
 import { YouTubePlayerModal } from './src/ui/YouTubePlayerModal';
 import { theme } from './src/ui/theme';
@@ -296,10 +297,10 @@ function FilmaApp() {
 
       {!Platform.isTV ? (
         <View style={styles.bottomNav}>
-          <FocusButton compact label={`▣ ${text.movies}`} active={screen === 'home'} style={styles.mobileTab} onPress={goMovies} />
-          <FocusButton compact label={`◉ ${text.liveTv}`} active={screen === 'live'} style={styles.mobileTab} onPress={goLive} />
-          {isTvMode ? <FocusButton compact label={`▶ ${text.youtube}`} active={screen === 'youtube'} style={styles.mobileTab} onPress={goYouTube} /> : null}
-          <FocusButton compact label={`⚙ ${text.settings}`} active={screen === 'settings'} style={styles.mobileTab} onPress={goSettings} />
+          <NavTab label={text.movies} icon="movies" active={screen === 'home'} onPress={goMovies} />
+          <NavTab label={text.liveTv} icon="live" active={screen === 'live'} onPress={goLive} />
+          {isTvMode ? <NavTab label={text.youtube} icon="youtube" active={screen === 'youtube'} onPress={goYouTube} /> : null}
+          <NavTab label={text.settings} icon="settings" active={screen === 'settings'} onPress={goSettings} />
         </View>
       ) : null}
 
@@ -369,10 +370,16 @@ const styles = StyleSheet.create({
   screenLabel: { color: theme.muted, fontWeight: '800', fontSize: 12, textTransform: 'uppercase', letterSpacing: 1 },
   navButtons: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   bottomNav: {
-    minHeight: 72, paddingHorizontal: 10, paddingTop: 8, paddingBottom: 8, flexDirection: 'row', gap: 7,
-    backgroundColor: '#090c14', borderTopWidth: 1, borderTopColor: '#202737',
+    minHeight: 70,
+    paddingHorizontal: 8,
+    paddingTop: 4,
+    paddingBottom: 4,
+    flexDirection: 'row',
+    gap: 2,
+    backgroundColor: '#090c14',
+    borderTopWidth: 1,
+    borderTopColor: '#202737',
   },
-  mobileTab: { flex: 1, paddingHorizontal: 8 },
   resolveBar: { minHeight: 48, paddingHorizontal: Platform.isTV ? 48 : 16, backgroundColor: theme.surface, flexDirection: 'row', alignItems: 'center', gap: 12, borderBottomWidth: 1, borderBottomColor: theme.border },
   resolveText: { color: theme.text, fontWeight: '700', flex: 1 },
   errorBar: { minHeight: 58, paddingHorizontal: Platform.isTV ? 48 : 14, paddingVertical: 8, backgroundColor: '#3b1018', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
