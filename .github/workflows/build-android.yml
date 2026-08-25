@@ -31,10 +31,10 @@ jobs:
           java-version: '17'
 
       - name: Install dependencies
-        run: npm install
+        run: yarn install --non-interactive
 
       - name: Verify resolved native versions
-        run: npm ls expo react-native @react-native/gradle-plugin expo-modules-autolinking expo-modules-core --depth=2
+        run: yarn list --pattern 'react-native|expo-modules-autolinking|expo-modules-core|^expo$' --depth=2
 
       - name: Generate mobile Android project
         run: npx expo prebuild --platform android --clean --no-install
