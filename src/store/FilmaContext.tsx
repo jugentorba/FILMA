@@ -173,9 +173,11 @@ export function FilmaProvider({ children }: { children: React.ReactNode }) {
 
     void discoverOfficialMovieProviders().then(providers => {
       if (cancelled) return;
-      const cinemetaCatalog = providers.find(provider => provider.id === 'auto-stremio:com.linvo.cinemeta')
-        ?? providers.find(provider => provider.providesCatalog);
-      setAutomaticMovieProviders(cinemetaCatalog ? [cinemetaCatalog] : []);
+      const filmaFree = providers.find(provider => provider.id === 'auto-stremio:com.filma.archive');
+      const cinemeta = providers.find(provider => provider.id === 'auto-stremio:com.linvo.cinemeta');
+      const fallbackCatalog = providers.find(provider => provider.providesCatalog && provider.id !== filmaFree?.id);
+      const selected = [filmaFree, cinemeta ?? fallbackCatalog].filter((provider): provider is AddonSource => Boolean(provider));
+      setAutomaticMovieProviders(selected);
     }).catch(() => {
       if (!cancelled) setAutomaticMovieProviders([]);
     });
