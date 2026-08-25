@@ -48,11 +48,7 @@ const LANGUAGE_NAMES: Record<AudioLanguage, string> = {
   tr: 'Turkish',
 };
 
-const APP_LANGUAGE_DEFAULT_AUDIO: Record<AppLanguage, AudioLanguage> = {
-  en: 'en',
-  fr: 'fr',
-  sq: 'sq',
-};
+const BASE_AUDIO_LANGUAGES: AudioLanguage[] = ['fr', 'sq', 'en'];
 
 let officialProviderCache: CachedOfficialProviders | undefined;
 
@@ -182,11 +178,11 @@ export async function discoverAutomaticStreamProviders(): Promise<AddonSource[]>
 
 export function automaticTvPlaylists(
   preferredAudioLanguages: AudioLanguage[],
-  appLanguage: AppLanguage,
+  _appLanguage: AppLanguage,
 ): PlaylistSource[] {
   const requested = preferredAudioLanguages.length
     ? preferredAudioLanguages
-    : [APP_LANGUAGE_DEFAULT_AUDIO[appLanguage]];
+    : BASE_AUDIO_LANGUAGES;
 
   const languages = [...new Set(requested)].slice(0, 3);
   return languages.map(language => {
