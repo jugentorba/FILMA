@@ -132,6 +132,7 @@ function normalizeProgress(value: unknown): Record<string, WatchProgress> {
       durationSeconds: Math.max(0, finiteNumber(raw.durationSeconds)),
       updatedAt: timestamp(raw.updatedAt),
       deviceId: stringValue(raw.deviceId) ?? 'legacy',
+      ...(raw.completed === true ? { completed: true } : {}),
       ...(item ? { item } : {}),
     };
   }

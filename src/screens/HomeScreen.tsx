@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, FlatList, ImageBackground, Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { audioLanguageLabel, stringsFor } from '../i18n';
+import { shouldShowInContinueWatching } from '../services/progress';
 import {
   catalogCanLoadWithoutSearch,
   catalogLanguageExtra,
@@ -93,15 +94,21 @@ export function HomeScreen({ onSelect, onOpenSettings }: Props) {
   const [searchTargets, setSearchTargets] = useState<SearchTarget[]>([]);
   const [loadingAddons, setLoadingAddons] = useState(false);
   const [addonError, setAddonError] = useState<string>();
+  const [reloadVersion, setReloadVersion] = useState(0);
   const [query, setQuery] = useState('');
   const [remoteResults, setRemoteResults] = useState<MediaItem[]>([]);
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState<string>();
 
-  const activeAddons = useMemo(
-    () => state.addons.filter(item => item.enabled && !item.deletedAt),
+  const configuredAddons = useMemo(
+    () => state.addons.filter(item => !item.deletedAt),
     [state.addons],
   );
+  const activeAddons = useMemo(
+    () => configuredAddons.filter(item => item.enabled),
+    [configuredAddons],
+  );
+  const allSourcesDisabled = configuredAddons.length > 0 && activeAddons.length === 0;
 
   useEffect(() => {
     let cancelled = false;
@@ -151,25 +158,25 @@ export function HomeScreen({ onSelect, onOpenSettings }: Props) {
                 });
               }
             } catch {
-              // A single catalog can fail without hiding the rest of the source.
+              // One failed catalog should not hide other working catalogs.
             }
           }
         } catch {
-          // Continue loading the remaining configured sources.
+          // Continue loading the remaining enabled sources.
         }
       }
 
       if (!cancelled) {
         setAddonRows(rows);
         setSearchTargets(targets);
-        if (!rows.length) setAddonError('Configured movie sources did not return a browseable catalog.');
+        if (!rows.length) setAddonError(text.sourceLoadError);
         setLoadingAddons(false);
       }
     };
 
     void load();
     return () => { cancelled = true; };
-  }, [activeAddons, state.preferences.preferredAudioLanguages]);
+  }, [activeAddons, reloadVersion, state.preferences.preferredAudioLanguages, text.sourceLoadError]);
 
   const allLoadedItems = useMemo(() => {
     const resumeItems: MediaItem[] = Object.values(state.progress).flatMap(progress => progress.item ? [progress.item] : []);
@@ -178,7 +185,7 @@ export function HomeScreen({ onSelect, onOpenSettings }: Props) {
 
   const continueWatching = useMemo(
     () => allLoadedItems
-      .filter(item => Boolean(state.progress[item.id]?.positionSeconds))
+      .filter(item => shouldShowInContinueWatching(state.progress[item.id]))
       .sort((a, b) => new Date(state.progress[b.id].updatedAt).getTime() - new Date(state.progress[a.id].updatedAt).getTime()),
     [allLoadedItems, state.progress],
   );
@@ -244,9 +251,25 @@ export function HomeScreen({ onSelect, onOpenSettings }: Props) {
 
   const searchResults = useMemo(() => dedupe([...remoteResults, ...localSearchResults]), [remoteResults, localSearchResults]);
   const hero = continueWatching[0] ?? addonRows[0]?.items[0] ?? null;
+  const heroCanContinue = hero ? shouldShowInContinueWatching(state.progress[hero.id]) : false;
   const audioSummary = state.preferences.preferredAudioLanguages.length
     ? state.preferences.preferredAudioLanguages.map(language => audioLanguageLabel(language, state.preferences.appLanguage)).join(' · ')
     : text.anyLanguage;
+
+  const emptyTitle = loadingAddons
+    ? text.loadingCatalogs
+    : allSourcesDisabled
+      ? text.sourcesDisabledTitle
+      : activeAddons.length
+        ? text.sourceNeeded
+        : text.homeEmptyTitle;
+  const emptyText = loadingAddons
+    ? text.loadingCatalogsHelp
+    : allSourcesDisabled
+      ? text.sourcesDisabledText
+      : activeAddons.length
+        ? (addonError ?? text.sourceLoadError)
+        : text.homeEmptyText;
 
   return (
     <ScrollView style={styles.root} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
@@ -261,7 +284,7 @@ export function HomeScreen({ onSelect, onOpenSettings }: Props) {
             </Text>
             <View style={styles.heroActions}>
               <FocusButton
-                label={`${state.progress[hero.id] ? '▶ ' + text.continue : '▶ ' + text.play}`}
+                label={`▶ ${heroCanContinue ? text.continue : text.play}`}
                 active
                 preferredFocus
                 onPress={() => onSelect(hero)}
@@ -272,11 +295,26 @@ export function HomeScreen({ onSelect, onOpenSettings }: Props) {
       ) : (
         <View style={styles.emptyHero}>
           <Text style={styles.eyebrow}>{text.homeEyebrow}</Text>
-          <Text style={styles.emptyTitle}>{text.homeEmptyTitle}</Text>
-          <Text style={styles.emptyText}>{text.homeEmptyText}</Text>
-          <View style={styles.heroActions}>
-            <FocusButton label={text.addMovieSource} active preferredFocus onPress={onOpenSettings} />
-          </View>
+          {loadingAddons ? <ActivityIndicator style={styles.emptySpinner} /> : null}
+          <Text style={styles.emptyTitle}>{emptyTitle}</Text>
+          <Text style={styles.emptyText}>{emptyText}</Text>
+          {!loadingAddons ? (
+            <View style={styles.heroActions}>
+              {activeAddons.length ? (
+                <>
+                  <FocusButton label={text.retry} active preferredFocus onPress={() => setReloadVersion(value => value + 1)} />
+                  <FocusButton label={text.settings} onPress={onOpenSettings} />
+                </>
+              ) : (
+                <FocusButton
+                  label={allSourcesDisabled ? text.settings : text.addMovieSource}
+                  active
+                  preferredFocus
+                  onPress={onOpenSettings}
+                />
+              )}
+            </View>
+          ) : null}
         </View>
       )}
 
@@ -318,18 +356,10 @@ export function HomeScreen({ onSelect, onOpenSettings }: Props) {
         </>
       )}
 
-      {loadingAddons ? (
+      {loadingAddons && hero ? (
         <View style={styles.loadingRow}>
           <ActivityIndicator />
           <Text style={styles.loadingText}>{text.loadingCatalogs}</Text>
-        </View>
-      ) : null}
-
-      {addonError && activeAddons.length ? (
-        <View style={styles.messageBox}>
-          <Text style={styles.messageTitle}>{text.sourceNeeded}</Text>
-          <Text style={styles.messageText}>{addonError}</Text>
-          <View style={styles.messageAction}><FocusButton compact label={text.settings} onPress={onOpenSettings} /></View>
         </View>
       ) : null}
     </ScrollView>
@@ -364,6 +394,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: theme.border,
   },
+  emptySpinner: { alignSelf: 'flex-start', marginTop: 22 },
   eyebrow: { color: theme.accent, fontWeight: '900', letterSpacing: 2.4, fontSize: 12 },
   heroTitle: {
     color: theme.text,
@@ -374,7 +405,7 @@ const styles = StyleSheet.create({
     maxWidth: 820,
   },
   heroMeta: { color: '#d8deea', marginTop: 12, fontSize: Platform.isTV ? 18 : 14, fontWeight: '700' },
-  heroActions: { flexDirection: 'row', marginTop: 24 },
+  heroActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 24 },
   emptyTitle: { color: theme.text, fontSize: Platform.isTV ? 48 : 34, lineHeight: Platform.isTV ? 54 : 40, fontWeight: '900', marginTop: 12 },
   emptyText: { color: theme.muted, maxWidth: 720, fontSize: Platform.isTV ? 19 : 16, lineHeight: Platform.isTV ? 28 : 24, marginTop: 12 },
   searchArea: {
@@ -428,5 +459,4 @@ const styles = StyleSheet.create({
   },
   messageTitle: { color: theme.text, fontSize: 18, fontWeight: '900' },
   messageText: { color: theme.muted, marginTop: 7, lineHeight: 21 },
-  messageAction: { alignItems: 'flex-start', marginTop: 14 },
 });

@@ -49,6 +49,7 @@ export type WatchProgress = {
   durationSeconds: number;
   updatedAt: string;
   deviceId: string;
+  completed?: boolean;
   item?: MediaResumeSnapshot;
 };
 

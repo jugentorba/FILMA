@@ -21,7 +21,7 @@ export function PlayerModal({ item, progress, onProgress, onClose, onToggleFavor
 
   const player = useVideoPlayer(item.streamUrl ?? null, instance => {
     instance.timeUpdateEventInterval = 5;
-    if (progress?.positionSeconds && progress.positionSeconds > 5) {
+    if (!progress?.completed && progress?.positionSeconds && progress.positionSeconds > 5) {
       instance.currentTime = progress.positionSeconds;
     }
     instance.play();

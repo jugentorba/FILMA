@@ -15,8 +15,10 @@ export function SettingsScreen() {
     toggleAudioLanguage,
     clearAudioLanguages,
     addPlaylist,
+    setPlaylistEnabled,
     removePlaylist,
     addAddon,
+    setAddonEnabled,
     removeAddon,
   } = useFilma();
   const dropbox = useDropboxSync();
@@ -67,7 +69,7 @@ export function SettingsScreen() {
 
   const finishPairing = async () => {
     await dropbox.finishPairing(pairingCode);
-    if (!dropbox.error) setPairingCode('');
+    setPairingCode('');
   };
 
   return (
@@ -216,10 +218,20 @@ export function SettingsScreen() {
         {addons.map(item => (
           <View key={item.id} style={styles.sourceRow}>
             <View style={styles.sourceText}>
-              <Text style={styles.sourceName}>{item.name}</Text>
+              <View style={styles.sourceTitleRow}>
+                <Text style={styles.sourceName}>{item.name}</Text>
+                <View style={[styles.sourceStatus, item.enabled ? styles.sourceStatusOn : styles.sourceStatusOff]}>
+                  <Text style={[styles.sourceStatusText, item.enabled ? styles.sourceStatusTextOn : undefined]}>
+                    {item.enabled ? text.enabled : text.disabled}
+                  </Text>
+                </View>
+              </View>
               <Text numberOfLines={1} style={styles.sourceUrl}>{item.manifestUrl}</Text>
             </View>
-            <FocusButton compact label={text.remove} onPress={() => removeAddon(item.id)} />
+            <View style={styles.sourceActions}>
+              <FocusButton compact label={item.enabled ? text.disable : text.enable} onPress={() => setAddonEnabled(item.id, !item.enabled)} />
+              <FocusButton compact label={text.remove} onPress={() => removeAddon(item.id)} />
+            </View>
           </View>
         ))}
       </View>
@@ -247,10 +259,20 @@ export function SettingsScreen() {
         {playlists.map(item => (
           <View key={item.id} style={styles.sourceRow}>
             <View style={styles.sourceText}>
-              <Text style={styles.sourceName}>{item.name}</Text>
+              <View style={styles.sourceTitleRow}>
+                <Text style={styles.sourceName}>{item.name}</Text>
+                <View style={[styles.sourceStatus, item.enabled ? styles.sourceStatusOn : styles.sourceStatusOff]}>
+                  <Text style={[styles.sourceStatusText, item.enabled ? styles.sourceStatusTextOn : undefined]}>
+                    {item.enabled ? text.enabled : text.disabled}
+                  </Text>
+                </View>
+              </View>
               <Text numberOfLines={1} style={styles.sourceUrl}>{item.url}</Text>
             </View>
-            <FocusButton compact label={text.remove} onPress={() => removePlaylist(item.id)} />
+            <View style={styles.sourceActions}>
+              <FocusButton compact label={item.enabled ? text.disable : text.enable} onPress={() => setPlaylistEnabled(item.id, !item.enabled)} />
+              <FocusButton compact label={text.remove} onPress={() => removePlaylist(item.id)} />
+            </View>
           </View>
         ))}
       </View>
@@ -316,10 +338,25 @@ const styles = StyleSheet.create({
   },
   pairingInput: { width: '100%', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', fontSize: Platform.isTV ? 20 : 16 },
   actionRow: { alignItems: 'flex-start', marginBottom: 8 },
-  sourceRow: { flexDirection: 'row', alignItems: 'center', gap: 14, borderTopWidth: 1, borderTopColor: theme.border, paddingTop: 14, marginTop: 14 },
+  sourceRow: {
+    flexDirection: Platform.isTV ? 'row' : 'column',
+    alignItems: Platform.isTV ? 'center' : 'stretch',
+    gap: 14,
+    borderTopWidth: 1,
+    borderTopColor: theme.border,
+    paddingTop: 14,
+    marginTop: 14,
+  },
   sourceText: { flex: 1 },
+  sourceTitleRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 },
   sourceName: { color: theme.text, fontWeight: '900', fontSize: 16 },
   sourceUrl: { color: theme.muted, marginTop: 4 },
+  sourceActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center' },
+  sourceStatus: { paddingHorizontal: 9, paddingVertical: 4, borderRadius: 999 },
+  sourceStatusOn: { backgroundColor: '#12362f' },
+  sourceStatusOff: { backgroundColor: '#252b39' },
+  sourceStatusText: { color: theme.muted, fontSize: 11, fontWeight: '900' },
+  sourceStatusTextOn: { color: theme.success },
   lastSync: { color: theme.muted, marginTop: 14 },
   deviceCard: { width: '100%', maxWidth: 980, paddingHorizontal: 4, paddingVertical: 10 },
   deviceTitle: { color: theme.muted, fontWeight: '800', fontSize: 12, textTransform: 'uppercase', letterSpacing: 1.2 },

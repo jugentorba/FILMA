@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { CONTINUE_WATCHING_MIN_SECONDS, isPlaybackComplete } from '../services/progress';
 import type { CloudSyncAdapter } from '../services/sync';
 import { makeSyncEnvelope, mergeStates } from '../services/sync';
 import { loadState, saveState } from '../services/storage';
@@ -21,8 +22,10 @@ type FilmaContextValue = {
   toggleFavorite(mediaId: string): void;
   updateProgress(item: MediaItem, positionSeconds: number, durationSeconds: number): void;
   addPlaylist(name: string, url: string): void;
+  setPlaylistEnabled(id: string, enabled: boolean): void;
   removePlaylist(id: string): void;
   addAddon(name: string, manifestUrl: string): void;
+  setAddonEnabled(id: string, enabled: boolean): void;
   removeAddon(id: string): void;
   syncWith(adapter: CloudSyncAdapter): Promise<void>;
 };
@@ -152,20 +155,31 @@ export function FilmaProvider({ children }: { children: React.ReactNode }) {
   }, [commitState]);
 
   const updateProgress = useCallback((item: MediaItem, positionSeconds: number, durationSeconds: number) => {
-    commitState(current => ({
-      ...current,
-      progress: {
-        ...current.progress,
-        [item.id]: {
-          mediaId: item.id,
-          positionSeconds: Math.max(0, positionSeconds),
-          durationSeconds: Math.max(0, durationSeconds),
-          updatedAt: now(),
-          deviceId,
-          item: resumeSnapshot(item),
+    commitState(current => {
+      const position = Math.max(0, positionSeconds);
+      const duration = Math.max(0, durationSeconds);
+      const existing = current.progress[item.id];
+      const completedNow = isPlaybackComplete(position, duration);
+      const preserveCompletedDuringShortRestart = Boolean(
+        existing?.completed && position < CONTINUE_WATCHING_MIN_SECONDS && !completedNow,
+      );
+
+      return {
+        ...current,
+        progress: {
+          ...current.progress,
+          [item.id]: {
+            mediaId: item.id,
+            positionSeconds: position,
+            durationSeconds: duration,
+            updatedAt: now(),
+            deviceId,
+            completed: completedNow || preserveCompletedDuringShortRestart,
+            item: resumeSnapshot(item),
+          },
         },
-      },
-    }));
+      };
+    });
   }, [commitState, deviceId]);
 
   const addPlaylist = useCallback((name: string, url: string) => {
@@ -179,6 +193,16 @@ export function FilmaProvider({ children }: { children: React.ReactNode }) {
       updatedAt: at,
     };
     commitState(current => ({ ...current, playlists: [...current.playlists, playlist] }));
+  }, [commitState]);
+
+  const setPlaylistEnabled = useCallback((id: string, enabled: boolean) => {
+    const at = now();
+    commitState(current => ({
+      ...current,
+      playlists: current.playlists.map(item => item.id === id && !item.deletedAt
+        ? { ...item, enabled, updatedAt: at }
+        : item),
+    }));
   }, [commitState]);
 
   const removePlaylist = useCallback((id: string) => {
@@ -202,6 +226,16 @@ export function FilmaProvider({ children }: { children: React.ReactNode }) {
       updatedAt: at,
     };
     commitState(current => ({ ...current, addons: [...current.addons, addon] }));
+  }, [commitState]);
+
+  const setAddonEnabled = useCallback((id: string, enabled: boolean) => {
+    const at = now();
+    commitState(current => ({
+      ...current,
+      addons: current.addons.map(item => item.id === id && !item.deletedAt
+        ? { ...item, enabled, updatedAt: at }
+        : item),
+    }));
   }, [commitState]);
 
   const removeAddon = useCallback((id: string) => {
@@ -242,8 +276,10 @@ export function FilmaProvider({ children }: { children: React.ReactNode }) {
     toggleFavorite,
     updateProgress,
     addPlaylist,
+    setPlaylistEnabled,
     removePlaylist,
     addAddon,
+    setAddonEnabled,
     removeAddon,
     syncWith,
   }), [
@@ -254,8 +290,10 @@ export function FilmaProvider({ children }: { children: React.ReactNode }) {
     ready,
     removeAddon,
     removePlaylist,
+    setAddonEnabled,
     setAppLanguage,
     setMode,
+    setPlaylistEnabled,
     state,
     syncWith,
     toggleAudioLanguage,

@@ -1,4 +1,5 @@
 const assert = require('node:assert/strict');
+const { isPlaybackComplete, shouldShowInContinueWatching } = require('../.sync-test-build/services/progress.js');
 const { mergeStates } = require('../.sync-test-build/services/sync.js');
 const { LEGACY_TIMESTAMP, normalizeState, normalizeSyncEnvelope } = require('../.sync-test-build/services/stateSchema.js');
 
@@ -13,6 +14,22 @@ function empty(mode = 'movies') {
     playlists: [],
     addons: [],
   };
+}
+
+{
+  assert.equal(isPlaybackComplete(919, 1000), false, '91.9% is still resumable');
+  assert.equal(isPlaybackComplete(920, 1000), true, '92% marks playback complete');
+  assert.equal(isPlaybackComplete(10, 0), false, 'unknown duration never marks playback complete');
+
+  const base = {
+    mediaId: 'film',
+    durationSeconds: 1000,
+    updatedAt: at(1),
+    deviceId: 'phone',
+  };
+  assert.equal(shouldShowInContinueWatching({ ...base, positionSeconds: 29 }), false, 'very short accidental playback is hidden');
+  assert.equal(shouldShowInContinueWatching({ ...base, positionSeconds: 30 }), true, 'meaningful playback enters Continue Watching');
+  assert.equal(shouldShowInContinueWatching({ ...base, positionSeconds: 950, completed: true }), false, 'completed playback stays out of Continue Watching');
 }
 
 {
@@ -39,9 +56,20 @@ function empty(mode = 'movies') {
       preferredAudioLanguages: ['fr', 'sq', 'fr', 'invalid'],
       updatedAt: at(8),
     },
+    progress: {
+      film: {
+        mediaId: 'film',
+        positionSeconds: 950,
+        durationSeconds: 1000,
+        updatedAt: at(8),
+        deviceId: 'phone',
+        completed: true,
+      },
+    },
   });
   assert.equal(normalized.preferences.appLanguage, 'fr');
   assert.deepEqual(normalized.preferences.preferredAudioLanguages, ['fr', 'sq'], 'audio language preferences are validated and deduplicated');
+  assert.equal(normalized.progress.film.completed, true, 'completed playback survives normalization');
 }
 
 {
@@ -60,7 +88,7 @@ function empty(mode = 'movies') {
   const remote = empty('movies');
   remote.preferences = { appLanguage: 'fr', preferredAudioLanguages: ['fr', 'sq'], updatedAt: at(20) };
   remote.favorites.film = { mediaId: 'film', createdAt: at(1), updatedAt: at(20), deletedAt: at(20) };
-  remote.progress.film = { mediaId: 'film', positionSeconds: 250, durationSeconds: 1000, updatedAt: at(20), deviceId: 'tv' };
+  remote.progress.film = { mediaId: 'film', positionSeconds: 950, durationSeconds: 1000, updatedAt: at(20), deviceId: 'tv', completed: true };
   remote.playlists.push({ id: 'p1', name: 'TV', url: 'https://example.test/list.m3u', enabled: true, createdAt: at(1), updatedAt: at(20), deletedAt: at(20) });
   remote.addons.push({ id: 'a2', name: 'Series', manifestUrl: 'https://example.test/manifest.json', enabled: true, createdAt: at(20), updatedAt: at(20) });
 
@@ -68,7 +96,8 @@ function empty(mode = 'movies') {
   assert.equal(merged.mode, 'live', 'screen mode remains local to the device');
   assert.equal(merged.preferences.appLanguage, 'fr', 'newest synchronized preferences win');
   assert.deepEqual(merged.preferences.preferredAudioLanguages, ['fr', 'sq']);
-  assert.equal(merged.progress.film.positionSeconds, 250, 'newest progress wins');
+  assert.equal(merged.progress.film.positionSeconds, 950, 'newest progress wins');
+  assert.equal(merged.progress.film.completed, true, 'newest completed state wins across devices');
   assert.equal(merged.favorites.film.deletedAt, at(20), 'newer favorite deletion wins');
   assert.equal(merged.playlists[0].deletedAt, at(20), 'newer playlist deletion wins');
   assert.equal(merged.addons[0].id, 'a2', 'remote-only entities are retained');
@@ -108,4 +137,4 @@ function empty(mode = 'movies') {
   assert.equal(persisted.progress.episode.item.source.videoId, 'tt123:1:1', 'episode video id survives state normalization');
 }
 
-console.log('FILMA sync tests passed.');
+console.log('FILMA sync and playback-state tests passed.');

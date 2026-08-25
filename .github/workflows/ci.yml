@@ -30,7 +30,7 @@ jobs:
       - name: Sync migration and conflict tests
         run: |
           rm -rf .sync-test-build
-          ./node_modules/.bin/tsc src/types.ts src/services/sync.ts src/services/stateSchema.ts \
+          ./node_modules/.bin/tsc src/types.ts src/services/progress.ts src/services/sync.ts src/services/stateSchema.ts \
             --ignoreConfig \
             --outDir .sync-test-build \
             --module commonjs \
