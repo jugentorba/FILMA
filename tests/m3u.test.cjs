@@ -20,6 +20,17 @@ https://backup.example.com/news.m3u8`);
 }
 
 {
+  const channels = parseM3U(`#EXTM3U
+#EXTINF:-1 tvg-id="sport1.xk" group-title="Kosovo",Sport 1
+https://example.com/sport1.m3u8
+#EXTINF:-1 tvg-id="general.xk" group-title="Kosovo",General TV
+https://example.com/general.m3u8`);
+
+  assert.equal(channels[0].group, 'Sports');
+  assert.equal(channels[1].group, 'Kosovo');
+}
+
+{
   const channel = {
     id: 'one',
     name: 'Channel One',
