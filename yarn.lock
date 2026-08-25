@@ -1873,7 +1873,12 @@ expo-crypto@~57.0.2:
   resolved "https://registry.yarnpkg.com/expo-crypto/-/expo-crypto-57.0.2.tgz#53e0a337a26d8b583e19c8895225c1cda48d508d"
   integrity sha512-OGLvHK7Hb7qsONMWGB9pJw3n+iY4OnZQmM/KwQEHRMrrOmNg0Lxj9+tp9bj46aAMMzXx0FTVA2jUKoplpXPnkA==
 
-expo-file-system@~57.0.5:
+expo-document-picker@~57.0.1:
+  version "57.0.1"
+  resolved "https://registry.yarnpkg.com/expo-document-picker/-/expo-document-picker-57.0.1.tgz#c5a2bd3c431fcce1f3cf5b98661500f08d5b3285"
+  integrity sha512-qBwM5oxDZ3I9kwFD3pUE1oK/WNv9artoEKO6UpqhQgNRr0XA1ALRVWYjkF4+ge9lUNDRehjTm/jenINkzqg84g==
+
+expo-file-system@~57.0.4, expo-file-system@~57.0.5:
   version "57.0.5"
   resolved "https://registry.yarnpkg.com/expo-file-system/-/expo-file-system-57.0.5.tgz#f909ba3820b690691d8a04635d9e5624d1578dd1"
   integrity sha512-XjGrCClF0935y5wLB9qNQQUVptNEy+0OloBstXlCd+IeNXLo3uNOod6cX4N0hofIhNIrN1Al8fwfay7R0Z1a2A==
