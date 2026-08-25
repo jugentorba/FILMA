@@ -1,12 +1,15 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { CONTINUE_WATCHING_MIN_SECONDS, isPlaybackComplete } from '../services/progress';
+import { automaticTvPlaylists, discoverOfficialMovieProviders } from '../services/sourceDiscovery';
 import type { CloudSyncAdapter } from '../services/sync';
 import { makeSyncEnvelope, mergeStates } from '../services/sync';
 import { loadState, saveState } from '../services/storage';
 import type { AddonSource, AppLanguage, AppMode, AppPreferences, AudioLanguage, FilmaState, MediaItem, MediaResumeSnapshot, PlaylistSource } from '../types';
 
 const DEVICE_KEY = 'filma.device.id';
+const AUTO_MOVIE_PREFIX = 'auto-stremio:';
+const AUTO_TV_PREFIX = 'auto-tv:';
 
 type PreferencePatch = Partial<Pick<AppPreferences, 'appLanguage' | 'preferredAudioLanguages'>>;
 
@@ -51,6 +54,10 @@ function resumeSnapshot(item: MediaItem): MediaResumeSnapshot {
     genres: item.genres,
     year: item.year,
   };
+}
+
+function sameSources<T>(current: T[], next: T[]): boolean {
+  return JSON.stringify(current) === JSON.stringify(next);
 }
 
 async function loadDeviceId(): Promise<string> {
@@ -98,6 +105,47 @@ export function FilmaProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (ready) void saveState(state);
   }, [ready, state]);
+
+  useEffect(() => {
+    if (!ready) return;
+    let cancelled = false;
+
+    void discoverOfficialMovieProviders().then(providers => {
+      if (cancelled) return;
+      const fallbackCatalog = providers.find(provider => provider.id === 'auto-stremio:com.linvo.cinemeta')
+        ?? providers.find(provider => provider.providesCatalog);
+
+      commitState(current => {
+        const configured = current.addons.filter(source => !source.id.startsWith(AUTO_MOVIE_PREFIX));
+        const automatic = configured.length === 0 && fallbackCatalog ? [fallbackCatalog] : [];
+        const nextAddons = [...configured, ...automatic];
+        if (sameSources(current.addons, nextAddons)) return current;
+        return { ...current, addons: nextAddons };
+      });
+    }).catch(() => undefined);
+
+    return () => { cancelled = true; };
+  }, [commitState, ready]);
+
+  useEffect(() => {
+    if (!ready) return;
+    const automatic = automaticTvPlaylists(
+      state.preferences.preferredAudioLanguages,
+      state.preferences.appLanguage,
+    );
+
+    commitState(current => {
+      const configured = current.playlists.filter(source => !source.id.startsWith(AUTO_TV_PREFIX));
+      const nextPlaylists = [...configured, ...automatic];
+      if (sameSources(current.playlists, nextPlaylists)) return current;
+      return { ...current, playlists: nextPlaylists };
+    });
+  }, [
+    commitState,
+    ready,
+    state.preferences.appLanguage,
+    state.preferences.preferredAudioLanguages,
+  ]);
 
   const setMode = useCallback((mode: AppMode) => {
     commitState(current => ({ ...current, mode }));
