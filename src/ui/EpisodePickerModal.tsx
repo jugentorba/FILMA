@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from 'react';
-import { Modal, Platform, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
+import React, { useMemo, useRef, useState } from 'react';
+import { FlatList, Modal, Platform, SafeAreaView, StyleSheet, Text, View } from 'react-native';
 import type { MediaItem } from '../types';
 import type { StremioVideo } from '../services/stremio';
 import { FocusButton } from './FocusButton';
@@ -18,6 +18,8 @@ function episodeLabel(video: StremioVideo): string {
 }
 
 export function EpisodePickerModal({ series, episodes, onChoose, onClose }: Props) {
+  const seasonListRef = useRef<FlatList<number>>(null);
+  const episodeListRef = useRef<FlatList<StremioVideo>>(null);
   const seasons = useMemo(() => {
     const values = new Set<number>();
     for (const video of episodes) {
@@ -53,22 +55,49 @@ export function EpisodePickerModal({ series, episodes, onChoose, onClose }: Prop
         </View>
 
         {seasons.length ? (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.seasonRow}>
-            {seasons.map(season => (
+          <FlatList
+            ref={seasonListRef}
+            horizontal
+            data={seasons}
+            keyExtractor={season => String(season)}
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.seasonRow}
+            onScrollToIndexFailed={({ index, averageItemLength }) => {
+              seasonListRef.current?.scrollToOffset({ offset: Math.max(0, index * averageItemLength), animated: true });
+            }}
+            renderItem={({ item: season, index }) => (
               <FocusButton
-                key={season}
                 compact
                 label={`Season ${season}`}
                 active={selectedSeason === season}
-                onPress={() => setSelectedSeason(season)}
+                preferredFocus={index === 0}
+                onFocus={() => {
+                  if (Platform.isTV) {
+                    seasonListRef.current?.scrollToIndex({ index, viewPosition: 0.3, animated: true });
+                  }
+                }}
+                onPress={() => {
+                  setSelectedSeason(season);
+                  episodeListRef.current?.scrollToOffset({ offset: 0, animated: false });
+                }}
               />
-            ))}
-          </ScrollView>
+            )}
+          />
         ) : null}
 
-        <ScrollView style={styles.episodes} contentContainerStyle={styles.episodeContent}>
-          {visible.map(video => (
-            <View key={video.id} style={styles.episodeRow}>
+        <FlatList
+          ref={episodeListRef}
+          style={styles.episodes}
+          contentContainerStyle={styles.episodeContent}
+          data={visible}
+          keyExtractor={video => video.id}
+          initialNumToRender={Platform.isTV ? 16 : 10}
+          windowSize={Platform.isTV ? 9 : 5}
+          onScrollToIndexFailed={({ index, averageItemLength }) => {
+            episodeListRef.current?.scrollToOffset({ offset: Math.max(0, index * averageItemLength), animated: true });
+          }}
+          renderItem={({ item: video, index }) => (
+            <View style={styles.episodeRow}>
               <View style={styles.episodeText}>
                 <Text style={styles.episodeTitle}>{episodeLabel(video)}</Text>
                 {video.overview ? <Text numberOfLines={2} style={styles.overview}>{video.overview}</Text> : null}
@@ -76,10 +105,22 @@ export function EpisodePickerModal({ series, episodes, onChoose, onClose }: Prop
                   <Text style={styles.released}>{new Date(video.released).toLocaleDateString()}</Text>
                 ) : null}
               </View>
-              <FocusButton compact label="Play" active onPress={() => onChoose(video)} />
+              <FocusButton
+                compact
+                label="Play"
+                active
+                preferredFocus={!seasons.length && index === 0}
+                accessibilityHint={episodeLabel(video)}
+                onFocus={() => {
+                  if (Platform.isTV) {
+                    episodeListRef.current?.scrollToIndex({ index, viewPosition: 0.46, animated: true });
+                  }
+                }}
+                onPress={() => onChoose(video)}
+              />
             </View>
-          ))}
-        </ScrollView>
+          )}
+        />
       </SafeAreaView>
     </Modal>
   );
