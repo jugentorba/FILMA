@@ -56,8 +56,37 @@ function resumeSnapshot(item: MediaItem): MediaResumeSnapshot {
   };
 }
 
-function sameSources<T>(current: T[], next: T[]): boolean {
-  return JSON.stringify(current) === JSON.stringify(next);
+function stripAutomaticSources(input: FilmaState): FilmaState {
+  const playlists = input.playlists.filter(source => !source.id.startsWith(AUTO_TV_PREFIX));
+  const addons = input.addons.filter(source => !source.id.startsWith(AUTO_MOVIE_PREFIX));
+  if (playlists.length === input.playlists.length && addons.length === input.addons.length) return input;
+  return { ...input, playlists, addons };
+}
+
+function appendRuntimeAddons(configured: AddonSource[], automatic: AddonSource[]): AddonSource[] {
+  const urls = new Set(configured.map(source => source.manifestUrl.trim().toLocaleLowerCase()));
+  return [
+    ...configured,
+    ...automatic.filter(source => {
+      const key = source.manifestUrl.trim().toLocaleLowerCase();
+      if (urls.has(key)) return false;
+      urls.add(key);
+      return true;
+    }),
+  ];
+}
+
+function appendRuntimePlaylists(configured: PlaylistSource[], automatic: PlaylistSource[]): PlaylistSource[] {
+  const urls = new Set(configured.map(source => source.url.trim().toLocaleLowerCase()));
+  return [
+    ...configured,
+    ...automatic.filter(source => {
+      const key = source.url.trim().toLocaleLowerCase();
+      if (urls.has(key)) return false;
+      urls.add(key);
+      return true;
+    }),
+  ];
 }
 
 async function loadDeviceId(): Promise<string> {
@@ -83,11 +112,12 @@ export function FilmaProvider({ children }: { children: React.ReactNode }) {
     playlists: [],
     addons: [],
   });
+  const [automaticMovieProviders, setAutomaticMovieProviders] = useState<AddonSource[]>([]);
   const stateRef = useRef(state);
 
   const commitState = useCallback((updater: (current: FilmaState) => FilmaState) => {
     setState(current => {
-      const next = updater(current);
+      const next = stripAutomaticSources(updater(current));
       stateRef.current = next;
       return next;
     });
@@ -95,8 +125,9 @@ export function FilmaProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     Promise.all([loadState(), loadDeviceId()]).then(([storedState, storedDeviceId]) => {
-      stateRef.current = storedState;
-      setState(storedState);
+      const cleanState = stripAutomaticSources(storedState);
+      stateRef.current = cleanState;
+      setState(cleanState);
       setDeviceId(storedDeviceId);
       setReady(true);
     });
@@ -114,38 +145,28 @@ export function FilmaProvider({ children }: { children: React.ReactNode }) {
       if (cancelled) return;
       const fallbackCatalog = providers.find(provider => provider.id === 'auto-stremio:com.linvo.cinemeta')
         ?? providers.find(provider => provider.providesCatalog);
-
-      commitState(current => {
-        const configured = current.addons.filter(source => !source.id.startsWith(AUTO_MOVIE_PREFIX));
-        const automatic = configured.length === 0 && fallbackCatalog ? [fallbackCatalog] : [];
-        const nextAddons = [...configured, ...automatic];
-        if (sameSources(current.addons, nextAddons)) return current;
-        return { ...current, addons: nextAddons };
-      });
-    }).catch(() => undefined);
+      setAutomaticMovieProviders(fallbackCatalog ? [fallbackCatalog] : []);
+    }).catch(() => {
+      if (!cancelled) setAutomaticMovieProviders([]);
+    });
 
     return () => { cancelled = true; };
-  }, [commitState, ready]);
+  }, [ready]);
 
-  useEffect(() => {
-    if (!ready) return;
-    const automatic = automaticTvPlaylists(
+  const effectiveState = useMemo<FilmaState>(() => {
+    const hasEnabledConfiguredMovieProvider = state.addons.some(source => source.enabled && !source.deletedAt);
+    const movieRuntime = hasEnabledConfiguredMovieProvider ? [] : automaticMovieProviders;
+    const tvRuntime = automaticTvPlaylists(
       state.preferences.preferredAudioLanguages,
       state.preferences.appLanguage,
     );
 
-    commitState(current => {
-      const configured = current.playlists.filter(source => !source.id.startsWith(AUTO_TV_PREFIX));
-      const nextPlaylists = [...configured, ...automatic];
-      if (sameSources(current.playlists, nextPlaylists)) return current;
-      return { ...current, playlists: nextPlaylists };
-    });
-  }, [
-    commitState,
-    ready,
-    state.preferences.appLanguage,
-    state.preferences.preferredAudioLanguages,
-  ]);
+    return {
+      ...state,
+      addons: appendRuntimeAddons(state.addons, movieRuntime),
+      playlists: appendRuntimePlaylists(state.playlists, tvRuntime),
+    };
+  }, [automaticMovieProviders, state]);
 
   const setMode = useCallback((mode: AppMode) => {
     commitState(current => ({ ...current, mode }));
@@ -298,11 +319,12 @@ export function FilmaProvider({ children }: { children: React.ReactNode }) {
 
   const syncWith = useCallback(async (adapter: CloudSyncAdapter) => {
     const remote = await adapter.pull();
-    const localAtStart = stateRef.current;
-    const merged = remote ? mergeStates(localAtStart, remote.state) : localAtStart;
+    const localAtStart = stripAutomaticSources(stateRef.current);
+    const remoteState = remote ? stripAutomaticSources(remote.state) : null;
+    const merged = remoteState ? mergeStates(localAtStart, remoteState) : localAtStart;
     await adapter.push(makeSyncEnvelope(merged));
 
-    const latestLocal = stateRef.current;
+    const latestLocal = stripAutomaticSources(stateRef.current);
     const finalState = latestLocal === localAtStart ? merged : mergeStates(latestLocal, merged);
     if (latestLocal !== localAtStart) {
       await adapter.push(makeSyncEnvelope(finalState));
@@ -315,7 +337,7 @@ export function FilmaProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo<FilmaContextValue>(() => ({
     ready,
     deviceId,
-    state,
+    state: effectiveState,
     setMode,
     updatePreferences,
     setAppLanguage,
@@ -335,6 +357,7 @@ export function FilmaProvider({ children }: { children: React.ReactNode }) {
     addPlaylist,
     clearAudioLanguages,
     deviceId,
+    effectiveState,
     ready,
     removeAddon,
     removePlaylist,
@@ -342,7 +365,6 @@ export function FilmaProvider({ children }: { children: React.ReactNode }) {
     setAppLanguage,
     setMode,
     setPlaylistEnabled,
-    state,
     syncWith,
     toggleAudioLanguage,
     toggleFavorite,
