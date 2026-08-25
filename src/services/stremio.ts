@@ -143,19 +143,40 @@ export function catalogSupportsSearch(catalog: StremioCatalog): boolean {
 export function catalogLanguageExtra(
   catalog: StremioCatalog,
   preferredAudioLanguages: AudioLanguage[],
+  referenceYear = new Date().getFullYear(),
 ): Record<string, string> {
-  if (!preferredAudioLanguages.length) return {};
-  const languageExtra = catalog.extra?.find(extra => {
-    const name = extra.name.toLocaleLowerCase().replace(/[_-]/g, '');
-    return ['language', 'lang', 'audio', 'audiolanguage'].includes(name);
-  });
-  if (!languageExtra) return {};
+  const resolved: Record<string, string> = {};
 
-  for (const language of preferredAudioLanguages) {
-    const option = optionForLanguage(languageExtra.options, language);
-    if (option) return { [languageExtra.name]: option };
+  if (preferredAudioLanguages.length) {
+    const languageExtra = catalog.extra?.find(extra => {
+      const name = extra.name.toLocaleLowerCase().replace(/[_-]/g, '');
+      return ['language', 'lang', 'audio', 'audiolanguage'].includes(name);
+    });
+
+    if (languageExtra) {
+      for (const language of preferredAudioLanguages) {
+        const option = optionForLanguage(languageExtra.options, language);
+        if (option) {
+          resolved[languageExtra.name] = option;
+          break;
+        }
+      }
+    }
   }
-  return {};
+
+  if (catalog.id.toLocaleLowerCase() === 'year') {
+    const currentYear = String(referenceYear);
+    const yearExtra = catalog.extra?.find(extra =>
+      Boolean(extra.isRequired)
+      && ['genre', 'year'].includes(extra.name.toLocaleLowerCase())
+      && Boolean(extra.options?.includes(currentYear)),
+    );
+    if (yearExtra && resolved[yearExtra.name] === undefined) {
+      resolved[yearExtra.name] = currentYear;
+    }
+  }
+
+  return resolved;
 }
 
 export function catalogCanLoadWithoutSearch(
