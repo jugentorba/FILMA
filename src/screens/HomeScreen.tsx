@@ -23,9 +23,12 @@ type Props = {
   onOpenSettings(): void;
 };
 
+type BrowseMode = 'all' | 'movie' | 'series';
+
 type CatalogRow = {
   key: string;
   title: string;
+  mediaType: 'movie' | 'series';
   items: MediaItem[];
 };
 
@@ -42,12 +45,47 @@ type MediaRowProps = {
   onSelect(item: MediaItem): void;
 };
 
+const MAX_CATALOG_ROWS = 14;
+const CATALOGS_PER_TYPE = 3;
+
 function dedupe(items: MediaItem[]): MediaItem[] {
   const unique = new Map<string, MediaItem>();
   for (const item of items) {
     if (!unique.has(item.id)) unique.set(item.id, item);
   }
   return [...unique.values()];
+}
+
+function itemMediaType(item: MediaItem): 'movie' | 'series' | undefined {
+  if (item.source?.kind === 'stremio') {
+    return item.source.mediaType === 'series' ? 'series' : 'movie';
+  }
+  if (item.source?.kind === 'youtube') return 'movie';
+  return undefined;
+}
+
+function matchesBrowseMode(item: MediaItem, mode: BrowseMode): boolean {
+  if (mode === 'all') return true;
+  return itemMediaType(item) === mode;
+}
+
+function pickBrowseCatalogs(catalogs: StremioCatalog[], preferredAudioLanguages: FilmaState['preferences']['preferredAudioLanguages']): StremioCatalog[] {
+  const loadable = catalogs.filter(catalog => catalogCanLoadWithoutSearch(catalog, preferredAudioLanguages));
+  const movies = loadable.filter(catalog => catalog.type === 'movie').slice(0, CATALOGS_PER_TYPE);
+  const series = loadable.filter(catalog => catalog.type === 'series').slice(0, CATALOGS_PER_TYPE);
+  const chosen = [...movies, ...series];
+  const chosenKeys = new Set(chosen.map(catalog => `${catalog.type}:${catalog.id}`));
+
+  for (const catalog of loadable) {
+    if (chosen.length >= CATALOGS_PER_TYPE * 2) break;
+    const key = `${catalog.type}:${catalog.id}`;
+    if (!chosenKeys.has(key)) {
+      chosen.push(catalog);
+      chosenKeys.add(key);
+    }
+  }
+
+  return chosen;
 }
 
 function MediaRow({ title, data, state, onSelect }: MediaRowProps) {
@@ -57,7 +95,9 @@ function MediaRow({ title, data, state, onSelect }: MediaRowProps) {
     <View style={styles.section}>
       <View style={styles.sectionHeading}>
         <Text style={styles.sectionTitle}>{title}</Text>
-        <Text style={styles.sectionCount}>{data.length}</Text>
+        <View style={styles.sectionCountBadge}>
+          <Text style={styles.sectionCount}>{data.length}</Text>
+        </View>
       </View>
       <FlatList
         ref={listRef}
@@ -67,6 +107,7 @@ function MediaRow({ title, data, state, onSelect }: MediaRowProps) {
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.rowContent}
         initialNumToRender={Platform.isTV ? 10 : 6}
+        windowSize={7}
         onScrollToIndexFailed={({ index, averageItemLength }) => {
           listRef.current?.scrollToOffset({ offset: Math.max(0, index * averageItemLength), animated: true });
         }}
@@ -98,10 +139,21 @@ export function HomeScreen({ onSelect, onOpenYouTubeVideo, onOpenSettings }: Pro
   const [addonError, setAddonError] = useState<string>();
   const [reloadVersion, setReloadVersion] = useState(0);
   const [query, setQuery] = useState('');
+  const [browseMode, setBrowseMode] = useState<BrowseMode>('all');
   const [remoteResults, setRemoteResults] = useState<MediaItem[]>([]);
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState<string>();
   const [albanianArchiveVideos, setAlbanianArchiveVideos] = useState<YouTubeVideo[]>([]);
+
+  const browseCopy = useMemo(() => {
+    if (state.preferences.appLanguage === 'fr') {
+      return { all: 'Tout', movies: 'Films', series: 'Séries', explore: 'Explorer', progress: 'regardé' };
+    }
+    if (state.preferences.appLanguage === 'sq') {
+      return { all: 'Të gjitha', movies: 'Filma', series: 'Seriale', explore: 'Shfleto', progress: 'parë' };
+    }
+    return { all: 'All', movies: 'Movies', series: 'Series', explore: 'Explore', progress: 'watched' };
+  }, [state.preferences.appLanguage]);
 
   const configuredAddons = useMemo(
     () => state.addons.filter(item => !item.deletedAt),
@@ -127,25 +179,21 @@ export function HomeScreen({ onSelect, onOpenYouTubeVideo, onOpenSettings }: Pro
 
       setLoadingAddons(true);
       setAddonError(undefined);
-      const rows: CatalogRow[] = [];
-      const targets: SearchTarget[] = [];
 
-      for (const addon of activeAddons) {
+      const providerResults = await Promise.all(activeAddons.map(async addon => {
         try {
           const manifest = await fetchManifest(addon.manifestUrl);
           const catalogs = (manifest.catalogs ?? []).filter(catalog => catalog.type === 'movie' || catalog.type === 'series');
+          const targets = catalogs
+            .filter(catalogSupportsSearch)
+            .map(catalog => ({
+              key: `${addon.id}:${catalog.type}:${catalog.id}`,
+              manifestUrl: addon.manifestUrl,
+              catalog,
+            } satisfies SearchTarget));
 
-          catalogs.forEach(catalog => {
-            if (catalogSupportsSearch(catalog)) {
-              targets.push({ key: `${addon.id}:${catalog.type}:${catalog.id}`, manifestUrl: addon.manifestUrl, catalog });
-            }
-          });
-
-          const browseCatalogs = catalogs
-            .filter(catalog => catalogCanLoadWithoutSearch(catalog, state.preferences.preferredAudioLanguages))
-            .slice(0, 4);
-
-          for (const catalog of browseCatalogs) {
+          const browseCatalogs = pickBrowseCatalogs(catalogs, state.preferences.preferredAudioLanguages);
+          const rows = await Promise.all(browseCatalogs.map(async catalog => {
             try {
               const items = await fetchCatalog(
                 addon.manifestUrl,
@@ -153,23 +201,31 @@ export function HomeScreen({ onSelect, onOpenYouTubeVideo, onOpenSettings }: Pro
                 catalog.id,
                 catalogLanguageExtra(catalog, state.preferences.preferredAudioLanguages),
               );
-              if (items.length) {
-                rows.push({
-                  key: `${addon.id}:${catalog.type}:${catalog.id}`,
-                  title: catalog.name || manifest.name,
-                  items: dedupe(items),
-                });
-              }
+              if (!items.length) return null;
+              const typeLabel = catalog.type === 'series' ? browseCopy.series : browseCopy.movies;
+              return {
+                key: `${addon.id}:${catalog.type}:${catalog.id}`,
+                title: `${catalog.name || manifest.name} · ${typeLabel}`,
+                mediaType: catalog.type as 'movie' | 'series',
+                items: dedupe(items),
+              } satisfies CatalogRow;
             } catch {
-              // One failed catalog should not hide other working catalogs.
+              return null;
             }
-          }
+          }));
+
+          return {
+            rows: rows.filter((row): row is CatalogRow => row !== null),
+            targets,
+          };
         } catch {
-          // Continue loading the remaining enabled sources.
+          return { rows: [] as CatalogRow[], targets: [] as SearchTarget[] };
         }
-      }
+      }));
 
       if (!cancelled) {
+        const rows = providerResults.flatMap(result => result.rows).slice(0, MAX_CATALOG_ROWS);
+        const targets = providerResults.flatMap(result => result.targets);
         setAddonRows(rows);
         setSearchTargets(targets);
         if (!rows.length) setAddonError(text.sourceLoadError);
@@ -179,7 +235,7 @@ export function HomeScreen({ onSelect, onOpenYouTubeVideo, onOpenSettings }: Pro
 
     void load();
     return () => { cancelled = true; };
-  }, [activeAddons, reloadVersion, state.preferences.preferredAudioLanguages, text.sourceLoadError]);
+  }, [activeAddons, browseCopy.movies, browseCopy.series, reloadVersion, state.preferences.preferredAudioLanguages, text.sourceLoadError]);
 
   useEffect(() => {
     if (!youtubeConfigured()) {
@@ -230,33 +286,44 @@ export function HomeScreen({ onSelect, onOpenYouTubeVideo, onOpenSettings }: Pro
     return dedupe([...resumeItems, ...albanianArchiveItems, ...addonRows.flatMap(row => row.items)]);
   }, [addonRows, albanianArchiveItems, state.progress]);
 
+  const filteredLoadedItems = useMemo(
+    () => allLoadedItems.filter(item => matchesBrowseMode(item, browseMode)),
+    [allLoadedItems, browseMode],
+  );
+
+  const filteredAddonRows = useMemo(
+    () => addonRows.filter(row => browseMode === 'all' || row.mediaType === browseMode),
+    [addonRows, browseMode],
+  );
+
   const continueWatching = useMemo(
-    () => allLoadedItems
+    () => filteredLoadedItems
       .filter(item => shouldShowInContinueWatching(state.progress[item.id]))
       .sort((a, b) => new Date(state.progress[b.id].updatedAt).getTime() - new Date(state.progress[a.id].updatedAt).getTime()),
-    [allLoadedItems, state.progress],
+    [filteredLoadedItems, state.progress],
   );
 
   const favorites = useMemo(
-    () => allLoadedItems.filter(item => {
+    () => filteredLoadedItems.filter(item => {
       const favorite = state.favorites[item.id];
       return Boolean(favorite && !favorite.deletedAt);
     }),
-    [allLoadedItems, state.favorites],
+    [filteredLoadedItems, state.favorites],
   );
 
   const localSearchResults = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase();
     if (!needle) return [];
-    return allLoadedItems.filter(item => {
+    return filteredLoadedItems.filter(item => {
       const haystack = [item.title, item.subtitle, ...(item.genres ?? [])].filter(Boolean).join(' ').toLocaleLowerCase();
       return haystack.includes(needle);
     });
-  }, [allLoadedItems, query]);
+  }, [filteredLoadedItems, query]);
 
   useEffect(() => {
     const needle = query.trim();
-    if (needle.length < 2 || !searchTargets.length) {
+    const eligibleTargets = searchTargets.filter(target => browseMode === 'all' || target.catalog.type === browseMode);
+    if (needle.length < 2 || !eligibleTargets.length) {
       setRemoteResults([]);
       setSearching(false);
       setSearchError(undefined);
@@ -267,7 +334,7 @@ export function HomeScreen({ onSelect, onOpenYouTubeVideo, onOpenSettings }: Pro
     const timer = setTimeout(() => {
       setSearching(true);
       setSearchError(undefined);
-      void Promise.all(searchTargets.map(async target => {
+      void Promise.all(eligibleTargets.map(async target => {
         try {
           return await fetchCatalog(
             target.manifestUrl,
@@ -283,7 +350,9 @@ export function HomeScreen({ onSelect, onOpenYouTubeVideo, onOpenSettings }: Pro
         }
       })).then(results => {
         if (cancelled) return;
-        const merged = dedupe(results.flat()).slice(0, 80);
+        const merged = dedupe(results.flat())
+          .filter(item => matchesBrowseMode(item, browseMode))
+          .slice(0, 80);
         setRemoteResults(merged);
         if (!merged.length && !localSearchResults.length) setSearchError(text.searchSourceError);
         setSearching(false);
@@ -294,11 +363,17 @@ export function HomeScreen({ onSelect, onOpenYouTubeVideo, onOpenSettings }: Pro
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [localSearchResults.length, query, searchTargets, state.preferences.preferredAudioLanguages, text.searchSourceError]);
+  }, [browseMode, localSearchResults.length, query, searchTargets, state.preferences.preferredAudioLanguages, text.searchSourceError]);
 
   const searchResults = useMemo(() => dedupe([...remoteResults, ...localSearchResults]), [remoteResults, localSearchResults]);
-  const hero = continueWatching[0] ?? addonRows[0]?.items[0] ?? null;
-  const heroCanContinue = hero ? shouldShowInContinueWatching(state.progress[hero.id]) : false;
+  const hero = continueWatching[0] ?? filteredAddonRows[0]?.items[0] ?? favorites[0] ?? null;
+  const heroProgress = hero ? state.progress[hero.id] : undefined;
+  const heroCanContinue = hero ? shouldShowInContinueWatching(heroProgress) : false;
+  const heroProgressRatio = heroProgress?.durationSeconds
+    ? Math.min(1, Math.max(0, heroProgress.positionSeconds / heroProgress.durationSeconds))
+    : 0;
+  const heroType = hero ? itemMediaType(hero) : undefined;
+  const heroTypeLabel = heroType === 'series' ? browseCopy.series : heroType === 'movie' ? browseCopy.movies : 'FILMA';
   const audioSummary = state.preferences.preferredAudioLanguages.length
     ? state.preferences.preferredAudioLanguages.map(language => audioLanguageLabel(language, state.preferences.appLanguage)).join(' · ')
     : text.anyLanguage;
@@ -324,11 +399,22 @@ export function HomeScreen({ onSelect, onOpenYouTubeVideo, onOpenSettings }: Pro
         <ImageBackground source={hero.backdrop ? { uri: hero.backdrop } : undefined} style={styles.hero} imageStyle={styles.heroImage}>
           <View style={styles.heroShade} />
           <View style={styles.heroContent}>
-            <Text style={styles.eyebrow}>{text.homeEyebrow}</Text>
+            <View style={styles.heroBadgeRow}>
+              <View style={styles.heroTypeBadge}><Text style={styles.heroTypeText}>{heroTypeLabel.toUpperCase()}</Text></View>
+              <Text style={styles.eyebrow}>{text.homeEyebrow}</Text>
+            </View>
             <Text numberOfLines={2} style={styles.heroTitle}>{hero.title}</Text>
             <Text numberOfLines={2} style={styles.heroMeta}>
               {[hero.year, hero.genres?.slice(0, 3).join('  •  ')].filter(Boolean).join('   ') || hero.subtitle || 'FILMA'}
             </Text>
+            {heroProgressRatio > 0 ? (
+              <View style={styles.heroProgressBlock}>
+                <View style={styles.heroProgressTrack}>
+                  <View style={[styles.heroProgressFill, { width: `${Math.round(heroProgressRatio * 100)}%` }]} />
+                </View>
+                <Text style={styles.heroProgressText}>{Math.round(heroProgressRatio * 100)}% {browseCopy.progress}</Text>
+              </View>
+            ) : null}
             <View style={styles.heroActions}>
               <FocusButton
                 label={`▶ ${heroCanContinue ? text.continue : text.play}`}
@@ -365,6 +451,15 @@ export function HomeScreen({ onSelect, onOpenYouTubeVideo, onOpenSettings }: Pro
         </View>
       )}
 
+      <View style={styles.exploreArea}>
+        <Text style={styles.exploreLabel}>{browseCopy.explore}</Text>
+        <View style={styles.browseButtons}>
+          <FocusButton compact label={browseCopy.all} active={browseMode === 'all'} onPress={() => setBrowseMode('all')} />
+          <FocusButton compact label={browseCopy.movies} active={browseMode === 'movie'} onPress={() => setBrowseMode('movie')} />
+          <FocusButton compact label={browseCopy.series} active={browseMode === 'series'} onPress={() => setBrowseMode('series')} />
+        </View>
+      </View>
+
       <View style={styles.searchArea}>
         <View style={styles.searchShell}>
           <Text style={styles.searchIcon}>⌕</Text>
@@ -399,7 +494,7 @@ export function HomeScreen({ onSelect, onOpenYouTubeVideo, onOpenSettings }: Pro
         <>
           {continueWatching.length ? <MediaRow title={text.continueWatching} data={continueWatching} state={state} onSelect={onSelect} /> : null}
           {favorites.length ? <MediaRow title={text.favorites} data={favorites} state={state} onSelect={onSelect} /> : null}
-          {albanianArchiveItems.length ? (
+          {browseMode !== 'series' && albanianArchiveItems.length ? (
             <MediaRow
               title={albanianArchiveTitle}
               data={albanianArchiveItems}
@@ -410,7 +505,7 @@ export function HomeScreen({ onSelect, onOpenYouTubeVideo, onOpenSettings }: Pro
               }}
             />
           ) : null}
-          {addonRows.map(catalog => <MediaRow key={catalog.key} title={catalog.title} data={catalog.items} state={state} onSelect={onSelect} />)}
+          {filteredAddonRows.map(catalog => <MediaRow key={catalog.key} title={catalog.title} data={catalog.items} state={state} onSelect={onSelect} />)}
         </>
       )}
 
@@ -428,21 +523,31 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: theme.background },
   content: { paddingBottom: Platform.isTV ? 90 : 118 },
   hero: {
-    minHeight: Platform.isTV ? 500 : 390,
+    minHeight: Platform.isTV ? 530 : 410,
     justifyContent: 'flex-end',
     backgroundColor: '#10131d',
   },
-  heroImage: { opacity: 0.78 },
+  heroImage: { opacity: 0.8 },
   heroShade: {
     ...StyleSheet.absoluteFill,
-    backgroundColor: Platform.isTV ? 'rgba(7,9,15,0.42)' : 'rgba(7,9,15,0.55)',
+    backgroundColor: Platform.isTV ? 'rgba(7,9,15,0.45)' : 'rgba(7,9,15,0.58)',
   },
   heroContent: {
     paddingHorizontal: Platform.isTV ? 64 : 20,
-    paddingBottom: Platform.isTV ? 54 : 34,
-    paddingTop: Platform.isTV ? 120 : 80,
+    paddingBottom: Platform.isTV ? 58 : 36,
+    paddingTop: Platform.isTV ? 130 : 90,
     maxWidth: Platform.isTV ? 940 : undefined,
   },
+  heroBadgeRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  heroTypeBadge: {
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: 7,
+    backgroundColor: 'rgba(5,8,14,0.78)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
+  },
+  heroTypeText: { color: '#f6f8fb', fontSize: 10, fontWeight: '900', letterSpacing: 1 },
   emptyHero: {
     minHeight: Platform.isTV ? 430 : 340,
     paddingHorizontal: Platform.isTV ? 64 : 22,
@@ -456,19 +561,30 @@ const styles = StyleSheet.create({
   eyebrow: { color: theme.accent, fontWeight: '900', letterSpacing: 2.4, fontSize: 12 },
   heroTitle: {
     color: theme.text,
-    fontSize: Platform.isTV ? 58 : 38,
-    lineHeight: Platform.isTV ? 64 : 44,
+    fontSize: Platform.isTV ? 60 : 40,
+    lineHeight: Platform.isTV ? 66 : 46,
     fontWeight: '900',
-    marginTop: 12,
+    marginTop: 13,
     maxWidth: 820,
+    letterSpacing: -1.2,
   },
   heroMeta: { color: '#d8deea', marginTop: 12, fontSize: Platform.isTV ? 18 : 14, fontWeight: '700' },
+  heroProgressBlock: { width: Platform.isTV ? 420 : '82%', maxWidth: 420, marginTop: 18 },
+  heroProgressTrack: { height: 5, borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.28)', overflow: 'hidden' },
+  heroProgressFill: { height: '100%', borderRadius: 999, backgroundColor: theme.accent },
+  heroProgressText: { color: '#d6dce7', fontSize: 11, fontWeight: '800', marginTop: 6 },
   heroActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 24 },
   emptyTitle: { color: theme.text, fontSize: Platform.isTV ? 48 : 34, lineHeight: Platform.isTV ? 54 : 40, fontWeight: '900', marginTop: 12 },
   emptyText: { color: theme.muted, maxWidth: 720, fontSize: Platform.isTV ? 19 : 16, lineHeight: Platform.isTV ? 28 : 24, marginTop: 12 },
+  exploreArea: {
+    paddingHorizontal: Platform.isTV ? 64 : 20,
+    paddingTop: Platform.isTV ? 28 : 22,
+  },
+  exploreLabel: { color: theme.text, fontSize: Platform.isTV ? 22 : 18, fontWeight: '900', marginBottom: 10 },
+  browseButtons: { flexDirection: 'row', flexWrap: 'wrap', gap: 9 },
   searchArea: {
     paddingHorizontal: Platform.isTV ? 64 : 20,
-    paddingTop: Platform.isTV ? 30 : 22,
+    paddingTop: 16,
     flexDirection: Platform.isTV ? 'row' : 'column',
     gap: 12,
     alignItems: Platform.isTV ? 'center' : 'stretch',
@@ -499,10 +615,11 @@ const styles = StyleSheet.create({
   },
   audioChipLabel: { color: theme.muted, fontSize: 11, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1.1 },
   audioChipValue: { color: theme.text, marginTop: 3, fontWeight: '800' },
-  section: { paddingTop: Platform.isTV ? 36 : 30 },
-  sectionHeading: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: Platform.isTV ? 64 : 20, marginBottom: 16 },
-  sectionTitle: { color: theme.text, fontSize: Platform.isTV ? 27 : 22, fontWeight: '900' },
-  sectionCount: { color: theme.muted, fontSize: 13, fontWeight: '800' },
+  section: { paddingTop: Platform.isTV ? 34 : 28 },
+  sectionHeading: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: Platform.isTV ? 64 : 20, marginBottom: 14 },
+  sectionTitle: { color: theme.text, fontSize: Platform.isTV ? 27 : 22, fontWeight: '900', letterSpacing: -0.3 },
+  sectionCountBadge: { minWidth: 28, height: 24, borderRadius: 12, paddingHorizontal: 7, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.surfaceRaised },
+  sectionCount: { color: theme.muted, fontSize: 12, fontWeight: '900' },
   rowContent: { paddingLeft: Platform.isTV ? 64 : 20, paddingRight: Platform.isTV ? 40 : 8 },
   loadingRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: Platform.isTV ? 64 : 20, paddingTop: 30 },
   loadingText: { color: theme.muted, fontWeight: '700' },
