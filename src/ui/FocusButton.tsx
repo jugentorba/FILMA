@@ -1,24 +1,43 @@
 import React, { useState } from 'react';
-import { Platform, Pressable, StyleSheet, Text, ViewStyle } from 'react-native';
+import { Platform, Pressable, StyleProp, StyleSheet, Text, ViewStyle } from 'react-native';
 import { theme } from './theme';
 
 type Props = {
   label: string;
   onPress(): void;
+  onFocus?(): void;
   active?: boolean;
   compact?: boolean;
-  style?: ViewStyle;
+  preferredFocus?: boolean;
+  accessibilityHint?: string;
+  style?: StyleProp<ViewStyle>;
 };
 
-export function FocusButton({ label, onPress, active = false, compact = false, style }: Props) {
+export function FocusButton({
+  label,
+  onPress,
+  onFocus,
+  active = false,
+  compact = false,
+  preferredFocus = false,
+  accessibilityHint,
+  style,
+}: Props) {
   const [focused, setFocused] = useState(false);
   const highlighted = active || focused;
 
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityHint={accessibilityHint}
+      accessibilityState={{ selected: active }}
+      hasTVPreferredFocus={Platform.isTV && preferredFocus}
       onPress={onPress}
-      onFocus={() => setFocused(true)}
+      onFocus={() => {
+        setFocused(true);
+        onFocus?.();
+      }}
       onBlur={() => setFocused(false)}
       style={[
         styles.base,
@@ -56,6 +75,7 @@ const styles = StyleSheet.create({
   },
   tvFocused: {
     transform: [{ scale: 1.08 }],
+    borderWidth: 3,
   },
   text: {
     color: theme.text,
