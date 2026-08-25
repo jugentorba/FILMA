@@ -1,4 +1,5 @@
 import * as AuthSession from 'expo-auth-session';
+import * as Crypto from 'expo-crypto';
 import * as SecureStore from 'expo-secure-store';
 import * as WebBrowser from 'expo-web-browser';
 import { Platform } from 'react-native';
@@ -21,6 +22,12 @@ type StoredToken = {
   scope?: string;
 };
 
+export type DropboxTvPairing = {
+  authorizeUrl: string;
+  codeVerifier: string;
+  createdAt: number;
+};
+
 function assertConfigured(): string {
   if (!DROPBOX_CLIENT_ID) {
     throw new Error('Dropbox is not configured in this FILMA build. Set EXPO_PUBLIC_DROPBOX_APP_KEY before building.');
@@ -30,6 +37,14 @@ function assertConfigured(): string {
 
 function redirectUri(): string {
   return AuthSession.makeRedirectUri({ scheme: 'filma', path: 'dropbox-auth' });
+}
+
+function randomVerifier(): string {
+  return Array.from(Crypto.getRandomBytes(48), byte => byte.toString(16).padStart(2, '0')).join('');
+}
+
+function base64Url(value: string): string {
+  return value.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
 }
 
 async function loadStoredToken(): Promise<StoredToken | null> {
@@ -76,10 +91,8 @@ export async function hasDropboxSession(): Promise<boolean> {
 export async function connectDropbox(): Promise<void> {
   const clientId = assertConfigured();
 
-  // tvOS does not provide the browser-based OAuth experience used on phones.
-  // Keep the auth transport out of the TV UI until the pairing-code flow is attached.
-  if (Platform.isTV && Platform.OS === 'ios') {
-    throw new Error('Apple TV uses FILMA device pairing for Dropbox. Connect Dropbox from a phone first.');
+  if (Platform.isTV) {
+    throw new Error('Use FILMA TV pairing to connect Dropbox on a television.');
   }
 
   const request = new AuthSession.AuthRequest({
@@ -115,6 +128,73 @@ export async function connectDropbox(): Promise<void> {
   }, discovery);
 
   await saveToken(token);
+}
+
+export async function beginDropboxTvPairing(): Promise<DropboxTvPairing> {
+  const clientId = assertConfigured();
+  const codeVerifier = randomVerifier();
+  const challenge = base64Url(await Crypto.digestStringAsync(
+    Crypto.CryptoDigestAlgorithm.SHA256,
+    codeVerifier,
+    { encoding: Crypto.CryptoEncoding.BASE64 },
+  ));
+
+  const authorizeUrl = [
+    'https://www.dropbox.com/oauth2/authorize',
+    `?client_id=${encodeURIComponent(clientId)}`,
+    '&response_type=code',
+    `&code_challenge=${encodeURIComponent(challenge)}`,
+    '&code_challenge_method=S256',
+    '&token_access_type=offline',
+    '&scope=files.content.read%20files.content.write',
+  ].join('');
+
+  return {
+    authorizeUrl,
+    codeVerifier,
+    createdAt: Date.now(),
+  };
+}
+
+export async function completeDropboxTvPairing(code: string, pairing: DropboxTvPairing): Promise<void> {
+  const clientId = assertConfigured();
+  const trimmedCode = code.trim();
+  if (!trimmedCode) throw new Error('Enter the Dropbox authorization code.');
+  if (Date.now() - pairing.createdAt > 10 * 60 * 1000) {
+    throw new Error('This pairing request is too old. Start Dropbox pairing again.');
+  }
+
+  const response = await fetch(discovery.tokenEndpoint!, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: [
+      `code=${encodeURIComponent(trimmedCode)}`,
+      'grant_type=authorization_code',
+      `client_id=${encodeURIComponent(clientId)}`,
+      `code_verifier=${encodeURIComponent(pairing.codeVerifier)}`,
+    ].join('&'),
+  });
+
+  const payload = await response.json() as {
+    access_token?: string;
+    refresh_token?: string;
+    expires_in?: number;
+    scope?: string;
+    error?: string;
+    error_description?: string;
+  };
+
+  if (!response.ok || !payload.access_token) {
+    throw new Error(payload.error_description || payload.error || `Dropbox pairing failed (HTTP ${response.status}).`);
+  }
+
+  await saveToken(new AuthSession.TokenResponse({
+    accessToken: payload.access_token,
+    refreshToken: payload.refresh_token,
+    expiresIn: payload.expires_in,
+    scope: payload.scope,
+    issuedAt: Math.floor(Date.now() / 1000),
+  }));
 }
 
 export async function getDropboxAccessToken(): Promise<string> {
