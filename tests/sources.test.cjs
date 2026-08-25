@@ -10,6 +10,9 @@ const {
   catalogLanguageExtra,
   rankStreamsByPreferredAudio,
 } = require('../.sync-test-build/services/stremio.js');
+const {
+  validatePlaybackManifest,
+} = require('../.sync-test-build/services/addonValidation.js');
 
 const stamp = '2026-08-25T00:00:00.000Z';
 
@@ -63,6 +66,50 @@ function playlist(id, name, url) {
   };
   assert.deepEqual(catalogLanguageExtra(catalog, ['fr']), { language: 'Français' });
   assert.equal(catalogCanLoadWithoutSearch(catalog, ['fr']), true);
+}
+
+{
+  const validation = validatePlaybackManifest({
+    id: 'example.direct',
+    name: ' Example Direct ',
+    version: '1.0.0',
+    resources: ['catalog', 'stream'],
+    types: ['movie', 'series'],
+  });
+  assert.deepEqual(validation, { valid: true, name: 'Example Direct' });
+}
+
+{
+  const validation = validatePlaybackManifest({
+    id: 'example.catalog-only',
+    name: 'Catalog only',
+    version: '1.0.0',
+    resources: ['catalog', 'meta'],
+    types: ['movie'],
+  });
+  assert.deepEqual(validation, { valid: false, reason: 'no-stream-resource' });
+}
+
+{
+  const validation = validatePlaybackManifest({
+    id: 'example.channels',
+    name: 'Channels',
+    version: '1.0.0',
+    resources: [{ name: 'stream', types: ['channel'] }],
+    types: ['channel'],
+  });
+  assert.deepEqual(validation, { valid: false, reason: 'unsupported-media-type' });
+}
+
+{
+  const validation = validatePlaybackManifest({
+    id: '',
+    name: 'Broken',
+    version: '1.0.0',
+    resources: ['stream'],
+    types: ['movie'],
+  });
+  assert.deepEqual(validation, { valid: false, reason: 'invalid-manifest' });
 }
 
 {
