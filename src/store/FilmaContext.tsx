@@ -2,8 +2,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { deleteXtreamCredentials, saveXtreamCredentials, validateXtreamAccount } from '../services/iptvAuth';
 import { deleteLocalPlaylistFile } from '../services/localPlaylist';
+import { DEFAULT_PROFILE_ID, favoritesForProfile, profileMediaKey, progressForProfile } from '../services/profiles';
 import { CONTINUE_WATCHING_MIN_SECONDS, isPlaybackComplete } from '../services/progress';
 import { automaticTvPlaylists, discoverOfficialMovieProviders } from '../services/sourceDiscovery';
+import { defaultState } from '../services/stateSchema';
 import type { CloudSyncAdapter } from '../services/sync';
 import { makeSyncEnvelope, mergeStates } from '../services/sync';
 import { loadState, saveState } from '../services/storage';
@@ -20,6 +22,10 @@ type FilmaContextValue = {
   deviceId: string;
   state: FilmaState;
   setMode(mode: AppMode): void;
+  setActiveProfile(id: string): void;
+  addProfile(name: string): void;
+  renameProfile(id: string, name: string): void;
+  removeProfile(id: string): void;
   updatePreferences(patch: PreferencePatch): void;
   setAppLanguage(language: AppLanguage): void;
   toggleAudioLanguage(language: AudioLanguage): void;
@@ -46,6 +52,18 @@ function makeId(prefix: string): string {
 
 function now(): string {
   return new Date().toISOString();
+}
+
+function freshDefaultState(): FilmaState {
+  return {
+    ...defaultState,
+    profiles: defaultState.profiles.map(profile => ({ ...profile })),
+    preferences: { ...defaultState.preferences, preferredAudioLanguages: [...defaultState.preferences.preferredAudioLanguages] },
+    progress: {},
+    favorites: {},
+    playlists: [],
+    addons: [],
+  };
 }
 
 function resumeSnapshot(item: MediaItem): MediaResumeSnapshot {
@@ -123,19 +141,7 @@ async function loadDeviceId(): Promise<string> {
 export function FilmaProvider({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
   const [deviceId, setDeviceId] = useState('pending');
-  const [state, setState] = useState<FilmaState>({
-    mode: 'movies',
-    preferences: {
-      appLanguage: 'en',
-      preferredAudioLanguages: [],
-      interfaceDensity: 'compact',
-      updatedAt: '1970-01-01T00:00:00.000Z',
-    },
-    progress: {},
-    favorites: {},
-    playlists: [],
-    addons: [],
-  });
+  const [state, setState] = useState<FilmaState>(freshDefaultState);
   const [automaticMovieProviders, setAutomaticMovieProviders] = useState<AddonSource[]>([]);
   const stateRef = useRef(state);
 
@@ -178,9 +184,6 @@ export function FilmaProvider({ children }: { children: React.ReactNode }) {
   }, [ready]);
 
   const effectiveState = useMemo<FilmaState>(() => {
-    // Cinemeta stays active as FILMA's stable catalog/metadata source even when
-    // additional providers are configured. Playback resolution remains separate
-    // and can use any compatible stream-capable provider.
     const movieRuntime = automaticMovieProviders;
     const tvRuntime = automaticTvPlaylists(
       state.preferences.preferredAudioLanguages,
@@ -189,6 +192,8 @@ export function FilmaProvider({ children }: { children: React.ReactNode }) {
 
     return {
       ...state,
+      progress: progressForProfile(state.progress, state.activeProfileId),
+      favorites: favoritesForProfile(state.favorites, state.activeProfileId),
       addons: appendRuntimeAddons(state.addons, movieRuntime),
       playlists: appendRuntimePlaylists(state.playlists, tvRuntime),
     };
@@ -196,6 +201,52 @@ export function FilmaProvider({ children }: { children: React.ReactNode }) {
 
   const setMode = useCallback((mode: AppMode) => {
     commitState(current => ({ ...current, mode }));
+  }, [commitState]);
+
+  const setActiveProfile = useCallback((id: string) => {
+    commitState(current => current.profiles.some(profile => profile.id === id && !profile.deletedAt)
+      ? { ...current, activeProfileId: id }
+      : current);
+  }, [commitState]);
+
+  const addProfile = useCallback((name: string) => {
+    const cleanName = name.trim();
+    if (!cleanName) return;
+    const at = now();
+    const id = makeId('profile');
+    commitState(current => ({
+      ...current,
+      activeProfileId: id,
+      profiles: [...current.profiles, { id, name: cleanName, createdAt: at, updatedAt: at }],
+    }));
+  }, [commitState]);
+
+  const renameProfile = useCallback((id: string, name: string) => {
+    const cleanName = name.trim();
+    if (!cleanName) return;
+    const at = now();
+    commitState(current => ({
+      ...current,
+      profiles: current.profiles.map(profile => profile.id === id && !profile.deletedAt
+        ? { ...profile, name: cleanName, updatedAt: at }
+        : profile),
+    }));
+  }, [commitState]);
+
+  const removeProfile = useCallback((id: string) => {
+    const at = now();
+    commitState(current => {
+      const activeProfiles = current.profiles.filter(profile => !profile.deletedAt);
+      if (activeProfiles.length <= 1 || !activeProfiles.some(profile => profile.id === id)) return current;
+      const fallbackProfile = activeProfiles.find(profile => profile.id !== id) ?? activeProfiles[0];
+      return {
+        ...current,
+        activeProfileId: current.activeProfileId === id ? fallbackProfile.id : current.activeProfileId,
+        profiles: current.profiles.map(profile => profile.id === id && !profile.deletedAt
+          ? { ...profile, updatedAt: at, deletedAt: at }
+          : profile),
+      };
+    });
   }, [commitState]);
 
   const updatePreferences = useCallback((patch: PreferencePatch) => {
@@ -236,15 +287,18 @@ export function FilmaProvider({ children }: { children: React.ReactNode }) {
   const toggleFavorite = useCallback((mediaId: string) => {
     commitState(current => {
       const at = now();
-      const existing = current.favorites[mediaId];
+      const profileId = current.activeProfileId || DEFAULT_PROFILE_ID;
+      const key = profileMediaKey(profileId, mediaId);
+      const existing = current.favorites[key];
       return {
         ...current,
         favorites: {
           ...current.favorites,
-          [mediaId]: existing && !existing.deletedAt
-            ? { ...existing, updatedAt: at, deletedAt: at }
+          [key]: existing && !existing.deletedAt
+            ? { ...existing, profileId, updatedAt: at, deletedAt: at }
             : {
                 mediaId,
+                profileId,
                 createdAt: existing?.createdAt ?? at,
                 updatedAt: at,
               },
@@ -255,9 +309,11 @@ export function FilmaProvider({ children }: { children: React.ReactNode }) {
 
   const updateProgress = useCallback((item: MediaItem, positionSeconds: number, durationSeconds: number) => {
     commitState(current => {
+      const profileId = current.activeProfileId || DEFAULT_PROFILE_ID;
+      const key = profileMediaKey(profileId, item.id);
       const position = Math.max(0, positionSeconds);
       const duration = Math.max(0, durationSeconds);
-      const existing = current.progress[item.id];
+      const existing = current.progress[key];
       const completedNow = isPlaybackComplete(position, duration);
       const preserveCompletedDuringShortRestart = Boolean(
         existing?.completed && position < CONTINUE_WATCHING_MIN_SECONDS && !completedNow,
@@ -267,8 +323,9 @@ export function FilmaProvider({ children }: { children: React.ReactNode }) {
         ...current,
         progress: {
           ...current.progress,
-          [item.id]: {
+          [key]: {
             mediaId: item.id,
+            profileId,
             positionSeconds: position,
             durationSeconds: duration,
             updatedAt: now(),
@@ -413,6 +470,10 @@ export function FilmaProvider({ children }: { children: React.ReactNode }) {
     deviceId,
     state: effectiveState,
     setMode,
+    setActiveProfile,
+    addProfile,
+    renameProfile,
+    removeProfile,
     updatePreferences,
     setAppLanguage,
     toggleAudioLanguage,
@@ -433,6 +494,7 @@ export function FilmaProvider({ children }: { children: React.ReactNode }) {
     addAddon,
     addLocalPlaylist,
     addPlaylist,
+    addProfile,
     addXtreamPlaylist,
     clearAudioLanguages,
     deviceId,
@@ -440,6 +502,9 @@ export function FilmaProvider({ children }: { children: React.ReactNode }) {
     ready,
     removeAddon,
     removePlaylist,
+    removeProfile,
+    renameProfile,
+    setActiveProfile,
     setAddonEnabled,
     setAppLanguage,
     setInterfaceDensity,

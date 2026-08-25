@@ -11,6 +11,14 @@ export type AppPreferences = {
   updatedAt: string;
 };
 
+export type UserProfile = {
+  id: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt?: string;
+};
+
 export type MediaSource =
   | { kind: 'direct' }
   | {
@@ -53,6 +61,7 @@ export type MediaResumeSnapshot = {
 
 export type WatchProgress = {
   mediaId: string;
+  profileId?: string;
   positionSeconds: number;
   durationSeconds: number;
   updatedAt: string;
@@ -63,6 +72,7 @@ export type WatchProgress = {
 
 export type Favorite = {
   mediaId: string;
+  profileId?: string;
   createdAt: string;
   updatedAt: string;
   deletedAt?: string;
@@ -111,6 +121,8 @@ export type AddonSource = {
 
 export type FilmaState = {
   mode: AppMode;
+  activeProfileId: string;
+  profiles: UserProfile[];
   preferences: AppPreferences;
   progress: Record<string, WatchProgress>;
   favorites: Record<string, Favorite>;
@@ -119,7 +131,7 @@ export type FilmaState = {
 };
 
 export type SyncEnvelope = {
-  schemaVersion: 2;
+  schemaVersion: 3;
   updatedAt: string;
   state: FilmaState;
 };

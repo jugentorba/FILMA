@@ -11,8 +11,10 @@ import type {
   MediaSource,
   PlaylistSource,
   SyncEnvelope,
+  UserProfile,
   WatchProgress,
 } from '../types';
+import { DEFAULT_PROFILE_ID, DEFAULT_PROFILE_NAME, profileMediaKey } from './profiles';
 
 export const LEGACY_TIMESTAMP = '1970-01-01T00:00:00.000Z';
 
@@ -23,8 +25,17 @@ export const defaultPreferences: AppPreferences = {
   updatedAt: LEGACY_TIMESTAMP,
 };
 
+export const defaultProfile: UserProfile = {
+  id: DEFAULT_PROFILE_ID,
+  name: DEFAULT_PROFILE_NAME,
+  createdAt: LEGACY_TIMESTAMP,
+  updatedAt: LEGACY_TIMESTAMP,
+};
+
 export const defaultState: FilmaState = {
   mode: 'movies',
+  activeProfileId: DEFAULT_PROFILE_ID,
+  profiles: [defaultProfile],
   preferences: defaultPreferences,
   progress: {},
   favorites: {},
@@ -81,6 +92,41 @@ function normalizePreferences(value: unknown): AppPreferences {
   };
 }
 
+function normalizeProfile(raw: unknown): UserProfile | null {
+  if (!isRecord(raw)) return null;
+  const id = stringValue(raw.id);
+  if (!id) return null;
+  const createdAt = timestamp(raw.createdAt);
+  const deletedAt = stringValue(raw.deletedAt);
+  return {
+    id,
+    name: stringValue(raw.name)?.trim() || DEFAULT_PROFILE_NAME,
+    createdAt,
+    updatedAt: timestamp(raw.updatedAt, deletedAt ? timestamp(deletedAt, createdAt) : createdAt),
+    ...(deletedAt ? { deletedAt: timestamp(deletedAt, createdAt) } : {}),
+  };
+}
+
+function normalizeProfiles(value: unknown): UserProfile[] {
+  const normalized = Array.isArray(value)
+    ? value.map(normalizeProfile).filter((profile): profile is UserProfile => profile !== null)
+    : [];
+  const byId = new Map<string, UserProfile>();
+  for (const profile of normalized) {
+    const existing = byId.get(profile.id);
+    if (!existing || Date.parse(profile.updatedAt) >= Date.parse(existing.updatedAt)) byId.set(profile.id, profile);
+  }
+  const profiles = [...byId.values()];
+  if (!profiles.some(profile => !profile.deletedAt)) profiles.push({ ...defaultProfile });
+  return profiles.length ? profiles : [{ ...defaultProfile }];
+}
+
+function normalizeActiveProfileId(value: unknown, profiles: UserProfile[]): string {
+  const requested = stringValue(value);
+  if (requested && profiles.some(profile => profile.id === requested && !profile.deletedAt)) return requested;
+  return profiles.find(profile => !profile.deletedAt)?.id ?? DEFAULT_PROFILE_ID;
+}
+
 function normalizeMediaSource(value: unknown): MediaSource | undefined {
   if (!isRecord(value)) return undefined;
   if (value.kind === 'direct') return { kind: 'direct' };
@@ -131,16 +177,21 @@ function normalizeResumeItem(value: unknown): MediaResumeSnapshot | undefined {
   };
 }
 
-function normalizeProgress(value: unknown): Record<string, WatchProgress> {
+function normalizeProgress(value: unknown, validProfileIds: Set<string>): Record<string, WatchProgress> {
   if (!isRecord(value)) return {};
   const result: Record<string, WatchProgress> = {};
 
   for (const [key, raw] of Object.entries(value)) {
     if (!isRecord(raw)) continue;
     const mediaId = stringValue(raw.mediaId) ?? key;
+    const requestedProfileId = stringValue(raw.profileId);
+    const profileId = requestedProfileId && validProfileIds.has(requestedProfileId)
+      ? requestedProfileId
+      : DEFAULT_PROFILE_ID;
     const item = normalizeResumeItem(raw.item);
-    result[key] = {
+    const normalized: WatchProgress = {
       mediaId,
+      profileId,
       positionSeconds: Math.max(0, finiteNumber(raw.positionSeconds)),
       durationSeconds: Math.max(0, finiteNumber(raw.durationSeconds)),
       updatedAt: timestamp(raw.updatedAt),
@@ -148,26 +199,37 @@ function normalizeProgress(value: unknown): Record<string, WatchProgress> {
       ...(raw.completed === true ? { completed: true } : {}),
       ...(item ? { item } : {}),
     };
+    const normalizedKey = profileMediaKey(profileId, mediaId);
+    const existing = result[normalizedKey];
+    if (!existing || Date.parse(normalized.updatedAt) >= Date.parse(existing.updatedAt)) result[normalizedKey] = normalized;
   }
 
   return result;
 }
 
-function normalizeFavorites(value: unknown): Record<string, Favorite> {
+function normalizeFavorites(value: unknown, validProfileIds: Set<string>): Record<string, Favorite> {
   if (!isRecord(value)) return {};
   const result: Record<string, Favorite> = {};
 
   for (const [key, raw] of Object.entries(value)) {
     if (!isRecord(raw)) continue;
     const mediaId = stringValue(raw.mediaId) ?? key;
+    const requestedProfileId = stringValue(raw.profileId);
+    const profileId = requestedProfileId && validProfileIds.has(requestedProfileId)
+      ? requestedProfileId
+      : DEFAULT_PROFILE_ID;
     const createdAt = timestamp(raw.createdAt);
     const deletedAt = stringValue(raw.deletedAt);
-    result[key] = {
+    const normalized: Favorite = {
       mediaId,
+      profileId,
       createdAt,
       updatedAt: timestamp(raw.updatedAt, deletedAt ? timestamp(deletedAt, createdAt) : createdAt),
       ...(deletedAt ? { deletedAt: timestamp(deletedAt, createdAt) } : {}),
     };
+    const normalizedKey = profileMediaKey(profileId, mediaId);
+    const existing = result[normalizedKey];
+    if (!existing || Date.parse(normalized.updatedAt) >= Date.parse(existing.updatedAt)) result[normalizedKey] = normalized;
   }
 
   return result;
@@ -233,12 +295,26 @@ function normalizeArray<T>(value: unknown, normalize: (raw: unknown) => T | null
 }
 
 export function normalizeState(value: unknown): FilmaState {
-  if (!isRecord(value)) return { ...defaultState, preferences: { ...defaultPreferences } };
+  if (!isRecord(value)) {
+    return {
+      ...defaultState,
+      profiles: defaultState.profiles.map(profile => ({ ...profile })),
+      preferences: { ...defaultPreferences },
+    };
+  }
+
+  const profiles = normalizeProfiles(value.profiles);
+  const activeProfileId = normalizeActiveProfileId(value.activeProfileId, profiles);
+  const validProfileIds = new Set(profiles.map(profile => profile.id));
+  if (!validProfileIds.has(DEFAULT_PROFILE_ID)) validProfileIds.add(DEFAULT_PROFILE_ID);
+
   return {
     mode: normalizeMode(value.mode),
+    activeProfileId,
+    profiles,
     preferences: normalizePreferences(value.preferences),
-    progress: normalizeProgress(value.progress),
-    favorites: normalizeFavorites(value.favorites),
+    progress: normalizeProgress(value.progress, validProfileIds),
+    favorites: normalizeFavorites(value.favorites, validProfileIds),
     playlists: normalizeArray(value.playlists, normalizePlaylist),
     addons: normalizeArray(value.addons, normalizeAddon),
   };
@@ -246,11 +322,11 @@ export function normalizeState(value: unknown): FilmaState {
 
 export function normalizeSyncEnvelope(value: unknown): SyncEnvelope | null {
   if (!isRecord(value)) return null;
-  if (value.schemaVersion !== 1 && value.schemaVersion !== 2) return null;
+  if (value.schemaVersion !== 1 && value.schemaVersion !== 2 && value.schemaVersion !== 3) return null;
   if (!isRecord(value.state)) return null;
 
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     updatedAt: timestamp(value.updatedAt),
     state: normalizeState(value.state),
   };

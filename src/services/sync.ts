@@ -5,12 +5,14 @@ import type {
   FilmaState,
   PlaylistSource,
   SyncEnvelope,
+  UserProfile,
   WatchProgress,
 } from '../types';
+import { DEFAULT_PROFILE_ID } from './profiles';
 
 export function makeSyncEnvelope(state: FilmaState): SyncEnvelope {
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     updatedAt: new Date().toISOString(),
     state,
   };
@@ -79,9 +81,17 @@ const FALLBACK_PREFERENCES: AppPreferences = {
 };
 
 export function mergeStates(local: FilmaState, remote: FilmaState): FilmaState {
+  const profiles = mergeTimestampedArrays<UserProfile>(local.profiles ?? [], remote.profiles ?? []);
+  const requestedProfileId = local.activeProfileId || remote.activeProfileId || DEFAULT_PROFILE_ID;
+  const activeProfileId = profiles.some(profile => profile.id === requestedProfileId && !profile.deletedAt)
+    ? requestedProfileId
+    : profiles.find(profile => !profile.deletedAt)?.id ?? DEFAULT_PROFILE_ID;
+
   return {
-    // Screen selection remains device-local. Watch state, preferences and source configuration sync.
+    // Screen and currently selected profile remain local to the device.
     mode: local.mode,
+    activeProfileId,
+    profiles,
     preferences: newest(local.preferences, remote.preferences) ?? local.preferences ?? remote.preferences ?? FALLBACK_PREFERENCES,
     progress: mergeProgress(local.progress, remote.progress),
     favorites: mergeFavorites(local.favorites, remote.favorites),
