@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, FlatList, Platform, StyleSheet, Text, TextInput, View } from 'react-native';
-import { channelIdentity, fetchPlaylist } from '../services/m3u';
+import { fetchPlaylist, mergeLiveChannels } from '../services/m3u';
 import { useFilma } from '../store/FilmaContext';
 import type { LiveChannel, MediaItem } from '../types';
 import { FocusButton } from '../ui/FocusButton';
@@ -124,20 +124,10 @@ export function LiveTvScreen({ onSelect, onOpenSettings }: Props) {
       }
     }));
 
-    const merged = new Map<string, LiveChannel>();
-    for (const result of results) {
-      for (const channel of result.channels) {
-        const identity = channelIdentity(channel);
-        const existing = merged.get(identity);
-        if (!existing || (!existing.url.startsWith('https://') && channel.url.startsWith('https://'))) {
-          merged.set(identity, channel);
-        }
-      }
-    }
-
     const health = results.map(result => result.health);
     const failed = health.filter(item => !item.ok);
-    const nextChannels = [...merged.values()].sort((a, b) => a.name.localeCompare(b.name));
+    const nextChannels = mergeLiveChannels(results.map(result => result.channels))
+      .sort((a, b) => a.name.localeCompare(b.name));
 
     setSourceHealth(health);
     setChannels(nextChannels);
@@ -280,6 +270,7 @@ export function LiveTvScreen({ onSelect, onOpenSettings }: Props) {
               subtitle: item.group ?? copy.title,
               poster: item.logo,
               streamUrl: item.url,
+              alternateStreamUrls: item.alternateUrls,
             })}
           />
         )}
