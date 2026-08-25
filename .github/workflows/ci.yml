@@ -12,7 +12,7 @@ concurrency:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -33,3 +33,9 @@ jobs:
 
       - name: Expo doctor
         run: npm run doctor
+
+      - name: Mobile Android prebuild
+        run: npx expo prebuild --platform android --clean --no-install
+
+      - name: Android TV prebuild
+        run: EXPO_TV=1 npx expo prebuild --platform android --clean --no-install
