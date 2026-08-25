@@ -18,7 +18,6 @@ type StoredToken = {
   refreshToken?: string;
   expiresIn?: number;
   issuedAt: number;
-  tokenType?: string;
   scope?: string;
 };
 
@@ -51,7 +50,6 @@ async function saveToken(token: AuthSession.TokenResponse): Promise<void> {
     refreshToken: token.refreshToken,
     expiresIn: token.expiresIn,
     issuedAt: token.issuedAt,
-    tokenType: token.tokenType,
     scope: token.scope,
   };
   await SecureStore.setItemAsync(TOKEN_KEY, JSON.stringify(stored));
@@ -63,7 +61,6 @@ function asTokenResponse(token: StoredToken): AuthSession.TokenResponse {
     refreshToken: token.refreshToken,
     expiresIn: token.expiresIn,
     issuedAt: token.issuedAt,
-    tokenType: token.tokenType,
     scope: token.scope,
   });
 }
@@ -99,7 +96,10 @@ export async function connectDropbox(): Promise<void> {
   const result = await request.promptAsync(discovery);
   if (result.type !== 'success') {
     if (result.type === 'cancel' || result.type === 'dismiss') return;
-    throw new Error(result.error?.message ?? `Dropbox sign-in ended with ${result.type}.`);
+    if (result.type === 'error') {
+      throw new Error(result.error?.message ?? 'Dropbox sign-in failed.');
+    }
+    throw new Error(`Dropbox sign-in ended with ${result.type}.`);
   }
 
   const code = result.params.code;
