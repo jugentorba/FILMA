@@ -27,10 +27,16 @@ jobs:
       - name: TypeScript
         run: yarn typecheck
 
-      - name: Sync migration and conflict tests
+      - name: State, source and language tests
         run: |
           rm -rf .sync-test-build
-          ./node_modules/.bin/tsc src/types.ts src/services/progress.ts src/services/sync.ts src/services/stateSchema.ts \
+          ./node_modules/.bin/tsc \
+            src/types.ts \
+            src/services/progress.ts \
+            src/services/sync.ts \
+            src/services/stateSchema.ts \
+            src/services/stremio.ts \
+            src/services/sourceDiscovery.ts \
             --ignoreConfig \
             --outDir .sync-test-build \
             --module commonjs \
@@ -38,6 +44,7 @@ jobs:
             --skipLibCheck \
             --esModuleInterop
           node tests/sync.test.cjs
+          node tests/sources.test.cjs
           rm -rf .sync-test-build
 
       - name: Expo config
