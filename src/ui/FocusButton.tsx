@@ -7,6 +7,7 @@ type Props = {
   label: string;
   onPress(): void;
   onFocus?(): void;
+  onBlur?(): void;
   active?: boolean;
   compact?: boolean;
   preferredFocus?: boolean;
@@ -18,6 +19,7 @@ export function FocusButton({
   label,
   onPress,
   onFocus,
+  onBlur,
   active = false,
   compact = false,
   preferredFocus = false,
@@ -55,7 +57,10 @@ export function FocusButton({
         setFocused(true);
         onFocus?.();
       }}
-      onBlur={() => setFocused(false)}
+      onBlur={() => {
+        setFocused(false);
+        onBlur?.();
+      }}
       style={[
         styles.base,
         responsiveStyle,
