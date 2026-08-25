@@ -103,6 +103,16 @@ function playlist(id, name, url) {
 
 {
   const validation = validatePlaybackManifest({
+    id: 'example.resource-types-only',
+    name: 'Resource types only',
+    version: '1.0.0',
+    resources: [{ name: 'stream', types: ['channel'] }],
+  });
+  assert.deepEqual(validation, { valid: false, reason: 'unsupported-media-type' });
+}
+
+{
+  const validation = validatePlaybackManifest({
     id: '',
     name: 'Broken',
     version: '1.0.0',
