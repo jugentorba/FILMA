@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Platform, Pressable, StyleProp, StyleSheet, Text, ViewStyle } from 'react-native';
 import { theme } from './theme';
+import { useResponsiveLayout } from './useResponsiveLayout';
 
 type Props = {
   label: string;
@@ -25,6 +26,22 @@ export function FocusButton({
 }: Props) {
   const [focused, setFocused] = useState(false);
   const highlighted = active || focused;
+  const layout = useResponsiveLayout();
+
+  const responsiveStyle = useMemo<ViewStyle>(() => {
+    const baseHeight = layout.isTv ? 44 : layout.isCompactPhone ? 38 : layout.isTablet ? 44 : 40;
+    const compactHeight = layout.isTv ? 38 : layout.isCompactPhone ? 32 : 35;
+    return {
+      minHeight: compact ? compactHeight : baseHeight,
+      paddingHorizontal: Math.round((compact ? 11 : 14) * layout.controlScale),
+      paddingVertical: Math.round((compact ? 7 : 9) * layout.controlScale),
+      borderRadius: layout.isTv ? 11 : 10,
+    };
+  }, [compact, layout.controlScale, layout.isCompactPhone, layout.isTablet, layout.isTv]);
+
+  const textStyle = useMemo(() => ({
+    fontSize: layout.isTv ? 15 : layout.isCompactPhone ? 12 : layout.isTablet ? 15 : 13,
+  }), [layout.isCompactPhone, layout.isTablet, layout.isTv]);
 
   return (
     <Pressable
@@ -41,45 +58,35 @@ export function FocusButton({
       onBlur={() => setFocused(false)}
       style={[
         styles.base,
-        compact && styles.compact,
+        responsiveStyle,
         highlighted && styles.highlighted,
         Platform.isTV && focused && styles.tvFocused,
         style,
       ]}
     >
-      <Text style={[styles.text, highlighted && styles.textHighlighted]}>{label}</Text>
+      <Text style={[styles.text, textStyle, highlighted && styles.textHighlighted]}>{label}</Text>
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   base: {
-    minHeight: 46,
-    paddingHorizontal: 18,
-    paddingVertical: 12,
-    borderRadius: 12,
     backgroundColor: theme.surface,
     borderWidth: 1,
     borderColor: theme.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  compact: {
-    minHeight: 40,
-    paddingVertical: 9,
-    paddingHorizontal: 14,
-  },
   highlighted: {
     backgroundColor: theme.accent,
     borderColor: theme.accent,
   },
   tvFocused: {
-    transform: [{ scale: 1.08 }],
-    borderWidth: 3,
+    transform: [{ scale: 1.045 }],
+    borderWidth: 2,
   },
   text: {
     color: theme.text,
-    fontSize: 16,
     fontWeight: '700',
   },
   textHighlighted: {
