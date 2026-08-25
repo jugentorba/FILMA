@@ -5,7 +5,8 @@ import { stringsFor } from './src/i18n';
 import { HomeScreen } from './src/screens/HomeScreen';
 import { LiveTvScreen } from './src/screens/LiveTvScreen';
 import { SettingsScreen } from './src/screens/SettingsScreen';
-import { fetchMeta, fetchStreams, mediaItemForEpisode, rankStreamsByPreferredAudio, type StremioVideo } from './src/services/stremio';
+import { resolveStreamsAcrossAddons, type StreamResolutionDiagnostics } from './src/services/streamResolver';
+import { fetchMeta, mediaItemForEpisode, type StremioVideo } from './src/services/stremio';
 import { DropboxSyncProvider } from './src/store/DropboxSyncContext';
 import { FilmaProvider, useFilma } from './src/store/FilmaContext';
 import type { MediaItem } from './src/types';
@@ -19,6 +20,28 @@ type Screen = 'home' | 'live' | 'settings';
 
 type PendingStreams = { item: MediaItem; streams: StreamChoice[] };
 type PendingEpisodes = { series: MediaItem; episodes: StremioVideo[] };
+
+function resolutionMessage(diagnostics: StreamResolutionDiagnostics): string {
+  if (diagnostics.enabledProviders === 0) {
+    return 'No enabled movie source is configured. Add a stream-capable Stremio-compatible source in Settings.';
+  }
+  if (diagnostics.manifestsLoaded === 0) {
+    return 'FILMA could not load any configured movie-source manifest. Check the source URLs and your connection.';
+  }
+  if (diagnostics.streamCapableProviders === 0) {
+    return 'The configured add-ons provide catalogs or metadata, but none advertise a stream resource.';
+  }
+  if (diagnostics.compatibleProviders === 0) {
+    return 'Stream providers are configured, but none advertise support for this movie/episode type or ID.';
+  }
+  if (diagnostics.providerResponses === 0) {
+    return 'Compatible stream providers were found, but none returned a successful stream response.';
+  }
+  if (diagnostics.totalReturnedEntries > 0 && diagnostics.directPlayableEntries === 0) {
+    return `Providers returned ${diagnostics.totalReturnedEntries} source entr${diagnostics.totalReturnedEntries === 1 ? 'y' : 'ies'}, but none was a direct HTTP/HLS stream FILMA can play in-app.`;
+  }
+  return 'No playable stream was returned by the configured providers for this title.';
+}
 
 function FilmaApp() {
   const { ready, state, setMode, updateProgress, toggleFavorite } = useFilma();
@@ -36,29 +59,32 @@ function FilmaApp() {
 
   const resolveStreamsFor = async (item: MediaItem) => {
     if (item.source?.kind !== 'stremio') {
-      setPlaybackError('This item does not provide a playable source.');
+      setPlaybackError('This item does not provide a Stremio-compatible media identity.');
       return;
     }
 
     setResolvingTitle(item.title);
     try {
-      const result = rankStreamsByPreferredAudio(
-        await fetchStreams(item.source.manifestUrl, item.source.mediaType, item.source.videoId ?? item.source.mediaId),
+      const resolution = await resolveStreamsAcrossAddons(
+        item,
+        state.addons,
         state.preferences.preferredAudioLanguages,
       );
-      const streams: StreamChoice[] = result
-        .filter((stream): stream is typeof stream & { url: string } => Boolean(stream.url && /^https?:\/\//i.test(stream.url)))
-        .map(stream => ({ title: stream.title, url: stream.url }));
+
+      const streams: StreamChoice[] = resolution.streams.map(stream => ({
+        title: `${stream.providerName} · ${stream.title}`,
+        url: stream.url,
+      }));
 
       if (!streams.length) {
-        setPlaybackError('This source returned no direct stream FILMA can play.');
+        setPlaybackError(resolutionMessage(resolution.diagnostics));
       } else if (streams.length === 1) {
         setSelected({ ...item, streamUrl: streams[0].url });
       } else {
         setPendingStreams({ item, streams });
       }
     } catch (error) {
-      setPlaybackError(error instanceof Error ? error.message : 'Could not load streams.');
+      setPlaybackError(error instanceof Error ? error.message : 'Could not resolve movie sources.');
     } finally {
       setResolvingTitle(undefined);
     }
