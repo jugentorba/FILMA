@@ -90,6 +90,8 @@ function FilmaApp() {
     );
   }
 
+  const selectedFavorite = selected ? state.favorites[selected.id] : undefined;
+
   return (
     <SafeAreaView style={styles.safe}>
       <StatusBar style="light" hidden={Platform.isTV} />
@@ -138,7 +140,7 @@ function FilmaApp() {
         <PlayerModal
           item={selected}
           progress={state.progress[selected.id]}
-          favorite={Boolean(state.favorites[selected.id])}
+          favorite={Boolean(selectedFavorite && !selectedFavorite.deletedAt)}
           onProgress={handleProgress}
           onToggleFavorite={() => toggleFavorite(selected.id)}
           onClose={() => setSelected(null)}
