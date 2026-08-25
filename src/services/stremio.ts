@@ -1,4 +1,18 @@
-import type { MediaItem } from '../types';
+import type { AudioLanguage, MediaItem } from '../types';
+
+export type StremioCatalogExtra = {
+  name: string;
+  isRequired?: boolean;
+  options?: string[];
+  optionsLimit?: number;
+};
+
+export type StremioCatalog = {
+  type: string;
+  id: string;
+  name?: string;
+  extra?: StremioCatalogExtra[];
+};
 
 export type StremioManifest = {
   id: string;
@@ -6,7 +20,7 @@ export type StremioManifest = {
   version: string;
   resources?: Array<string | { name: string; types?: string[]; idPrefixes?: string[] }>;
   types?: string[];
-  catalogs?: Array<{ type: string; id: string; name?: string }>;
+  catalogs?: StremioCatalog[];
 };
 
 type StremioMeta = {
@@ -34,12 +48,109 @@ export type StremioDetailedMeta = StremioMeta & {
   videos?: StremioVideo[];
 };
 
+export type StremioStream = {
+  title: string;
+  url?: string;
+  externalUrl?: string;
+};
+
+const LANGUAGE_ALIASES: Record<AudioLanguage, string[]> = {
+  en: ['en', 'eng', 'english', 'anglais', 'anglisht'],
+  fr: ['fr', 'fra', 'fre', 'french', 'français', 'francais', 'frengjisht'],
+  sq: ['sq', 'sqi', 'alb', 'albanian', 'albanais', 'shqip'],
+  it: ['it', 'ita', 'italian', 'italiano', 'italien', 'italisht'],
+  es: ['es', 'spa', 'spanish', 'español', 'espanol', 'espagnol', 'spanjisht'],
+  de: ['de', 'deu', 'ger', 'german', 'deutsch', 'allemand', 'gjermanisht'],
+  tr: ['tr', 'tur', 'turkish', 'türkçe', 'turkce', 'turc', 'turqisht'],
+};
+
 function addonBase(manifestUrl: string): string {
   return manifestUrl.replace(/\/manifest\.json(?:\?.*)?$/i, '').replace(/\/$/, '');
 }
 
+function releaseYear(releaseInfo?: string): number | undefined {
+  const match = releaseInfo?.match(/\b(19|20)\d{2}\b/);
+  if (!match) return undefined;
+  const parsed = Number(match[0]);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function mediaFromMeta(manifestUrl: string, type: string, meta: StremioMeta): MediaItem {
+  return {
+    id: localMediaId(manifestUrl, type, meta.id),
+    title: meta.name,
+    poster: meta.poster,
+    backdrop: meta.background,
+    subtitle: meta.releaseInfo,
+    genres: meta.genres,
+    year: releaseYear(meta.releaseInfo),
+    source: {
+      kind: 'stremio',
+      manifestUrl,
+      mediaType: type,
+      mediaId: meta.id,
+    },
+  };
+}
+
+function normalizeText(value: string): string {
+  return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase();
+}
+
+function aliasAppears(text: string, alias: string): boolean {
+  const normalizedAlias = normalizeText(alias);
+  if (normalizedAlias.length <= 3) {
+    return new RegExp(`(^|[^a-z])${normalizedAlias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^a-z]|$)`, 'i').test(text);
+  }
+  return text.includes(normalizedAlias);
+}
+
+function optionForLanguage(options: string[] | undefined, language: AudioLanguage): string | undefined {
+  if (!options?.length) return language;
+  const aliases = LANGUAGE_ALIASES[language].map(normalizeText);
+  return options.find(option => {
+    const normalized = normalizeText(option);
+    return aliases.includes(normalized) || aliases.some(alias => normalized.includes(alias));
+  });
+}
+
 export function localMediaId(manifestUrl: string, type: string, mediaId: string): string {
   return `addon:${encodeURIComponent(manifestUrl)}:${type}:${encodeURIComponent(mediaId)}`;
+}
+
+export function catalogSupportsSearch(catalog: StremioCatalog): boolean {
+  return Boolean(catalog.extra?.some(extra => extra.name.toLocaleLowerCase() === 'search'));
+}
+
+export function catalogLanguageExtra(
+  catalog: StremioCatalog,
+  preferredAudioLanguages: AudioLanguage[],
+): Record<string, string> {
+  if (!preferredAudioLanguages.length) return {};
+  const languageExtra = catalog.extra?.find(extra => {
+    const name = extra.name.toLocaleLowerCase().replace(/[_-]/g, '');
+    return ['language', 'lang', 'audio', 'audiolanguage'].includes(name);
+  });
+  if (!languageExtra) return {};
+
+  for (const language of preferredAudioLanguages) {
+    const option = optionForLanguage(languageExtra.options, language);
+    if (option) return { [languageExtra.name]: option };
+  }
+  return {};
+}
+
+export function catalogCanLoadWithoutSearch(
+  catalog: StremioCatalog,
+  preferredAudioLanguages: AudioLanguage[],
+): boolean {
+  const languageExtra = catalogLanguageExtra(catalog, preferredAudioLanguages);
+  return !(catalog.extra ?? []).some(extra => {
+    if (!extra.isRequired) return false;
+    const name = extra.name.toLocaleLowerCase();
+    if (name === 'search') return true;
+    return languageExtra[extra.name] === undefined;
+  });
 }
 
 export async function fetchManifest(manifestUrl: string): Promise<StremioManifest> {
@@ -52,26 +163,19 @@ export async function fetchCatalog(
   manifestUrl: string,
   type: string,
   catalogId: string,
+  extras: Record<string, string | number | undefined> = {},
 ): Promise<MediaItem[]> {
-  const url = `${addonBase(manifestUrl)}/catalog/${encodeURIComponent(type)}/${encodeURIComponent(catalogId)}.json`;
+  const extraArgs = Object.entries(extras)
+    .filter((entry): entry is [string, string | number] => entry[1] !== undefined && entry[1] !== '')
+    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`)
+    .join('&');
+  const suffix = extraArgs ? `/${extraArgs}.json` : '.json';
+  const url = `${addonBase(manifestUrl)}/catalog/${encodeURIComponent(type)}/${encodeURIComponent(catalogId)}${suffix}`;
   const response = await fetch(url);
   if (!response.ok) throw new Error(`Catalog HTTP ${response.status}`);
   const payload = (await response.json()) as { metas?: StremioMeta[] };
 
-  return (payload.metas ?? []).map(meta => ({
-    id: localMediaId(manifestUrl, type, meta.id),
-    title: meta.name,
-    poster: meta.poster,
-    backdrop: meta.background,
-    subtitle: meta.releaseInfo,
-    genres: meta.genres,
-    source: {
-      kind: 'stremio',
-      manifestUrl,
-      mediaType: type,
-      mediaId: meta.id,
-    },
-  }));
+  return (payload.metas ?? []).map(meta => mediaFromMeta(manifestUrl, type, meta));
 }
 
 export async function fetchMeta(
@@ -115,7 +219,7 @@ export async function fetchStreams(
   manifestUrl: string,
   type: string,
   id: string,
-): Promise<Array<{ title: string; url?: string; externalUrl?: string }>> {
+): Promise<StremioStream[]> {
   const url = `${addonBase(manifestUrl)}/stream/${encodeURIComponent(type)}/${encodeURIComponent(id)}.json`;
   const response = await fetch(url);
   if (!response.ok) throw new Error(`Streams HTTP ${response.status}`);
@@ -127,4 +231,25 @@ export async function fetchStreams(
     url: stream.url,
     externalUrl: stream.externalUrl,
   }));
+}
+
+export function rankStreamsByPreferredAudio<T extends { title: string }>(
+  streams: T[],
+  preferredAudioLanguages: AudioLanguage[],
+): T[] {
+  if (!preferredAudioLanguages.length) return streams;
+
+  return streams
+    .map((stream, originalIndex) => {
+      const normalized = normalizeText(stream.title);
+      let score = 0;
+      preferredAudioLanguages.forEach((language, index) => {
+        if (LANGUAGE_ALIASES[language].some(alias => aliasAppears(normalized, alias))) {
+          score = Math.max(score, 1000 - index * 100);
+        }
+      });
+      return { stream, originalIndex, score };
+    })
+    .sort((a, b) => b.score - a.score || a.originalIndex - b.originalIndex)
+    .map(item => item.stream);
 }

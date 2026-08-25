@@ -32,13 +32,16 @@ export type DropboxTvPairing = {
 
 function assertConfigured(): string {
   if (!DROPBOX_CLIENT_ID) {
-    throw new Error('Dropbox is not configured in this FILMA build. Set EXPO_PUBLIC_DROPBOX_APP_KEY before building.');
+    throw new Error('Dropbox is not configured in this FILMA build.');
   }
   return DROPBOX_CLIENT_ID;
 }
 
-function redirectUri(): string {
-  return AuthSession.makeRedirectUri({ scheme: 'filma', path: 'dropbox-auth' });
+// Dropbox's native SDKs use the app-key-specific db-<APP_KEY> URL scheme.
+// Using the same native callback convention avoids relying on a web callback
+// server and keeps the OAuth code + PKCE flow inside the installed app.
+function redirectUri(clientId: string): string {
+  return `db-${clientId}://1/connect`;
 }
 
 function randomVerifier(): string {
@@ -97,9 +100,10 @@ export async function connectDropbox(): Promise<void> {
     throw new Error('Use FILMA TV pairing to connect Dropbox on a television.');
   }
 
+  const callback = redirectUri(clientId);
   const request = new AuthSession.AuthRequest({
     clientId,
-    redirectUri: redirectUri(),
+    redirectUri: callback,
     responseType: AuthSession.ResponseType.Code,
     usePKCE: true,
     scopes: ['files.content.read', 'files.content.write'],
@@ -125,7 +129,7 @@ export async function connectDropbox(): Promise<void> {
   const token = await AuthSession.exchangeCodeAsync({
     clientId,
     code,
-    redirectUri: redirectUri(),
+    redirectUri: callback,
     extraParams: { code_verifier: request.codeVerifier },
   }, discovery);
 

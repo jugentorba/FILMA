@@ -1,5 +1,14 @@
 export type AppMode = 'movies' | 'live';
 
+export type AppLanguage = 'en' | 'fr' | 'sq';
+export type AudioLanguage = 'en' | 'fr' | 'sq' | 'it' | 'es' | 'de' | 'tr';
+
+export type AppPreferences = {
+  appLanguage: AppLanguage;
+  preferredAudioLanguages: AudioLanguage[];
+  updatedAt: string;
+};
+
 export type MediaSource =
   | { kind: 'direct' }
   | {
@@ -84,6 +93,7 @@ export type AddonSource = {
 
 export type FilmaState = {
   mode: AppMode;
+  preferences: AppPreferences;
   progress: Record<string, WatchProgress>;
   favorites: Record<string, Favorite>;
   playlists: PlaylistSource[];

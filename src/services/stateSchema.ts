@@ -1,6 +1,9 @@
 import type {
   AddonSource,
+  AppLanguage,
   AppMode,
+  AppPreferences,
+  AudioLanguage,
   Favorite,
   FilmaState,
   MediaResumeSnapshot,
@@ -12,8 +15,15 @@ import type {
 
 export const LEGACY_TIMESTAMP = '1970-01-01T00:00:00.000Z';
 
+export const defaultPreferences: AppPreferences = {
+  appLanguage: 'en',
+  preferredAudioLanguages: [],
+  updatedAt: LEGACY_TIMESTAMP,
+};
+
 export const defaultState: FilmaState = {
   mode: 'movies',
+  preferences: defaultPreferences,
   progress: {},
   favorites: {},
   playlists: [],
@@ -21,6 +31,9 @@ export const defaultState: FilmaState = {
 };
 
 type UnknownRecord = Record<string, unknown>;
+
+const APP_LANGUAGES = new Set<AppLanguage>(['en', 'fr', 'sq']);
+const AUDIO_LANGUAGES = new Set<AudioLanguage>(['en', 'fr', 'sq', 'it', 'es', 'de', 'tr']);
 
 function isRecord(value: unknown): value is UnknownRecord {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -41,6 +54,24 @@ function timestamp(value: unknown, fallback = LEGACY_TIMESTAMP): string {
 
 function normalizeMode(value: unknown): AppMode {
   return value === 'live' ? 'live' : 'movies';
+}
+
+function normalizePreferences(value: unknown): AppPreferences {
+  if (!isRecord(value)) return { ...defaultPreferences };
+
+  const appLanguage = typeof value.appLanguage === 'string' && APP_LANGUAGES.has(value.appLanguage as AppLanguage)
+    ? value.appLanguage as AppLanguage
+    : 'en';
+  const preferredAudioLanguages = Array.isArray(value.preferredAudioLanguages)
+    ? [...new Set(value.preferredAudioLanguages.filter((language): language is AudioLanguage =>
+      typeof language === 'string' && AUDIO_LANGUAGES.has(language as AudioLanguage)))]
+    : [];
+
+  return {
+    appLanguage,
+    preferredAudioLanguages,
+    updatedAt: timestamp(value.updatedAt),
+  };
 }
 
 function normalizeMediaSource(value: unknown): MediaSource | undefined {
@@ -175,9 +206,10 @@ function normalizeArray<T>(value: unknown, normalize: (raw: unknown) => T | null
 }
 
 export function normalizeState(value: unknown): FilmaState {
-  if (!isRecord(value)) return { ...defaultState };
+  if (!isRecord(value)) return { ...defaultState, preferences: { ...defaultPreferences } };
   return {
     mode: normalizeMode(value.mode),
+    preferences: normalizePreferences(value.preferences),
     progress: normalizeProgress(value.progress),
     favorites: normalizeFavorites(value.favorites),
     playlists: normalizeArray(value.playlists, normalizePlaylist),

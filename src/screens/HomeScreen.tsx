@@ -1,7 +1,14 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, FlatList, Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { demoMovies } from '../data/demo';
-import { fetchCatalog, fetchManifest } from '../services/stremio';
+import { ActivityIndicator, FlatList, ImageBackground, Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { audioLanguageLabel, stringsFor } from '../i18n';
+import {
+  catalogCanLoadWithoutSearch,
+  catalogLanguageExtra,
+  catalogSupportsSearch,
+  fetchCatalog,
+  fetchManifest,
+  type StremioCatalog,
+} from '../services/stremio';
 import { useFilma } from '../store/FilmaContext';
 import type { FilmaState, MediaItem } from '../types';
 import { FocusButton } from '../ui/FocusButton';
@@ -10,12 +17,19 @@ import { theme } from '../ui/theme';
 
 type Props = {
   onSelect(item: MediaItem): void;
+  onOpenSettings(): void;
 };
 
 type CatalogRow = {
   key: string;
   title: string;
   items: MediaItem[];
+};
+
+type SearchTarget = {
+  key: string;
+  manifestUrl: string;
+  catalog: StremioCatalog;
 };
 
 type MediaRowProps = {
@@ -25,12 +39,23 @@ type MediaRowProps = {
   onSelect(item: MediaItem): void;
 };
 
+function dedupe(items: MediaItem[]): MediaItem[] {
+  const unique = new Map<string, MediaItem>();
+  for (const item of items) {
+    if (!unique.has(item.id)) unique.set(item.id, item);
+  }
+  return [...unique.values()];
+}
+
 function MediaRow({ title, data, state, onSelect }: MediaRowProps) {
   const listRef = useRef<FlatList<MediaItem>>(null);
 
   return (
     <View style={styles.section}>
-      <Text style={styles.sectionTitle}>{title}</Text>
+      <View style={styles.sectionHeading}>
+        <Text style={styles.sectionTitle}>{title}</Text>
+        <Text style={styles.sectionCount}>{data.length}</Text>
+      </View>
       <FlatList
         ref={listRef}
         horizontal
@@ -40,10 +65,7 @@ function MediaRow({ title, data, state, onSelect }: MediaRowProps) {
         contentContainerStyle={styles.rowContent}
         initialNumToRender={Platform.isTV ? 10 : 6}
         onScrollToIndexFailed={({ index, averageItemLength }) => {
-          listRef.current?.scrollToOffset({
-            offset: Math.max(0, index * averageItemLength),
-            animated: true,
-          });
+          listRef.current?.scrollToOffset({ offset: Math.max(0, index * averageItemLength), animated: true });
         }}
         renderItem={({ item, index }) => {
           const favorite = state.favorites[item.id];
@@ -53,9 +75,7 @@ function MediaRow({ title, data, state, onSelect }: MediaRowProps) {
               progress={state.progress[item.id]}
               favorite={Boolean(favorite && !favorite.deletedAt)}
               onFocus={() => {
-                if (Platform.isTV) {
-                  listRef.current?.scrollToIndex({ index, viewPosition: 0.34, animated: true });
-                }
+                if (Platform.isTV) listRef.current?.scrollToIndex({ index, viewPosition: 0.34, animated: true });
               }}
               onPress={() => onSelect(item)}
             />
@@ -66,78 +86,94 @@ function MediaRow({ title, data, state, onSelect }: MediaRowProps) {
   );
 }
 
-export function HomeScreen({ onSelect }: Props) {
+export function HomeScreen({ onSelect, onOpenSettings }: Props) {
   const { state } = useFilma();
+  const text = stringsFor(state.preferences.appLanguage);
   const [addonRows, setAddonRows] = useState<CatalogRow[]>([]);
+  const [searchTargets, setSearchTargets] = useState<SearchTarget[]>([]);
   const [loadingAddons, setLoadingAddons] = useState(false);
   const [addonError, setAddonError] = useState<string>();
   const [query, setQuery] = useState('');
+  const [remoteResults, setRemoteResults] = useState<MediaItem[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState<string>();
+
+  const activeAddons = useMemo(
+    () => state.addons.filter(item => item.enabled && !item.deletedAt),
+    [state.addons],
+  );
 
   useEffect(() => {
     let cancelled = false;
 
     const load = async () => {
-      const addons = state.addons.filter(item => item.enabled && !item.deletedAt);
-      if (!addons.length) {
+      if (!activeAddons.length) {
         setAddonRows([]);
+        setSearchTargets([]);
         setAddonError(undefined);
+        setLoadingAddons(false);
         return;
       }
 
       setLoadingAddons(true);
       setAddonError(undefined);
       const rows: CatalogRow[] = [];
+      const targets: SearchTarget[] = [];
 
-      for (const addon of addons) {
+      for (const addon of activeAddons) {
         try {
           const manifest = await fetchManifest(addon.manifestUrl);
-          const catalogs = (manifest.catalogs ?? [])
-            .filter(catalog => catalog.type === 'movie' || catalog.type === 'series')
-            .slice(0, 3);
+          const catalogs = (manifest.catalogs ?? []).filter(catalog => catalog.type === 'movie' || catalog.type === 'series');
 
-          for (const catalog of catalogs) {
+          catalogs.forEach(catalog => {
+            if (catalogSupportsSearch(catalog)) {
+              targets.push({ key: `${addon.id}:${catalog.type}:${catalog.id}`, manifestUrl: addon.manifestUrl, catalog });
+            }
+          });
+
+          const browseCatalogs = catalogs
+            .filter(catalog => catalogCanLoadWithoutSearch(catalog, state.preferences.preferredAudioLanguages))
+            .slice(0, 4);
+
+          for (const catalog of browseCatalogs) {
             try {
-              const items = await fetchCatalog(addon.manifestUrl, catalog.type, catalog.id);
+              const items = await fetchCatalog(
+                addon.manifestUrl,
+                catalog.type,
+                catalog.id,
+                catalogLanguageExtra(catalog, state.preferences.preferredAudioLanguages),
+              );
               if (items.length) {
                 rows.push({
                   key: `${addon.id}:${catalog.type}:${catalog.id}`,
-                  title: `${manifest.name} · ${catalog.name ?? catalog.id}`,
-                  items,
+                  title: catalog.name || manifest.name,
+                  items: dedupe(items),
                 });
               }
             } catch {
-              // One broken catalog should not hide the rest of the add-on.
+              // A single catalog can fail without hiding the rest of the source.
             }
           }
         } catch {
-          // Continue loading other configured add-ons.
+          // Continue loading the remaining configured sources.
         }
       }
 
       if (!cancelled) {
         setAddonRows(rows);
-        if (!rows.length) setAddonError('Configured add-ons did not return a movie or series catalog.');
+        setSearchTargets(targets);
+        if (!rows.length) setAddonError('Configured movie sources did not return a browseable catalog.');
         setLoadingAddons(false);
       }
     };
 
     void load();
-    return () => {
-      cancelled = true;
-    };
-  }, [state.addons]);
+    return () => { cancelled = true; };
+  }, [activeAddons, state.preferences.preferredAudioLanguages]);
 
   const allLoadedItems = useMemo(() => {
-    const unique = new Map<string, MediaItem>();
-    const resumeItems: MediaItem[] = Object.values(state.progress)
-      .flatMap(progress => progress.item ? [progress.item] : []);
-
-    // Prefer the newest resume snapshot for an episode that is not part of a
-    // catalog row, while allowing catalog metadata to fill normal movie/series items.
-    for (const item of [...resumeItems, ...demoMovies, ...addonRows.flatMap(row => row.items)]) {
-      if (!unique.has(item.id)) unique.set(item.id, item);
-    }
-    return [...unique.values()];
+    const resumeItems: MediaItem[] = Object.values(state.progress).flatMap(progress => progress.item ? [progress.item] : []);
+    return dedupe([...resumeItems, ...addonRows.flatMap(row => row.items)]);
   }, [addonRows, state.progress]);
 
   const continueWatching = useMemo(
@@ -155,164 +191,242 @@ export function HomeScreen({ onSelect }: Props) {
     [allLoadedItems, state.favorites],
   );
 
-  const searchResults = useMemo(() => {
+  const localSearchResults = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase();
     if (!needle) return [];
     return allLoadedItems.filter(item => {
-      const haystack = [item.title, item.subtitle, ...(item.genres ?? [])]
-        .filter(Boolean)
-        .join(' ')
-        .toLocaleLowerCase();
+      const haystack = [item.title, item.subtitle, ...(item.genres ?? [])].filter(Boolean).join(' ').toLocaleLowerCase();
       return haystack.includes(needle);
-    }).slice(0, 50);
+    });
   }, [allLoadedItems, query]);
 
-  const hero = continueWatching[0] ?? addonRows[0]?.items[0] ?? demoMovies[0];
+  useEffect(() => {
+    const needle = query.trim();
+    if (needle.length < 2 || !searchTargets.length) {
+      setRemoteResults([]);
+      setSearching(false);
+      setSearchError(undefined);
+      return;
+    }
 
-  const row = (title: string, data: MediaItem[], keyPrefix = title) => (
-    <MediaRow key={keyPrefix} title={title} data={data} state={state} onSelect={onSelect} />
-  );
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      setSearching(true);
+      setSearchError(undefined);
+      void Promise.all(searchTargets.map(async target => {
+        try {
+          return await fetchCatalog(
+            target.manifestUrl,
+            target.catalog.type,
+            target.catalog.id,
+            {
+              ...catalogLanguageExtra(target.catalog, state.preferences.preferredAudioLanguages),
+              search: needle,
+            },
+          );
+        } catch {
+          return [] as MediaItem[];
+        }
+      })).then(results => {
+        if (cancelled) return;
+        const merged = dedupe(results.flat()).slice(0, 80);
+        setRemoteResults(merged);
+        if (!merged.length && !localSearchResults.length) setSearchError(text.searchSourceError);
+        setSearching(false);
+      });
+    }, 450);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [localSearchResults.length, query, searchTargets, state.preferences.preferredAudioLanguages, text.searchSourceError]);
+
+  const searchResults = useMemo(() => dedupe([...remoteResults, ...localSearchResults]), [remoteResults, localSearchResults]);
+  const hero = continueWatching[0] ?? addonRows[0]?.items[0] ?? null;
+  const audioSummary = state.preferences.preferredAudioLanguages.length
+    ? state.preferences.preferredAudioLanguages.map(language => audioLanguageLabel(language, state.preferences.appLanguage)).join(' · ')
+    : text.anyLanguage;
 
   return (
-    <ScrollView style={styles.root} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-      <View style={styles.hero}>
-        <Text style={styles.eyebrow}>FILMA</Text>
-        <Text style={styles.heroTitle}>{hero.title}</Text>
-        <Text style={styles.heroText}>
-          Movies open first. Continue on this device or pick up from your saved watch position on another device after sync.
-        </Text>
-        <View style={styles.heroActions}>
-          <FocusButton
-            label={state.progress[hero.id] ? '▶ Continue' : '▶ Play'}
-            active
-            preferredFocus
-            accessibilityHint={state.progress[hero.id] ? 'Resume from the saved position' : 'Open this title'}
-            onPress={() => onSelect(hero)}
-          />
+    <ScrollView style={styles.root} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+      {hero ? (
+        <ImageBackground source={hero.backdrop ? { uri: hero.backdrop } : undefined} style={styles.hero} imageStyle={styles.heroImage}>
+          <View style={styles.heroShade} />
+          <View style={styles.heroContent}>
+            <Text style={styles.eyebrow}>{text.homeEyebrow}</Text>
+            <Text numberOfLines={2} style={styles.heroTitle}>{hero.title}</Text>
+            <Text numberOfLines={2} style={styles.heroMeta}>
+              {[hero.year, hero.genres?.slice(0, 3).join('  •  ')].filter(Boolean).join('   ') || hero.subtitle || 'FILMA'}
+            </Text>
+            <View style={styles.heroActions}>
+              <FocusButton
+                label={`${state.progress[hero.id] ? '▶ ' + text.continue : '▶ ' + text.play}`}
+                active
+                preferredFocus
+                onPress={() => onSelect(hero)}
+              />
+            </View>
+          </View>
+        </ImageBackground>
+      ) : (
+        <View style={styles.emptyHero}>
+          <Text style={styles.eyebrow}>{text.homeEyebrow}</Text>
+          <Text style={styles.emptyTitle}>{text.homeEmptyTitle}</Text>
+          <Text style={styles.emptyText}>{text.homeEmptyText}</Text>
+          <View style={styles.heroActions}>
+            <FocusButton label={text.addMovieSource} active preferredFocus onPress={onOpenSettings} />
+          </View>
         </View>
-      </View>
+      )}
 
-      <View style={styles.searchWrap}>
-        <TextInput
-          value={query}
-          onChangeText={setQuery}
-          placeholder="Search movies, series or genres"
-          placeholderTextColor={theme.muted}
-          style={styles.search}
-          autoCorrect={false}
-          autoCapitalize="none"
-        />
+      <View style={styles.searchArea}>
+        <View style={styles.searchShell}>
+          <Text style={styles.searchIcon}>⌕</Text>
+          <TextInput
+            value={query}
+            onChangeText={setQuery}
+            placeholder={text.searchPlaceholder}
+            placeholderTextColor={theme.muted}
+            style={styles.search}
+            autoCorrect={false}
+            autoCapitalize="none"
+            returnKeyType="search"
+          />
+          {searching ? <ActivityIndicator size="small" /> : null}
+        </View>
+        <View style={styles.audioChip}>
+          <Text style={styles.audioChipLabel}>{text.preferredAudio}</Text>
+          <Text numberOfLines={1} style={styles.audioChipValue}>{audioSummary}</Text>
+        </View>
       </View>
 
       {query.trim() ? (
-        searchResults.length
-          ? row(`Search Results · ${searchResults.length}`, searchResults, 'search')
-          : <Text style={styles.noResults}>No loaded titles match “{query.trim()}”.</Text>
-      ) : null}
-      {continueWatching.length ? row('Continue Watching', continueWatching, 'continue') : null}
-      {favorites.length ? row('Favorites', favorites, 'favorites') : null}
-      {!query.trim() ? addonRows.map(catalog => row(catalog.title, catalog.items, catalog.key)) : null}
+        searchResults.length ? (
+          <MediaRow title={`${text.searchResults} · ${searchResults.length}`} data={searchResults} state={state} onSelect={onSelect} />
+        ) : !searching ? (
+          <View style={styles.messageBox}>
+            <Text style={styles.messageTitle}>{text.noSearchResults}</Text>
+            {searchError ? <Text style={styles.messageText}>{searchError}</Text> : null}
+          </View>
+        ) : null
+      ) : (
+        <>
+          {continueWatching.length ? <MediaRow title={text.continueWatching} data={continueWatching} state={state} onSelect={onSelect} /> : null}
+          {favorites.length ? <MediaRow title={text.favorites} data={favorites} state={state} onSelect={onSelect} /> : null}
+          {addonRows.map(catalog => <MediaRow key={catalog.key} title={catalog.title} data={catalog.items} state={state} onSelect={onSelect} />)}
+        </>
+      )}
+
       {loadingAddons ? (
         <View style={styles.loadingRow}>
           <ActivityIndicator />
-          <Text style={styles.loadingText}>Loading configured catalogs…</Text>
+          <Text style={styles.loadingText}>{text.loadingCatalogs}</Text>
         </View>
       ) : null}
-      {addonError ? <Text style={styles.addonError}>{addonError}</Text> : null}
-      {!query.trim() ? row('FILMA Playback Tests', demoMovies, 'demo') : null}
+
+      {addonError && activeAddons.length ? (
+        <View style={styles.messageBox}>
+          <Text style={styles.messageTitle}>{text.sourceNeeded}</Text>
+          <Text style={styles.messageText}>{addonError}</Text>
+          <View style={styles.messageAction}><FocusButton compact label={text.settings} onPress={onOpenSettings} /></View>
+        </View>
+      ) : null}
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: theme.background,
-  },
-  content: {
-    paddingBottom: 80,
-  },
+  root: { flex: 1, backgroundColor: theme.background },
+  content: { paddingBottom: Platform.isTV ? 90 : 118 },
   hero: {
-    minHeight: Platform.isTV ? 390 : 320,
+    minHeight: Platform.isTV ? 500 : 390,
+    justifyContent: 'flex-end',
+    backgroundColor: '#10131d',
+  },
+  heroImage: { opacity: 0.78 },
+  heroShade: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: Platform.isTV ? 'rgba(7,9,15,0.42)' : 'rgba(7,9,15,0.55)',
+  },
+  heroContent: {
     paddingHorizontal: Platform.isTV ? 64 : 20,
-    paddingTop: Platform.isTV ? 86 : 54,
-    paddingBottom: 42,
+    paddingBottom: Platform.isTV ? 54 : 34,
+    paddingTop: Platform.isTV ? 120 : 80,
+    maxWidth: Platform.isTV ? 940 : undefined,
+  },
+  emptyHero: {
+    minHeight: Platform.isTV ? 430 : 340,
+    paddingHorizontal: Platform.isTV ? 64 : 22,
+    paddingVertical: Platform.isTV ? 70 : 46,
     justifyContent: 'center',
-    backgroundColor: '#0d1220',
+    backgroundColor: '#0c101a',
     borderBottomWidth: 1,
     borderBottomColor: theme.border,
   },
-  eyebrow: {
-    color: theme.accent,
-    fontWeight: '900',
-    letterSpacing: 2.5,
-    fontSize: 13,
-  },
+  eyebrow: { color: theme.accent, fontWeight: '900', letterSpacing: 2.4, fontSize: 12 },
   heroTitle: {
     color: theme.text,
-    fontSize: Platform.isTV ? 52 : 34,
-    lineHeight: Platform.isTV ? 58 : 40,
+    fontSize: Platform.isTV ? 58 : 38,
+    lineHeight: Platform.isTV ? 64 : 44,
     fontWeight: '900',
     marginTop: 12,
+    maxWidth: 820,
   },
-  heroText: {
-    maxWidth: 700,
-    color: theme.muted,
-    fontSize: Platform.isTV ? 19 : 15,
-    lineHeight: Platform.isTV ? 28 : 22,
-    marginTop: 12,
-  },
-  heroActions: {
-    flexDirection: 'row',
-    marginTop: 24,
-  },
-  searchWrap: {
+  heroMeta: { color: '#d8deea', marginTop: 12, fontSize: Platform.isTV ? 18 : 14, fontWeight: '700' },
+  heroActions: { flexDirection: 'row', marginTop: 24 },
+  emptyTitle: { color: theme.text, fontSize: Platform.isTV ? 48 : 34, lineHeight: Platform.isTV ? 54 : 40, fontWeight: '900', marginTop: 12 },
+  emptyText: { color: theme.muted, maxWidth: 720, fontSize: Platform.isTV ? 19 : 16, lineHeight: Platform.isTV ? 28 : 24, marginTop: 12 },
+  searchArea: {
     paddingHorizontal: Platform.isTV ? 64 : 20,
-    paddingTop: Platform.isTV ? 28 : 20,
+    paddingTop: Platform.isTV ? 30 : 22,
+    flexDirection: Platform.isTV ? 'row' : 'column',
+    gap: 12,
+    alignItems: Platform.isTV ? 'center' : 'stretch',
   },
-  search: {
-    minHeight: Platform.isTV ? 58 : 50,
-    borderWidth: 1,
-    borderColor: theme.border,
-    borderRadius: 14,
-    backgroundColor: theme.surface,
-    color: theme.text,
-    paddingHorizontal: 16,
-    fontSize: Platform.isTV ? 18 : 16,
-  },
-  noResults: {
-    color: theme.muted,
-    paddingHorizontal: Platform.isTV ? 64 : 20,
-    paddingTop: 28,
-    fontSize: 16,
-  },
-  section: {
-    paddingTop: Platform.isTV ? 34 : 28,
-  },
-  sectionTitle: {
-    color: theme.text,
-    fontSize: Platform.isTV ? 27 : 21,
-    fontWeight: '800',
-    paddingHorizontal: Platform.isTV ? 64 : 20,
-    marginBottom: 16,
-  },
-  rowContent: {
-    paddingLeft: Platform.isTV ? 64 : 20,
-    paddingRight: Platform.isTV ? 40 : 6,
-  },
-  loadingRow: {
+  searchShell: {
+    flex: 1,
+    minHeight: Platform.isTV ? 62 : 54,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: Platform.isTV ? 64 : 20,
-    paddingTop: 28,
+    gap: 10,
+    paddingHorizontal: 16,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#323b50',
+    backgroundColor: '#121724',
   },
-  loadingText: {
-    color: theme.muted,
+  searchIcon: { color: theme.muted, fontSize: 24, fontWeight: '700' },
+  search: { flex: 1, color: theme.text, fontSize: Platform.isTV ? 19 : 16, paddingVertical: 0 },
+  audioChip: {
+    minHeight: 54,
+    maxWidth: Platform.isTV ? 360 : undefined,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: theme.border,
+    backgroundColor: theme.surface,
+    paddingHorizontal: 16,
+    justifyContent: 'center',
   },
-  addonError: {
-    color: '#fda4af',
-    paddingHorizontal: Platform.isTV ? 64 : 20,
-    paddingTop: 24,
+  audioChipLabel: { color: theme.muted, fontSize: 11, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1.1 },
+  audioChipValue: { color: theme.text, marginTop: 3, fontWeight: '800' },
+  section: { paddingTop: Platform.isTV ? 36 : 30 },
+  sectionHeading: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: Platform.isTV ? 64 : 20, marginBottom: 16 },
+  sectionTitle: { color: theme.text, fontSize: Platform.isTV ? 27 : 22, fontWeight: '900' },
+  sectionCount: { color: theme.muted, fontSize: 13, fontWeight: '800' },
+  rowContent: { paddingLeft: Platform.isTV ? 64 : 20, paddingRight: Platform.isTV ? 40 : 8 },
+  loadingRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: Platform.isTV ? 64 : 20, paddingTop: 30 },
+  loadingText: { color: theme.muted, fontWeight: '700' },
+  messageBox: {
+    marginHorizontal: Platform.isTV ? 64 : 20,
+    marginTop: 28,
+    padding: Platform.isTV ? 24 : 18,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: theme.border,
+    backgroundColor: theme.surface,
   },
+  messageTitle: { color: theme.text, fontSize: 18, fontWeight: '900' },
+  messageText: { color: theme.muted, marginTop: 7, lineHeight: 21 },
+  messageAction: { alignItems: 'flex-start', marginTop: 14 },
 });

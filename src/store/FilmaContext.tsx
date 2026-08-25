@@ -3,15 +3,21 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 import type { CloudSyncAdapter } from '../services/sync';
 import { makeSyncEnvelope, mergeStates } from '../services/sync';
 import { loadState, saveState } from '../services/storage';
-import type { AddonSource, AppMode, FilmaState, MediaItem, MediaResumeSnapshot, PlaylistSource } from '../types';
+import type { AddonSource, AppLanguage, AppMode, AppPreferences, AudioLanguage, FilmaState, MediaItem, MediaResumeSnapshot, PlaylistSource } from '../types';
 
 const DEVICE_KEY = 'filma.device.id';
+
+type PreferencePatch = Partial<Pick<AppPreferences, 'appLanguage' | 'preferredAudioLanguages'>>;
 
 type FilmaContextValue = {
   ready: boolean;
   deviceId: string;
   state: FilmaState;
   setMode(mode: AppMode): void;
+  updatePreferences(patch: PreferencePatch): void;
+  setAppLanguage(language: AppLanguage): void;
+  toggleAudioLanguage(language: AudioLanguage): void;
+  clearAudioLanguages(): void;
   toggleFavorite(mediaId: string): void;
   updateProgress(item: MediaItem, positionSeconds: number, durationSeconds: number): void;
   addPlaylist(name: string, url: string): void;
@@ -57,6 +63,11 @@ export function FilmaProvider({ children }: { children: React.ReactNode }) {
   const [deviceId, setDeviceId] = useState('pending');
   const [state, setState] = useState<FilmaState>({
     mode: 'movies',
+    preferences: {
+      appLanguage: 'en',
+      preferredAudioLanguages: [],
+      updatedAt: '1970-01-01T00:00:00.000Z',
+    },
     progress: {},
     favorites: {},
     playlists: [],
@@ -88,6 +99,37 @@ export function FilmaProvider({ children }: { children: React.ReactNode }) {
   const setMode = useCallback((mode: AppMode) => {
     commitState(current => ({ ...current, mode }));
   }, [commitState]);
+
+  const updatePreferences = useCallback((patch: PreferencePatch) => {
+    commitState(current => ({
+      ...current,
+      preferences: {
+        ...current.preferences,
+        ...patch,
+        preferredAudioLanguages: patch.preferredAudioLanguages
+          ? [...new Set(patch.preferredAudioLanguages)]
+          : current.preferences.preferredAudioLanguages,
+        updatedAt: now(),
+      },
+    }));
+  }, [commitState]);
+
+  const setAppLanguage = useCallback((language: AppLanguage) => {
+    updatePreferences({ appLanguage: language });
+  }, [updatePreferences]);
+
+  const toggleAudioLanguage = useCallback((language: AudioLanguage) => {
+    const selected = stateRef.current.preferences.preferredAudioLanguages;
+    updatePreferences({
+      preferredAudioLanguages: selected.includes(language)
+        ? selected.filter(item => item !== language)
+        : [...selected, language],
+    });
+  }, [updatePreferences]);
+
+  const clearAudioLanguages = useCallback(() => {
+    updatePreferences({ preferredAudioLanguages: [] });
+  }, [updatePreferences]);
 
   const toggleFavorite = useCallback((mediaId: string) => {
     commitState(current => {
@@ -193,6 +235,10 @@ export function FilmaProvider({ children }: { children: React.ReactNode }) {
     deviceId,
     state,
     setMode,
+    updatePreferences,
+    setAppLanguage,
+    toggleAudioLanguage,
+    clearAudioLanguages,
     toggleFavorite,
     updateProgress,
     addPlaylist,
@@ -203,14 +249,18 @@ export function FilmaProvider({ children }: { children: React.ReactNode }) {
   }), [
     addAddon,
     addPlaylist,
+    clearAudioLanguages,
     deviceId,
     ready,
     removeAddon,
     removePlaylist,
+    setAppLanguage,
     setMode,
     state,
     syncWith,
+    toggleAudioLanguage,
     toggleFavorite,
+    updatePreferences,
     updateProgress,
   ]);
 

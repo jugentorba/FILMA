@@ -1,5 +1,6 @@
 import type {
   AddonSource,
+  AppPreferences,
   Favorite,
   FilmaState,
   PlaylistSource,
@@ -70,10 +71,17 @@ function mergeTimestampedArrays<T extends { id: string; updatedAt: string }>(loc
   });
 }
 
+const FALLBACK_PREFERENCES: AppPreferences = {
+  appLanguage: 'en',
+  preferredAudioLanguages: [],
+  updatedAt: '1970-01-01T00:00:00.000Z',
+};
+
 export function mergeStates(local: FilmaState, remote: FilmaState): FilmaState {
   return {
-    // Screen selection remains device-local. Watch state and source configuration sync.
+    // Screen selection remains device-local. Watch state, preferences and source configuration sync.
     mode: local.mode,
+    preferences: newest(local.preferences, remote.preferences) ?? local.preferences ?? remote.preferences ?? FALLBACK_PREFERENCES,
     progress: mergeProgress(local.progress, remote.progress),
     favorites: mergeFavorites(local.favorites, remote.favorites),
     playlists: mergeTimestampedArrays<PlaylistSource>(local.playlists, remote.playlists),
