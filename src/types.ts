@@ -31,6 +31,7 @@ export type MediaItem = {
   poster?: string;
   backdrop?: string;
   streamUrl?: string;
+  alternateStreamUrls?: string[];
   source?: MediaSource;
   durationSeconds?: number;
   genres?: string[];
@@ -82,6 +83,7 @@ export type LiveChannel = {
   id: string;
   name: string;
   url: string;
+  alternateUrls?: string[];
   logo?: string;
   group?: string;
   tvgId?: string;
