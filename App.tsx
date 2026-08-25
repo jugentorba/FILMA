@@ -9,6 +9,7 @@ import { YouTubeScreen } from './src/screens/YouTubeScreen';
 import { resolveStreamsAcrossAddons, type StreamResolutionDiagnostics } from './src/services/streamResolver';
 import { fetchMeta, mediaItemForEpisode, type StremioVideo } from './src/services/stremio';
 import { type YouTubeVideo, youtubeWatchUrl } from './src/services/youtube';
+import { DeviceModeProvider, useDeviceMode } from './src/store/DeviceModeContext';
 import { DropboxSyncProvider } from './src/store/DropboxSyncContext';
 import { FilmaProvider, useFilma } from './src/store/FilmaContext';
 import type { MediaItem } from './src/types';
@@ -47,6 +48,7 @@ function resolutionMessage(diagnostics: StreamResolutionDiagnostics): string {
 
 function FilmaApp() {
   const { ready, state, setMode, updateProgress, toggleFavorite } = useFilma();
+  const { isTvMode } = useDeviceMode();
   const text = stringsFor(state.preferences.appLanguage);
   const [screen, setScreen] = useState<Screen>('home');
   const [selected, setSelected] = useState<MediaItem | null>(null);
@@ -57,7 +59,7 @@ function FilmaApp() {
 
   const goMovies = () => { setMode('movies'); setScreen('home'); };
   const goLive = () => { setMode('live'); setScreen('live'); };
-  const goYouTube = () => { if (Platform.isTV) setScreen('youtube'); };
+  const goYouTube = () => { if (isTvMode) setScreen('youtube'); };
   const goSettings = () => setScreen('settings');
 
   const resolveStreamsFor = async (item: MediaItem) => {
@@ -199,7 +201,7 @@ function FilmaApp() {
           />
         ) : null}
         {screen === 'live' ? <LiveTvScreen onSelect={item => void handleSelect(item)} onOpenSettings={goSettings} /> : null}
-        {screen === 'youtube' && Platform.isTV ? <YouTubeScreen onOpenVideo={video => void handleYouTubeVideo(video)} /> : null}
+        {screen === 'youtube' && isTvMode ? <YouTubeScreen onOpenVideo={video => void handleYouTubeVideo(video)} /> : null}
         {screen === 'settings' ? <SettingsScreen /> : null}
       </View>
 
@@ -207,6 +209,7 @@ function FilmaApp() {
         <View style={styles.bottomNav}>
           <FocusButton compact label={`▣ ${text.movies}`} active={screen === 'home'} style={styles.mobileTab} onPress={goMovies} />
           <FocusButton compact label={`◉ ${text.liveTv}`} active={screen === 'live'} style={styles.mobileTab} onPress={goLive} />
+          {isTvMode ? <FocusButton compact label={`▶ ${text.youtube}`} active={screen === 'youtube'} style={styles.mobileTab} onPress={goYouTube} /> : null}
           <FocusButton compact label={`⚙ ${text.settings}`} active={screen === 'settings'} style={styles.mobileTab} onPress={goSettings} />
         </View>
       ) : null}
@@ -248,7 +251,15 @@ function FilmaApp() {
 }
 
 export default function App() {
-  return <FilmaProvider><DropboxSyncProvider><FilmaApp /></DropboxSyncProvider></FilmaProvider>;
+  return (
+    <DeviceModeProvider>
+      <FilmaProvider>
+        <DropboxSyncProvider>
+          <FilmaApp />
+        </DropboxSyncProvider>
+      </FilmaProvider>
+    </DeviceModeProvider>
+  );
 }
 
 const styles = StyleSheet.create({
