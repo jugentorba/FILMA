@@ -40,6 +40,11 @@ type ManifestCacheEntry = {
 
 const MANIFEST_CACHE_TTL_MS = 5 * 60 * 1000;
 const manifestCache = new Map<string, ManifestCacheEntry>();
+const recentStreamCandidates = new Map<string, ResolvedStream[]>();
+
+export function resolvedStreamsForItem(mediaId: string): ResolvedStream[] {
+  return recentStreamCandidates.get(mediaId) ?? [];
+}
 
 async function manifestFor(url: string): Promise<StremioManifest> {
   const cached = manifestCache.get(url);
@@ -93,6 +98,8 @@ export async function resolveStreamsAcrossAddons(
   addons: AddonSource[],
   preferredAudioLanguages: AudioLanguage[],
 ): Promise<StreamResolution> {
+  recentStreamCandidates.delete(item.id);
+
   const configured = addons.filter(addon => addon.enabled && !addon.deletedAt);
   const automatic = await discoverAutomaticStreamProviders().catch(() => [] as AddonSource[]);
   const sourceProvider = itemProvider(item);
@@ -159,5 +166,6 @@ export async function resolveStreamsAcrossAddons(
     return true;
   });
 
+  recentStreamCandidates.set(item.id, streams);
   return { streams, diagnostics };
 }
