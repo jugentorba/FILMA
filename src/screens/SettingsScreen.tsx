@@ -8,6 +8,7 @@ import { useDropboxSync } from '../store/DropboxSyncContext';
 import { useFilma } from '../store/FilmaContext';
 import { FocusButton } from '../ui/FocusButton';
 import { theme } from '../ui/theme';
+import { useResponsiveLayout } from '../ui/useResponsiveLayout';
 
 export function SettingsScreen() {
   const {
@@ -16,6 +17,7 @@ export function SettingsScreen() {
     setAppLanguage,
     toggleAudioLanguage,
     clearAudioLanguages,
+    setInterfaceDensity,
     addPlaylist,
     setPlaylistEnabled,
     removePlaylist,
@@ -24,6 +26,7 @@ export function SettingsScreen() {
     removeAddon,
   } = useFilma();
   const { isTvMode, isNativeTv, setTvModeEnabled } = useDeviceMode();
+  const layout = useResponsiveLayout();
   const dropbox = useDropboxSync();
   const text = stringsFor(state.preferences.appLanguage);
   const [playlistName, setPlaylistName] = useState('');
@@ -68,6 +71,27 @@ export function SettingsScreen() {
           tv: 'TV Mode',
           on: 'TV Mode active',
           off: 'Phone mode active',
+        };
+
+  const appearanceCopy = state.preferences.appLanguage === 'fr'
+    ? {
+        title: 'Apparence',
+        help: 'Choisis la densité de l’interface. Compact affiche plus de contenu et des icônes plus petites.',
+        compact: 'Compact',
+        comfortable: 'Confortable',
+      }
+    : state.preferences.appLanguage === 'sq'
+      ? {
+          title: 'Pamja',
+          help: 'Zgjidh dendësinë e ndërfaqes. Kompakt shfaq më shumë përmbajtje me ikona më të vogla.',
+          compact: 'Kompakt',
+          comfortable: 'Komode',
+        }
+      : {
+          title: 'Appearance',
+          help: 'Choose the interface density. Compact shows more content with smaller icons and controls.',
+          compact: 'Compact',
+          comfortable: 'Comfortable',
         };
 
   const copy = state.preferences.appLanguage === 'fr'
@@ -206,8 +230,14 @@ export function SettingsScreen() {
     setPairingCode('');
   };
 
+  const contentStyle = useMemo(() => ({
+    paddingHorizontal: layout.horizontalPadding,
+    paddingTop: layout.isTv ? 34 : layout.isCompactPhone ? 16 : 20,
+    paddingBottom: layout.isTv ? 90 : 112,
+  }), [layout.horizontalPadding, layout.isCompactPhone, layout.isTv]);
+
   return (
-    <ScrollView style={styles.root} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+    <ScrollView style={styles.root} contentContainerStyle={[styles.content, contentStyle]} keyboardShouldPersistTaps="handled">
       <View style={styles.heading}>
         <Text style={styles.kicker}>FILMA</Text>
         <Text style={styles.title}>{text.settingsTitle}</Text>
@@ -260,6 +290,30 @@ export function SettingsScreen() {
               onPress={() => toggleAudioLanguage(option.code)}
             />
           ))}
+        </View>
+      </View>
+
+      <View style={styles.card}>
+        <View style={styles.cardHeader}>
+          <View style={styles.iconBadge}><Text style={styles.iconText}>◫</Text></View>
+          <View style={styles.cardHeaderText}>
+            <Text style={styles.cardTitle}>{appearanceCopy.title}</Text>
+            <Text style={styles.help}>{appearanceCopy.help}</Text>
+          </View>
+        </View>
+        <View style={styles.optionRow}>
+          <FocusButton
+            compact
+            label={appearanceCopy.compact}
+            active={state.preferences.interfaceDensity === 'compact'}
+            onPress={() => setInterfaceDensity('compact')}
+          />
+          <FocusButton
+            compact
+            label={appearanceCopy.comfortable}
+            active={state.preferences.interfaceDensity === 'comfortable'}
+            onPress={() => setInterfaceDensity('comfortable')}
+          />
         </View>
       </View>
 
@@ -439,16 +493,13 @@ export function SettingsScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: theme.background },
   content: {
-    paddingHorizontal: Platform.isTV ? 64 : 18,
-    paddingTop: Platform.isTV ? 46 : 24,
-    paddingBottom: Platform.isTV ? 100 : 130,
     alignItems: Platform.isTV ? 'flex-start' : 'stretch',
   },
-  heading: { maxWidth: 920, marginBottom: 24 },
-  kicker: { color: theme.accent, fontWeight: '900', letterSpacing: 2.2, fontSize: 12 },
-  title: { color: theme.text, fontSize: Platform.isTV ? 46 : 34, fontWeight: '900', marginTop: 7 },
-  intro: { color: theme.muted, maxWidth: 760, marginTop: 8, fontSize: Platform.isTV ? 17 : 15, lineHeight: 23 },
-  message: { color: theme.success, marginBottom: 16, fontWeight: '800' },
+  heading: { maxWidth: 920, marginBottom: 18 },
+  kicker: { color: theme.accent, fontWeight: '900', letterSpacing: 2.2, fontSize: 11 },
+  title: { color: theme.text, fontSize: Platform.isTV ? 38 : 28, fontWeight: '900', marginTop: 5 },
+  intro: { color: theme.muted, maxWidth: 760, marginTop: 6, fontSize: Platform.isTV ? 15 : 13, lineHeight: 20 },
+  message: { color: theme.success, marginBottom: 14, fontWeight: '800', fontSize: 13 },
   messageError: { color: '#fda4af' },
   card: {
     width: '100%',
@@ -456,61 +507,61 @@ const styles = StyleSheet.create({
     backgroundColor: '#101521',
     borderWidth: 1,
     borderColor: theme.border,
-    borderRadius: 22,
-    padding: Platform.isTV ? 28 : 18,
-    marginBottom: 18,
+    borderRadius: 17,
+    padding: Platform.isTV ? 20 : 14,
+    marginBottom: 13,
   },
-  cardHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 14, marginBottom: 20 },
+  cardHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 14 },
   cardHeaderText: { flex: 1 },
-  iconBadge: { minWidth: 44, height: 44, borderRadius: 14, backgroundColor: theme.accentSoft, alignItems: 'center', justifyContent: 'center' },
-  iconText: { color: '#fff', fontWeight: '900', fontSize: 15 },
-  cardTitle: { color: theme.text, fontWeight: '900', fontSize: Platform.isTV ? 25 : 21 },
-  help: { color: theme.muted, marginTop: 5, lineHeight: Platform.isTV ? 24 : 21 },
-  fieldLabel: { color: theme.text, fontWeight: '900', marginBottom: 10, fontSize: 15 },
-  optionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, alignItems: 'center' },
-  divider: { height: 1, backgroundColor: theme.border, marginVertical: 20 },
+  iconBadge: { minWidth: 36, height: 36, borderRadius: 11, backgroundColor: theme.accentSoft, alignItems: 'center', justifyContent: 'center' },
+  iconText: { color: '#fff', fontWeight: '900', fontSize: 12 },
+  cardTitle: { color: theme.text, fontWeight: '900', fontSize: Platform.isTV ? 20 : 17 },
+  help: { color: theme.muted, marginTop: 3, lineHeight: Platform.isTV ? 20 : 18, fontSize: Platform.isTV ? 14 : 12 },
+  fieldLabel: { color: theme.text, fontWeight: '900', marginBottom: 8, fontSize: 13 },
+  optionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, alignItems: 'center' },
+  divider: { height: 1, backgroundColor: theme.border, marginVertical: 14 },
   statusPanel: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 16,
-    padding: 16, borderRadius: 16, backgroundColor: theme.background, borderWidth: 1, borderColor: theme.border, marginBottom: 14,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+    padding: 12, borderRadius: 13, backgroundColor: theme.background, borderWidth: 1, borderColor: theme.border, marginBottom: 11,
   },
-  statusLabel: { color: theme.text, fontWeight: '900', fontSize: 16 },
-  statusCaption: { color: theme.muted, marginTop: 3, fontSize: 12 },
-  statusPill: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, backgroundColor: '#232a3a' },
+  statusLabel: { color: theme.text, fontWeight: '900', fontSize: 14 },
+  statusCaption: { color: theme.muted, marginTop: 2, fontSize: 10 },
+  statusPill: { paddingHorizontal: 9, paddingVertical: 5, borderRadius: 999, backgroundColor: '#232a3a' },
   statusPillOk: { backgroundColor: '#12362f' },
-  statusValue: { color: theme.muted, fontWeight: '900', fontSize: 12 },
+  statusValue: { color: theme.muted, fontWeight: '900', fontSize: 10 },
   statusValueOk: { color: theme.success },
-  warning: { color: '#fde68a', lineHeight: 21, marginBottom: 12 },
-  error: { color: '#fda4af', lineHeight: 21, marginBottom: 12 },
-  pairingPanel: { marginTop: 12, padding: 18, borderWidth: 1, borderColor: theme.border, borderRadius: 18, backgroundColor: theme.background },
-  pairingTitle: { color: theme.text, fontSize: 19, fontWeight: '900' },
-  qrWrap: { padding: 10, borderRadius: 12, backgroundColor: '#fff', alignSelf: Platform.isTV ? 'center' : 'flex-start', marginVertical: 14 },
+  warning: { color: '#fde68a', lineHeight: 18, marginBottom: 10, fontSize: 12 },
+  error: { color: '#fda4af', lineHeight: 18, marginBottom: 10, fontSize: 12 },
+  pairingPanel: { marginTop: 10, padding: 14, borderWidth: 1, borderColor: theme.border, borderRadius: 14, backgroundColor: theme.background },
+  pairingTitle: { color: theme.text, fontSize: 16, fontWeight: '900' },
+  qrWrap: { padding: 8, borderRadius: 10, backgroundColor: '#fff', alignSelf: Platform.isTV ? 'center' : 'flex-start', marginVertical: 12 },
   input: {
-    minHeight: 54, marginBottom: 12, borderWidth: 1, borderColor: '#31394d', borderRadius: 14,
-    backgroundColor: theme.background, color: theme.text, paddingHorizontal: 15, fontSize: 16,
+    minHeight: 44, marginBottom: 9, borderWidth: 1, borderColor: '#31394d', borderRadius: 11,
+    backgroundColor: theme.background, color: theme.text, paddingHorizontal: 12, fontSize: 13,
   },
-  pairingInput: { width: '100%', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', fontSize: Platform.isTV ? 20 : 16 },
-  actionRow: { alignItems: 'flex-start', marginBottom: 8 },
+  pairingInput: { width: '100%', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', fontSize: Platform.isTV ? 17 : 13 },
+  actionRow: { alignItems: 'flex-start', marginBottom: 6 },
   sourceRow: {
     flexDirection: Platform.isTV ? 'row' : 'column',
     alignItems: Platform.isTV ? 'center' : 'stretch',
-    gap: 14,
+    gap: 10,
     borderTopWidth: 1,
     borderTopColor: theme.border,
-    paddingTop: 14,
-    marginTop: 14,
+    paddingTop: 11,
+    marginTop: 11,
   },
   sourceText: { flex: 1 },
-  sourceTitleRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 },
-  sourceName: { color: theme.text, fontWeight: '900', fontSize: 16 },
-  sourceUrl: { color: theme.muted, marginTop: 4 },
-  sourceActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center' },
-  sourceStatus: { paddingHorizontal: 9, paddingVertical: 4, borderRadius: 999 },
+  sourceTitleRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6 },
+  sourceName: { color: theme.text, fontWeight: '900', fontSize: 14 },
+  sourceUrl: { color: theme.muted, marginTop: 3, fontSize: 11 },
+  sourceActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, alignItems: 'center' },
+  sourceStatus: { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 999 },
   sourceStatusOn: { backgroundColor: '#12362f' },
   sourceStatusOff: { backgroundColor: '#252b39' },
-  sourceStatusText: { color: theme.muted, fontSize: 11, fontWeight: '900' },
+  sourceStatusText: { color: theme.muted, fontSize: 9, fontWeight: '900' },
   sourceStatusTextOn: { color: theme.success },
-  lastSync: { color: theme.muted, marginTop: 14 },
-  deviceCard: { width: '100%', maxWidth: 980, paddingHorizontal: 4, paddingVertical: 10 },
-  deviceTitle: { color: theme.muted, fontWeight: '800', fontSize: 12, textTransform: 'uppercase', letterSpacing: 1.2 },
-  device: { color: '#70798c', marginTop: 6, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', fontSize: 11 },
+  lastSync: { color: theme.muted, marginTop: 10, fontSize: 11 },
+  deviceCard: { width: '100%', maxWidth: 980, paddingHorizontal: 3, paddingVertical: 8 },
+  deviceTitle: { color: theme.muted, fontWeight: '800', fontSize: 10, textTransform: 'uppercase', letterSpacing: 1.1 },
+  device: { color: '#70798c', marginTop: 5, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', fontSize: 9 },
 });
