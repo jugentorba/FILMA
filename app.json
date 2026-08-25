@@ -2,16 +2,18 @@
   "expo": {
     "name": "FILMA",
     "slug": "filma",
-    "version": "0.1.0",
+    "version": "0.1.1",
     "orientation": "default",
     "userInterfaceStyle": "dark",
     "scheme": "filma",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.jugentorba.filma"
+      "bundleIdentifier": "com.jugentorba.filma",
+      "buildNumber": "2"
     },
     "android": {
-      "package": "com.jugentorba.filma"
+      "package": "com.jugentorba.filma",
+      "versionCode": 2
     },
     "plugins": [
       "@react-native-tvos/config-tv"
