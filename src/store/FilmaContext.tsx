@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { deleteXtreamCredentials, saveXtreamCredentials, validateXtreamAccount } from '../services/iptvAuth';
 import { CONTINUE_WATCHING_MIN_SECONDS, isPlaybackComplete } from '../services/progress';
 import { automaticTvPlaylists, discoverOfficialMovieProviders } from '../services/sourceDiscovery';
 import type { CloudSyncAdapter } from '../services/sync';
@@ -26,6 +27,7 @@ type FilmaContextValue = {
   toggleFavorite(mediaId: string): void;
   updateProgress(item: MediaItem, positionSeconds: number, durationSeconds: number): void;
   addPlaylist(name: string, url: string): void;
+  addXtreamPlaylist(name: string, baseUrl: string, username: string, password: string): Promise<void>;
   setPlaylistEnabled(id: string, enabled: boolean): void;
   removePlaylist(id: string): void;
   addAddon(name: string, manifestUrl: string): void;
@@ -268,6 +270,25 @@ export function FilmaProvider({ children }: { children: React.ReactNode }) {
       enabled: true,
       createdAt: at,
       updatedAt: at,
+      kind: 'm3u',
+    };
+    commitState(current => ({ ...current, playlists: [...current.playlists, playlist] }));
+  }, [commitState]);
+
+  const addXtreamPlaylist = useCallback(async (name: string, baseUrl: string, username: string, password: string) => {
+    const validated = await validateXtreamAccount(baseUrl, username, password);
+    const id = makeId('xtream');
+    const credentialsKey = await saveXtreamCredentials(id, username, password);
+    const at = now();
+    const playlist: PlaylistSource = {
+      id,
+      name,
+      url: validated.baseUrl,
+      enabled: true,
+      createdAt: at,
+      updatedAt: at,
+      kind: 'xtream',
+      credentialsKey,
     };
     commitState(current => ({ ...current, playlists: [...current.playlists, playlist] }));
   }, [commitState]);
@@ -283,6 +304,10 @@ export function FilmaProvider({ children }: { children: React.ReactNode }) {
   }, [commitState]);
 
   const removePlaylist = useCallback((id: string) => {
+    const source = stateRef.current.playlists.find(item => item.id === id && !item.deletedAt);
+    if (source?.kind === 'xtream') {
+      void deleteXtreamCredentials(source).catch(() => undefined);
+    }
     const at = now();
     commitState(current => ({
       ...current,
@@ -355,6 +380,7 @@ export function FilmaProvider({ children }: { children: React.ReactNode }) {
     toggleFavorite,
     updateProgress,
     addPlaylist,
+    addXtreamPlaylist,
     setPlaylistEnabled,
     removePlaylist,
     addAddon,
@@ -364,6 +390,7 @@ export function FilmaProvider({ children }: { children: React.ReactNode }) {
   }), [
     addAddon,
     addPlaylist,
+    addXtreamPlaylist,
     clearAudioLanguages,
     deviceId,
     effectiveState,
