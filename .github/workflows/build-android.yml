@@ -23,6 +23,9 @@ jobs:
     timeout-minutes: 40
     env:
       EXPO_PUBLIC_YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+      FILMA_TEST_KEYSTORE: ${{ github.workspace }}/.ci-signing/filma-test.keystore
+      FILMA_TEST_KEY_ALIAS: filma-test
+      FILMA_TEST_KEY_PASSWORD: filma-test
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -37,6 +40,33 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+
+      - name: Restore persistent FILMA test signing key
+        uses: actions/cache@v4
+        with:
+          path: .ci-signing/filma-test.keystore
+          key: filma-android-test-signing-v1
+
+      - name: Ensure FILMA test signing key
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$(dirname "$FILMA_TEST_KEYSTORE")"
+          if [ ! -f "$FILMA_TEST_KEYSTORE" ]; then
+            keytool -genkeypair \
+              -keystore "$FILMA_TEST_KEYSTORE" \
+              -storepass "$FILMA_TEST_KEY_PASSWORD" \
+              -keypass "$FILMA_TEST_KEY_PASSWORD" \
+              -alias "$FILMA_TEST_KEY_ALIAS" \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 36500 \
+              -dname 'CN=FILMA Test,O=FILMA,C=FR'
+          fi
+          keytool -list \
+            -keystore "$FILMA_TEST_KEYSTORE" \
+            -storepass "$FILMA_TEST_KEY_PASSWORD" \
+            -alias "$FILMA_TEST_KEY_ALIAS"
 
       - name: Install locked dependencies
         run: yarn install --frozen-lockfile --non-interactive
@@ -58,14 +88,33 @@ jobs:
           cd android
           ./gradlew assembleRelease --no-daemon
 
-      - name: Stage mobile APK
-        run: cp android/app/build/outputs/apk/release/app-release.apk FILMA-mobile.apk
+      - name: Sign and verify mobile APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          input='android/app/build/outputs/apk/release/app-release.apk'
+          build_tools=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)
+          test -x "$build_tools/zipalign"
+          test -x "$build_tools/apksigner"
+          "$build_tools/zipalign" -f -p 4 "$input" FILMA-mobile-aligned.apk
+          "$build_tools/apksigner" sign \
+            --ks "$FILMA_TEST_KEYSTORE" \
+            --ks-key-alias "$FILMA_TEST_KEY_ALIAS" \
+            --ks-pass "pass:$FILMA_TEST_KEY_PASSWORD" \
+            --key-pass "pass:$FILMA_TEST_KEY_PASSWORD" \
+            --out FILMA-mobile.apk \
+            FILMA-mobile-aligned.apk
+          rm FILMA-mobile-aligned.apk
+          "$build_tools/apksigner" verify --verbose --print-certs FILMA-mobile.apk
+          sha256sum FILMA-mobile.apk > FILMA-mobile.apk.sha256
 
       - name: Upload mobile APK
         uses: actions/upload-artifact@v4
         with:
           name: FILMA-mobile-APK
-          path: FILMA-mobile.apk
+          path: |
+            FILMA-mobile.apk
+            FILMA-mobile.apk.sha256
           if-no-files-found: error
           retention-days: 30
 
@@ -83,13 +132,32 @@ jobs:
           cd android
           ./gradlew assembleRelease --no-daemon
 
-      - name: Stage Android TV APK
-        run: cp android/app/build/outputs/apk/release/app-release.apk FILMA-android-tv.apk
+      - name: Sign and verify Android TV APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          input='android/app/build/outputs/apk/release/app-release.apk'
+          build_tools=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)
+          test -x "$build_tools/zipalign"
+          test -x "$build_tools/apksigner"
+          "$build_tools/zipalign" -f -p 4 "$input" FILMA-android-tv-aligned.apk
+          "$build_tools/apksigner" sign \
+            --ks "$FILMA_TEST_KEYSTORE" \
+            --ks-key-alias "$FILMA_TEST_KEY_ALIAS" \
+            --ks-pass "pass:$FILMA_TEST_KEY_PASSWORD" \
+            --key-pass "pass:$FILMA_TEST_KEY_PASSWORD" \
+            --out FILMA-android-tv.apk \
+            FILMA-android-tv-aligned.apk
+          rm FILMA-android-tv-aligned.apk
+          "$build_tools/apksigner" verify --verbose --print-certs FILMA-android-tv.apk
+          sha256sum FILMA-android-tv.apk > FILMA-android-tv.apk.sha256
 
       - name: Upload Android TV APK
         uses: actions/upload-artifact@v4
         with:
           name: FILMA-Android-TV-APK
-          path: FILMA-android-tv.apk
+          path: |
+            FILMA-android-tv.apk
+            FILMA-android-tv.apk.sha256
           if-no-files-found: error
           retention-days: 30
