@@ -139,3 +139,7 @@ export async function searchYouTubeVideos(query: string, language: AppLanguage):
 export function youtubeWatchUrl(videoId: string): string {
   return `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`;
 }
+
+export function youtubeAndroidTvPlayerUrl(videoId: string): string {
+  return `filmayoutube://watch/${encodeURIComponent(videoId)}`;
+}
