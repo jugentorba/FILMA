@@ -150,6 +150,10 @@ function empty(mode = 'movies') {
   assert.equal(merged.progress.episode.positionSeconds, 420, 'newest episode progress wins');
   assert.equal(merged.progress.episode.item.title, 'Series · Pilot', 'resume snapshot follows newest progress');
   assert.equal(merged.progress.episode.item.source.videoId, 'tt123:1:1', 'episode stream identity is preserved');
+
+  const persisted = normalizeState(merged);
+  assert.equal(persisted.progress.episode.item.title, 'Series · Pilot', 'episode title survives state normalization');
+  assert.equal(persisted.progress.episode.item.source.videoId, 'tt123:1:1', 'episode video id survives state normalization');
 }
 
 console.log('FILMA sync tests passed.');
