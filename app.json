@@ -14,7 +14,8 @@
       "package": "com.jugentorba.filma"
     },
     "plugins": [
-      "@react-native-tvos/config-tv"
+      "@react-native-tvos/config-tv",
+      "./plugins/withYouTubeTvPlayer"
     ]
   }
 }
