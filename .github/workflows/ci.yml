@@ -37,6 +37,7 @@ jobs:
             src/services/stateSchema.ts \
             src/services/stremio.ts \
             src/services/sourceDiscovery.ts \
+            src/services/m3u.ts \
             --ignoreConfig \
             --outDir .sync-test-build \
             --module commonjs \
@@ -45,6 +46,7 @@ jobs:
             --esModuleInterop
           node tests/sync.test.cjs
           node tests/sources.test.cjs
+          node tests/m3u.test.cjs
           rm -rf .sync-test-build
 
       - name: Expo config
