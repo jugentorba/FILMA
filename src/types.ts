@@ -1,5 +1,9 @@
 export type AppMode = 'movies' | 'live';
 
+export type MediaSource =
+  | { kind: 'direct' }
+  | { kind: 'stremio'; manifestUrl: string; mediaType: string; mediaId: string };
+
 export type MediaItem = {
   id: string;
   title: string;
@@ -7,6 +11,7 @@ export type MediaItem = {
   poster?: string;
   backdrop?: string;
   streamUrl?: string;
+  source?: MediaSource;
   durationSeconds?: number;
   genres?: string[];
   year?: number;
