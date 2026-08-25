@@ -19,6 +19,40 @@ export function channelIdentity(channel: LiveChannel): string {
   return `name:${normalized(channel.group)}:${normalized(channel.name)}`;
 }
 
+export function mergeLiveChannels(channelLists: LiveChannel[][]): LiveChannel[] {
+  const merged = new Map<string, LiveChannel>();
+
+  for (const channel of channelLists.flat()) {
+    const identity = channelIdentity(channel);
+    const existing = merged.get(identity);
+    if (!existing) {
+      merged.set(identity, { ...channel, alternateUrls: [...new Set(channel.alternateUrls ?? [])].filter(url => url !== channel.url) });
+      continue;
+    }
+
+    const urls = [...new Set([
+      existing.url,
+      ...(existing.alternateUrls ?? []),
+      channel.url,
+      ...(channel.alternateUrls ?? []),
+    ])];
+    const primary = !existing.url.startsWith('https://') && channel.url.startsWith('https://')
+      ? channel.url
+      : existing.url;
+
+    merged.set(identity, {
+      ...existing,
+      url: primary,
+      alternateUrls: urls.filter(url => url !== primary),
+      logo: existing.logo ?? channel.logo,
+      group: existing.group ?? channel.group,
+      tvgId: existing.tvgId ?? channel.tvgId,
+    });
+  }
+
+  return [...merged.values()];
+}
+
 export function parseM3U(text: string): LiveChannel[] {
   const lines = text.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
   const channels: LiveChannel[] = [];
