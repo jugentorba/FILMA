@@ -4,9 +4,9 @@ FILMA is a cross-platform movie, series, YouTube and Live TV app built with Expo
 
 ## Current release
 
-- App version: **0.1.3**
-- iOS build: **4**
-- Android versionCode: **4**
+- App version: **0.1.5**
+- iOS build: **6**
+- Android versionCode: **6**
 - Bundle/package id: `com.jugentorba.filma`
 
 ## Core features
@@ -19,23 +19,24 @@ FILMA is a cross-platform movie, series, YouTube and Live TV app built with Expo
 - Automatic stream ranking and player-level failover when a direct stream fails, plus manual **Next source** switching.
 - Default playback language priority: **French → Albanian → English**. Manual audio preferences override that order.
 - Series/episode selection with artwork, progress and resume-aware continuation.
-- Continue Watching and favorites.
-- Dropbox synchronization of progress, favorites, preferences and configured sources across devices.
-- Live TV via legal/public or user-authorized M3U/M3U8 playlists, with channel logos, search, groups and backup-source failover.
+- Profile-scoped Continue Watching, favorites and playback progress.
+- Dropbox synchronization of profiles, progress, favorites, preferences and configured sources across devices.
+- Live TV via legal/public or user-authorized M3U/M3U8 playlists, local M3U/M3U8 file import and Xtream Codes, with channel logos, search, groups and backup-source failover.
 - Automatic public IPTV-org language playlists, with independent source health/fallback.
 - YouTube catalog/search and native in-FILMA Android phone/Android TV playback.
-- RTSH Albanian archive movies surfaced through the official YouTube path.
+- Expanded RTSH Albanian archive movies surfaced through official YouTube playlists/search fallback.
+- Responsive Compact / Comfortable layouts for phone, tablet and TV.
 - English, French and Albanian UI.
 
 ## Content-source policy
 
-FILMA is designed for sources the user is authorized to use. The built-in discovery path is limited to official/public sources such as Cinemeta, the official Stremio add-on index, IPTV-org public playlists and official YouTube content. User-configured Stremio manifests and M3U/M3U8 URLs are supported.
+FILMA is designed for sources the user is authorized to use. The built-in discovery path is limited to official/public sources such as Cinemeta, the official Stremio add-on index, IPTV-org public playlists and official YouTube content. User-configured Stremio manifests, M3U/M3U8 URLs/files and authorized Xtream providers are supported.
 
 The project does not include scraping, anti-bot bypasses, token extraction or automatic harvesting of unauthorized copyrighted streams.
 
 ## Sync
 
-Dropbox uses an App Folder and OAuth authorization-code + PKCE flow. No FILMA backend server is required. Once connected, FILMA automatically syncs local changes, periodically pulls remote changes and safely merges per-item timestamps so playback can continue on another device.
+Dropbox uses an App Folder and OAuth authorization-code + PKCE flow. No FILMA backend server is required. Once connected, FILMA automatically syncs local changes, periodically pulls remote changes and safely merges per-item timestamps so playback can continue on another device. Local playlist files and Xtream passwords stay device-local.
 
 ## Development
 
@@ -73,11 +74,12 @@ EXPO_TV=1 yarn prebuild:tv
 - TypeScript
 - state migration/conflict tests
 - source/language-priority and custom-source validation tests
-- M3U parsing/merge tests
+- M3U parsing/merge and local-playlist tests
+- YouTube source tests
 - Expo config
 - Expo Doctor
-- Android mobile prebuild
-- Android TV prebuild
+- Android mobile prebuild + native Kotlin compilation
+- Android TV prebuild + native Kotlin compilation
 - iPhone/iPad prebuild
 - Apple TV prebuild
 
