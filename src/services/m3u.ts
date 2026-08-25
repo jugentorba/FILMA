@@ -16,7 +16,7 @@ function normalized(value?: string): string {
 
 export function channelIdentity(channel: LiveChannel): string {
   if (channel.tvgId?.trim()) return `tvg:${normalized(channel.tvgId)}`;
-  return `name:${normalized(channel.group)}:${normalized(channel.name)}`;
+  return `name:${normalized(channel.country)}:${normalized(channel.group)}:${normalized(channel.name)}`;
 }
 
 export function mergeLiveChannels(channelLists: LiveChannel[][]): LiveChannel[] {
@@ -47,6 +47,9 @@ export function mergeLiveChannels(channelLists: LiveChannel[][]): LiveChannel[] 
       logo: existing.logo ?? channel.logo,
       group: existing.group ?? channel.group,
       tvgId: existing.tvgId ?? channel.tvgId,
+      country: existing.country ?? channel.country,
+      countryCode: existing.countryCode ?? channel.countryCode,
+      sourceName: existing.sourceName ?? channel.sourceName,
     });
   }
 
