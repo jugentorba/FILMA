@@ -1,4 +1,5 @@
 import type { AddonSource, AudioLanguage, MediaItem } from '../types';
+import { discoverAutomaticStreamProviders, mergeMovieProviders } from './sourceDiscovery';
 import {
   fetchManifest,
   fetchStreams,
@@ -14,6 +15,8 @@ export type ResolvedStream = {
 };
 
 export type StreamResolutionDiagnostics = {
+  configuredProviders: number;
+  automaticProviders: number;
   enabledProviders: number;
   manifestsLoaded: number;
   streamCapableProviders: number;
@@ -73,13 +76,34 @@ function canonicalIdentity(item: MediaItem): { type: string; id: string } | null
   };
 }
 
+function itemProvider(item: MediaItem): AddonSource | null {
+  if (item.source?.kind !== 'stremio') return null;
+  return {
+    id: `item-source:${item.source.manifestUrl}`,
+    name: 'Item source',
+    manifestUrl: item.source.manifestUrl,
+    enabled: true,
+    createdAt: '1970-01-01T00:00:00.000Z',
+    updatedAt: '1970-01-01T00:00:00.000Z',
+  };
+}
+
 export async function resolveStreamsAcrossAddons(
   item: MediaItem,
   addons: AddonSource[],
   preferredAudioLanguages: AudioLanguage[],
 ): Promise<StreamResolution> {
-  const activeAddons = addons.filter(addon => addon.enabled && !addon.deletedAt);
+  const configured = addons.filter(addon => addon.enabled && !addon.deletedAt);
+  const automatic = await discoverAutomaticStreamProviders().catch(() => [] as AddonSource[]);
+  const sourceProvider = itemProvider(item);
+  const activeAddons = mergeMovieProviders(
+    configured,
+    [...automatic, ...(sourceProvider ? [sourceProvider] : [])],
+  );
+
   const diagnostics: StreamResolutionDiagnostics = {
+    configuredProviders: configured.length,
+    automaticProviders: automatic.length,
     enabledProviders: activeAddons.length,
     manifestsLoaded: 0,
     streamCapableProviders: 0,
