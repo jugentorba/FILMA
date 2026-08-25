@@ -77,6 +77,9 @@ export type PlaylistSource = {
   lastCheckedAt?: string;
   lastHealthyAt?: string;
   error?: string;
+  countryCode?: string;
+  countryName?: string;
+  countryGroup?: string;
 };
 
 export type LiveChannel = {
@@ -87,6 +90,9 @@ export type LiveChannel = {
   logo?: string;
   group?: string;
   tvgId?: string;
+  country?: string;
+  countryCode?: string;
+  sourceName?: string;
 };
 
 export type AddonSource = {
