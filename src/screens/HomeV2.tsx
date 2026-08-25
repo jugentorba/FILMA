@@ -42,7 +42,7 @@ type CatalogRow = {
   key: string;
   providerId: string;
   title: string;
-  subtitle?: string;
+  subtitle: string | undefined;
   mediaType: 'movie' | 'series';
   directlyPlayable: boolean;
   items: MediaItem[];
@@ -219,6 +219,7 @@ function SimpleMediaRow({ title, items, state, onSelect }: { title: string; item
     key: title,
     providerId: 'local',
     title,
+    subtitle: undefined,
     mediaType: 'movie',
     directlyPlayable: false,
     items,
@@ -321,7 +322,7 @@ export function HomeScreen({ onSelect, onOpenYouTubeVideo, onOpenSettings }: Pro
     genres: ['Shqip', 'RTSH Arkiv'],
     source: { kind: 'youtube', videoId: video.id, channelTitle: video.channelTitle },
   })), [archiveVideos]);
-  const rtshById = useMemo(() => new Map(archiveVideos.map(video => [`youtube:${video.id}`, video] as const)), [archiveVideos]);
+  const rtshById = useMemo(() => new Map<string, YouTubeVideo>(archiveVideos.map(video => [`youtube:${video.id}`, video])), [archiveVideos]);
 
   const loadedItems = useMemo(() => {
     const resumed = Object.values(state.progress).flatMap(progress => progress.item ? [progress.item as MediaItem] : []);
@@ -519,7 +520,7 @@ const styles = StyleSheet.create({
   audioValue: { color: '#eef1f6', marginTop: 2, fontSize: 12, fontWeight: '800' },
   hero: { overflow: 'hidden', borderRadius: Platform.isTV ? 22 : 17, justifyContent: 'flex-end', backgroundColor: '#111622', borderWidth: 1, borderColor: '#20283a' },
   heroImage: { borderRadius: Platform.isTV ? 22 : 17, opacity: 0.78 },
-  heroShade: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(3,5,10,0.57)' },
+  heroShade: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: 'rgba(3,5,10,0.57)' },
   heroBody: { maxWidth: Platform.isTV ? 760 : 620 },
   heroBadges: { flexDirection: 'row', gap: 7 },
   heroBadge: { alignSelf: 'flex-start', borderRadius: 999, paddingHorizontal: 9, paddingVertical: 5, backgroundColor: 'rgba(12,16,25,0.88)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.16)' },
