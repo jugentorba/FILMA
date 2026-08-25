@@ -6,6 +6,8 @@ const {
   mergeTvPlaylists,
 } = require('../.sync-test-build/services/sourceDiscovery.js');
 const {
+  catalogCanLoadWithoutSearch,
+  catalogLanguageExtra,
   rankStreamsByPreferredAudio,
 } = require('../.sync-test-build/services/stremio.js');
 
@@ -36,6 +38,31 @@ function playlist(id, name, url) {
     { title: 'English', id: 'en' },
   ], ['de', 'fr']);
   assert.deepEqual(ranked.map(item => item.id), ['de', 'fr', 'en']);
+}
+
+{
+  const currentYear = String(new Date().getFullYear());
+  const catalog = {
+    type: 'movie',
+    id: 'year',
+    name: 'New',
+    extra: [
+      { name: 'genre', options: [currentYear, String(Number(currentYear) - 1)], isRequired: true },
+      { name: 'skip' },
+    ],
+  };
+  assert.equal(catalogCanLoadWithoutSearch(catalog, []), true);
+  assert.deepEqual(catalogLanguageExtra(catalog, []), { genre: currentYear });
+}
+
+{
+  const catalog = {
+    type: 'movie',
+    id: 'language-catalog',
+    extra: [{ name: 'language', options: ['English', 'Français'], isRequired: true }],
+  };
+  assert.deepEqual(catalogLanguageExtra(catalog, ['fr']), { language: 'Français' });
+  assert.equal(catalogCanLoadWithoutSearch(catalog, ['fr']), true);
 }
 
 {
