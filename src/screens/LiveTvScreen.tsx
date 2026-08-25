@@ -451,7 +451,7 @@ const styles = StyleSheet.create({
     fontSize: Platform.isTV ? 17 : 14,
     lineHeight: Platform.isTV ? 21 : 18,
     minHeight: Platform.isTV ? 42 : 36,
-    fontWeight: '850',
+    fontWeight: '800',
     marginTop: 10,
   },
   channelGroup: { color: theme.muted, fontSize: 11, marginTop: 3, marginBottom: 3, fontWeight: '700' },
