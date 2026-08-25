@@ -28,6 +28,8 @@ export type WatchProgress = {
 export type Favorite = {
   mediaId: string;
   createdAt: string;
+  updatedAt: string;
+  deletedAt?: string;
 };
 
 export type PlaylistSource = {
@@ -35,6 +37,9 @@ export type PlaylistSource = {
   name: string;
   url: string;
   enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt?: string;
   lastCheckedAt?: string;
   lastHealthyAt?: string;
   error?: string;
@@ -54,6 +59,9 @@ export type AddonSource = {
   name: string;
   manifestUrl: string;
   enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt?: string;
 };
 
 export type FilmaState = {
@@ -65,7 +73,7 @@ export type FilmaState = {
 };
 
 export type SyncEnvelope = {
-  schemaVersion: 1;
+  schemaVersion: 2;
   updatedAt: string;
   state: FilmaState;
 };
