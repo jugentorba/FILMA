@@ -1,4 +1,4 @@
-import type { AddonSource, MediaItem } from '../types';
+import type { AddonSource, AudioLanguage, MediaItem } from '../types';
 import {
   fetchManifest,
   fetchStreams,
@@ -6,12 +6,28 @@ import {
   type StremioManifest,
 } from './stremio';
 
-type StreamResult = {
+export type ResolvedStream = {
   title: string;
-  url?: string;
-  externalUrl?: string;
+  url: string;
   providerName: string;
   providerManifestUrl: string;
+};
+
+export type StreamResolutionDiagnostics = {
+  enabledProviders: number;
+  manifestsLoaded: number;
+  streamCapableProviders: number;
+  compatibleProviders: number;
+  providerResponses: number;
+  totalReturnedEntries: number;
+  directPlayableEntries: number;
+  externalOnlyEntries: number;
+  failedProviders: number;
+};
+
+export type StreamResolution = {
+  streams: ResolvedStream[];
+  diagnostics: StreamResolutionDiagnostics;
 };
 
 type ManifestCacheEntry = {
@@ -36,6 +52,10 @@ function streamResource(manifest: StremioManifest) {
   );
 }
 
+function providerIsStreamCapable(manifest: StremioManifest): boolean {
+  return Boolean(streamResource(manifest));
+}
+
 function providerSupports(manifest: StremioManifest, mediaType: string, id: string): boolean {
   const resource = streamResource(manifest);
   if (!resource) return false;
@@ -56,36 +76,64 @@ function canonicalIdentity(item: MediaItem): { type: string; id: string } | null
 export async function resolveStreamsAcrossAddons(
   item: MediaItem,
   addons: AddonSource[],
-  preferredAudioLanguages: string[],
-): Promise<StreamResult[]> {
-  const identity = canonicalIdentity(item);
-  if (!identity) return [];
-
+  preferredAudioLanguages: AudioLanguage[],
+): Promise<StreamResolution> {
   const activeAddons = addons.filter(addon => addon.enabled && !addon.deletedAt);
+  const diagnostics: StreamResolutionDiagnostics = {
+    enabledProviders: activeAddons.length,
+    manifestsLoaded: 0,
+    streamCapableProviders: 0,
+    compatibleProviders: 0,
+    providerResponses: 0,
+    totalReturnedEntries: 0,
+    directPlayableEntries: 0,
+    externalOnlyEntries: 0,
+    failedProviders: 0,
+  };
+
+  const identity = canonicalIdentity(item);
+  if (!identity) return { streams: [], diagnostics };
+
   const candidates = await Promise.all(activeAddons.map(async addon => {
     try {
       const manifest = await manifestFor(addon.manifestUrl);
+      diagnostics.manifestsLoaded += 1;
+      if (!providerIsStreamCapable(manifest)) return [];
+      diagnostics.streamCapableProviders += 1;
       if (!providerSupports(manifest, identity.type, identity.id)) return [];
+      diagnostics.compatibleProviders += 1;
+
       const streams = await fetchStreams(addon.manifestUrl, identity.type, identity.id);
-      return streams.map(stream => ({
-        ...stream,
-        providerName: manifest.name || addon.name,
-        providerManifestUrl: addon.manifestUrl,
-      }));
+      diagnostics.providerResponses += 1;
+      diagnostics.totalReturnedEntries += streams.length;
+      diagnostics.externalOnlyEntries += streams.filter(stream => !stream.url && Boolean(stream.externalUrl)).length;
+
+      return streams.flatMap(stream => {
+        if (!stream.url || !/^https?:\/\//i.test(stream.url)) return [];
+        return [{
+          title: stream.title,
+          url: stream.url,
+          providerName: manifest.name || addon.name,
+          providerManifestUrl: addon.manifestUrl,
+        } satisfies ResolvedStream];
+      });
     } catch {
+      diagnostics.failedProviders += 1;
       return [];
     }
   }));
 
   const merged = candidates.flat();
-  const direct = merged.filter(stream => Boolean(stream.url && /^https?:\/\//i.test(stream.url)));
-  const ranked = rankStreamsByPreferredAudio(direct, preferredAudioLanguages as never);
+  diagnostics.directPlayableEntries = merged.length;
+  const ranked = rankStreamsByPreferredAudio(merged, preferredAudioLanguages);
 
   const seen = new Set<string>();
-  return ranked.filter(stream => {
-    const key = `${stream.url ?? ''}|${stream.title}|${stream.providerManifestUrl}`;
+  const streams = ranked.filter(stream => {
+    const key = `${stream.url}|${stream.title}|${stream.providerManifestUrl}`;
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
   });
+
+  return { streams, diagnostics };
 }
