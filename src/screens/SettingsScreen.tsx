@@ -62,28 +62,88 @@ export function SettingsScreen() {
           off: 'Phone mode active',
         };
 
+  const copy = state.preferences.appLanguage === 'fr'
+    ? {
+        automatic: 'Automatique',
+        playlistUrlError: 'L’URL de la playlist doit commencer par http:// ou https://',
+        playlistAdded: 'Playlist ajoutée.',
+        addonUrlError: 'Utilisez une URL manifest.json complète et compatible Stremio.',
+        addonAdded: 'Source de films ajoutée.',
+        myPlaylist: 'Ma playlist',
+        mySource: 'Ma source',
+        missingDropboxKey: 'La clé d’application Dropbox est absente de cette version.',
+        connectDropbox: 'Connecter Dropbox',
+        tvPairHelp: 'Scannez le QR code avec votre téléphone, autorisez FILMA dans Dropbox, puis saisissez le code unique affiché par Dropbox.',
+        phonePairHelp: 'Dropbox s’ouvre dans votre navigateur. Autorisez FILMA, copiez le code unique affiché par Dropbox, revenez dans FILMA et collez-le ci-dessous.',
+        authCode: 'Code d’autorisation Dropbox',
+        finishConnection: 'Terminer la connexion',
+        openDropbox: 'Ouvrir Dropbox',
+        newQrCode: 'Nouveau QR code',
+        newCode: 'Nouveau code',
+        cancel: 'Annuler',
+      }
+    : state.preferences.appLanguage === 'sq'
+      ? {
+          automatic: 'Automatik',
+          playlistUrlError: 'URL-ja e playlistës duhet të fillojë me http:// ose https://',
+          playlistAdded: 'Playlista u shtua.',
+          addonUrlError: 'Përdor një URL të plotë manifest.json të përputhshme me Stremio.',
+          addonAdded: 'Burimi i filmave u shtua.',
+          myPlaylist: 'Playlista ime',
+          mySource: 'Burimi im',
+          missingDropboxKey: 'Ky version nuk ka Dropbox App Key.',
+          connectDropbox: 'Lidh Dropbox',
+          tvPairHelp: 'Skano kodin QR me telefon, autorizo FILMA në Dropbox dhe pastaj shkruaj kodin njëpërdorimësh që shfaq Dropbox.',
+          phonePairHelp: 'Dropbox hapet në shfletues. Autorizo FILMA, kopjo kodin njëpërdorimësh që shfaq Dropbox, kthehu në FILMA dhe vendose më poshtë.',
+          authCode: 'Kodi i autorizimit Dropbox',
+          finishConnection: 'Përfundo lidhjen',
+          openDropbox: 'Hap Dropbox',
+          newQrCode: 'Kod QR i ri',
+          newCode: 'Kod i ri',
+          cancel: 'Anulo',
+        }
+      : {
+          automatic: 'Automatic',
+          playlistUrlError: 'Playlist URL must start with http:// or https://',
+          playlistAdded: 'Playlist added.',
+          addonUrlError: 'Use a full Stremio-compatible manifest.json URL.',
+          addonAdded: 'Movie source added.',
+          myPlaylist: 'My playlist',
+          mySource: 'My source',
+          missingDropboxKey: 'Dropbox App Key is missing from this build.',
+          connectDropbox: 'Connect Dropbox',
+          tvPairHelp: 'Scan the QR code on your phone, approve FILMA in Dropbox, then enter the one-time code shown by Dropbox.',
+          phonePairHelp: 'Dropbox opens in your browser. Approve FILMA, copy the one-time authorization code Dropbox shows, return to FILMA, and paste it below.',
+          authCode: 'Dropbox authorization code',
+          finishConnection: 'Finish connection',
+          openDropbox: 'Open Dropbox',
+          newQrCode: 'New QR code',
+          newCode: 'New code',
+          cancel: 'Cancel',
+        };
+
   const addPlaylistNow = () => {
     const url = playlistUrl.trim();
     if (!/^https?:\/\//i.test(url)) {
-      setMessage('Playlist URL must start with http:// or https://');
+      setMessage(copy.playlistUrlError);
       return;
     }
-    addPlaylist(playlistName.trim() || 'My playlist', url);
+    addPlaylist(playlistName.trim() || copy.myPlaylist, url);
     setPlaylistName('');
     setPlaylistUrl('');
-    setMessage('Playlist added.');
+    setMessage(copy.playlistAdded);
   };
 
   const addAddonNow = () => {
     const url = manifestUrl.trim();
     if (!/^https?:\/\//i.test(url) || !/manifest\.json(?:\?.*)?$/i.test(url)) {
-      setMessage('Use a full Stremio-compatible manifest.json URL.');
+      setMessage(copy.addonUrlError);
       return;
     }
-    addAddon(addonName.trim() || 'My source', url);
+    addAddon(addonName.trim() || copy.mySource, url);
     setAddonName('');
     setManifestUrl('');
-    setMessage('Movie source added.');
+    setMessage(copy.addonAdded);
   };
 
   const syncStatus = dropbox.status === 'syncing'
@@ -120,16 +180,8 @@ export function SettingsScreen() {
           </View>
         </View>
         <View style={styles.optionRow}>
-          <FocusButton
-            label={tvModeCopy.phone}
-            active={!isTvMode}
-            onPress={() => setTvModeEnabled(false)}
-          />
-          <FocusButton
-            label={tvModeCopy.tv}
-            active={isTvMode}
-            onPress={() => setTvModeEnabled(true)}
-          />
+          <FocusButton label={tvModeCopy.phone} active={!isTvMode} onPress={() => setTvModeEnabled(false)} />
+          <FocusButton label={tvModeCopy.tv} active={isTvMode} onPress={() => setTvModeEnabled(true)} />
         </View>
         <Text style={styles.lastSync}>{isTvMode ? tvModeCopy.on : tvModeCopy.off}</Text>
       </View>
@@ -146,25 +198,14 @@ export function SettingsScreen() {
         <Text style={styles.fieldLabel}>{text.appLanguage}</Text>
         <View style={styles.optionRow}>
           {APP_LANGUAGE_OPTIONS.map(option => (
-            <FocusButton
-              key={option.code}
-              compact
-              label={option.label}
-              active={state.preferences.appLanguage === option.code}
-              onPress={() => setAppLanguage(option.code)}
-            />
+            <FocusButton key={option.code} compact label={option.label} active={state.preferences.appLanguage === option.code} onPress={() => setAppLanguage(option.code)} />
           ))}
         </View>
 
         <View style={styles.divider} />
         <Text style={styles.fieldLabel}>{text.audioLanguages}</Text>
         <View style={styles.optionRow}>
-          <FocusButton
-            compact
-            label={text.anyLanguage}
-            active={!state.preferences.preferredAudioLanguages.length}
-            onPress={clearAudioLanguages}
-          />
+          <FocusButton compact label={text.anyLanguage} active={!state.preferences.preferredAudioLanguages.length} onPress={clearAudioLanguages} />
           {AUDIO_LANGUAGE_OPTIONS.map(option => (
             <FocusButton
               key={option.code}
@@ -196,37 +237,37 @@ export function SettingsScreen() {
           </View>
         </View>
 
-        {!dropbox.configured ? <Text style={styles.warning}>Dropbox App Key is missing from this build.</Text> : null}
+        {!dropbox.configured ? <Text style={styles.warning}>{copy.missingDropboxKey}</Text> : null}
         {dropbox.error ? <Text style={styles.error}>{dropbox.error}</Text> : null}
 
         {dropbox.pairingUrl && !dropbox.connected ? (
           <View style={styles.pairingPanel}>
-            <Text style={styles.pairingTitle}>Connect Dropbox</Text>
+            <Text style={styles.pairingTitle}>{copy.connectDropbox}</Text>
             {dropbox.isTv ? (
               <>
-                <Text style={styles.help}>Scan the QR code on your phone, approve FILMA in Dropbox, then enter the one-time code shown by Dropbox.</Text>
+                <Text style={styles.help}>{copy.tvPairHelp}</Text>
                 <View style={styles.qrWrap}>
                   <QRCode value={dropbox.pairingUrl} size={260} backgroundColor="#ffffff" color="#000000" quietZone={12} />
                 </View>
               </>
             ) : (
-              <Text style={styles.help}>Dropbox opens in your browser. Approve FILMA, copy the one-time authorization code Dropbox shows, return to FILMA, and paste it below.</Text>
+              <Text style={styles.help}>{copy.phonePairHelp}</Text>
             )}
 
             <TextInput
               value={pairingCode}
               onChangeText={setPairingCode}
-              placeholder="Dropbox authorization code"
+              placeholder={copy.authCode}
               placeholderTextColor={theme.muted}
               autoCapitalize="none"
               autoCorrect={false}
               style={[styles.input, styles.pairingInput]}
             />
             <View style={styles.optionRow}>
-              <FocusButton label="Finish connection" active preferredFocus onPress={() => void finishPairing()} />
-              {!dropbox.isTv ? <FocusButton label="Open Dropbox" onPress={() => void dropbox.openPairing()} /> : null}
-              <FocusButton label={dropbox.isTv ? 'New QR code' : 'New code'} onPress={() => void dropbox.restartPairing()} />
-              <FocusButton label="Cancel" onPress={() => { setPairingCode(''); dropbox.cancelPairing(); }} />
+              <FocusButton label={copy.finishConnection} active preferredFocus onPress={() => void finishPairing()} />
+              {!dropbox.isTv ? <FocusButton label={copy.openDropbox} onPress={() => void dropbox.openPairing()} /> : null}
+              <FocusButton label={dropbox.isTv ? copy.newQrCode : copy.newCode} onPress={() => void dropbox.restartPairing()} />
+              <FocusButton label={copy.cancel} onPress={() => { setPairingCode(''); dropbox.cancelPairing(); }} />
             </View>
           </View>
         ) : null}
@@ -267,25 +308,30 @@ export function SettingsScreen() {
           style={styles.input}
         />
         <View style={styles.actionRow}><FocusButton label={text.addAddon} active onPress={addAddonNow} /></View>
-        {addons.map(item => (
-          <View key={item.id} style={styles.sourceRow}>
-            <View style={styles.sourceText}>
-              <View style={styles.sourceTitleRow}>
-                <Text style={styles.sourceName}>{item.name}</Text>
-                <View style={[styles.sourceStatus, item.enabled ? styles.sourceStatusOn : styles.sourceStatusOff]}>
-                  <Text style={[styles.sourceStatusText, item.enabled ? styles.sourceStatusTextOn : undefined]}>
-                    {item.enabled ? text.enabled : text.disabled}
-                  </Text>
+        {addons.map(item => {
+          const automatic = item.id.startsWith('auto-stremio:');
+          return (
+            <View key={item.id} style={styles.sourceRow}>
+              <View style={styles.sourceText}>
+                <View style={styles.sourceTitleRow}>
+                  <Text style={styles.sourceName}>{item.name}</Text>
+                  <View style={[styles.sourceStatus, styles.sourceStatusOn]}>
+                    <Text style={[styles.sourceStatusText, styles.sourceStatusTextOn]}>
+                      {automatic ? copy.automatic : item.enabled ? text.enabled : text.disabled}
+                    </Text>
+                  </View>
                 </View>
+                <Text numberOfLines={1} style={styles.sourceUrl}>{item.manifestUrl}</Text>
               </View>
-              <Text numberOfLines={1} style={styles.sourceUrl}>{item.manifestUrl}</Text>
+              {!automatic ? (
+                <View style={styles.sourceActions}>
+                  <FocusButton compact label={item.enabled ? text.disable : text.enable} onPress={() => setAddonEnabled(item.id, !item.enabled)} />
+                  <FocusButton compact label={text.remove} onPress={() => removeAddon(item.id)} />
+                </View>
+              ) : null}
             </View>
-            <View style={styles.sourceActions}>
-              <FocusButton compact label={item.enabled ? text.disable : text.enable} onPress={() => setAddonEnabled(item.id, !item.enabled)} />
-              <FocusButton compact label={text.remove} onPress={() => removeAddon(item.id)} />
-            </View>
-          </View>
-        ))}
+          );
+        })}
       </View>
 
       <View style={styles.card}>
@@ -308,25 +354,30 @@ export function SettingsScreen() {
           style={styles.input}
         />
         <View style={styles.actionRow}><FocusButton label={text.addPlaylist} active onPress={addPlaylistNow} /></View>
-        {playlists.map(item => (
-          <View key={item.id} style={styles.sourceRow}>
-            <View style={styles.sourceText}>
-              <View style={styles.sourceTitleRow}>
-                <Text style={styles.sourceName}>{item.name}</Text>
-                <View style={[styles.sourceStatus, item.enabled ? styles.sourceStatusOn : styles.sourceStatusOff]}>
-                  <Text style={[styles.sourceStatusText, item.enabled ? styles.sourceStatusTextOn : undefined]}>
-                    {item.enabled ? text.enabled : text.disabled}
-                  </Text>
+        {playlists.map(item => {
+          const automatic = item.id.startsWith('auto-tv:');
+          return (
+            <View key={item.id} style={styles.sourceRow}>
+              <View style={styles.sourceText}>
+                <View style={styles.sourceTitleRow}>
+                  <Text style={styles.sourceName}>{item.name}</Text>
+                  <View style={[styles.sourceStatus, item.enabled ? styles.sourceStatusOn : styles.sourceStatusOff]}>
+                    <Text style={[styles.sourceStatusText, item.enabled ? styles.sourceStatusTextOn : undefined]}>
+                      {automatic ? copy.automatic : item.enabled ? text.enabled : text.disabled}
+                    </Text>
+                  </View>
                 </View>
+                <Text numberOfLines={1} style={styles.sourceUrl}>{item.url}</Text>
               </View>
-              <Text numberOfLines={1} style={styles.sourceUrl}>{item.url}</Text>
+              {!automatic ? (
+                <View style={styles.sourceActions}>
+                  <FocusButton compact label={item.enabled ? text.disable : text.enable} onPress={() => setPlaylistEnabled(item.id, !item.enabled)} />
+                  <FocusButton compact label={text.remove} onPress={() => removePlaylist(item.id)} />
+                </View>
+              ) : null}
             </View>
-            <View style={styles.sourceActions}>
-              <FocusButton compact label={item.enabled ? text.disable : text.enable} onPress={() => setPlaylistEnabled(item.id, !item.enabled)} />
-              <FocusButton compact label={text.remove} onPress={() => removePlaylist(item.id)} />
-            </View>
-          </View>
-        ))}
+          );
+        })}
       </View>
 
       <View style={styles.deviceCard}>
