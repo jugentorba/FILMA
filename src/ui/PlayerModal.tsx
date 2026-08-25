@@ -112,16 +112,20 @@ export function PlayerModal({
 
   const player = useVideoPlayer(initialExternalProvider ? null : (item.streamUrl ?? null), instance => {
     instance.timeUpdateEventInterval = 5;
-    if (!progress?.completed && progress?.positionSeconds && progress.positionSeconds > 5) {
-      instance.currentTime = progress.positionSeconds;
+    if (!initialExternalProvider) {
+      if (!progress?.completed && progress?.positionSeconds && progress.positionSeconds > 5) {
+        instance.currentTime = progress.positionSeconds;
+      }
+      instance.play();
     }
-    instance.play();
   });
 
   const openExternalProvider = useCallback(async (url: string) => {
     setTerminalError(undefined);
     setSourceMessage(copy.openingProvider);
     try {
+      const canOpen = await Linking.canOpenURL(url);
+      if (!canOpen) throw new Error('Unsupported provider URL');
       await Linking.openURL(url);
       setSourceMessage(undefined);
       setSourceReady(true);
