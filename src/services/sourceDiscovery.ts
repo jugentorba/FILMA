@@ -6,6 +6,7 @@ const CINEMETA_MANIFEST_URL = 'https://v3-cinemeta.strem.io/manifest.json';
 const IPTV_ORG_LANGUAGE_BASE = 'https://iptv-org.github.io/iptv/languages';
 const DISCOVERY_TIMESTAMP = '1970-01-01T00:00:00.000Z';
 const OFFICIAL_INDEX_CACHE_MS = 30 * 60 * 1000;
+const OFFICIAL_INDEX_TIMEOUT_MS = 10_000;
 
 type OfficialAddonIndexEntry = {
   manifest?: StremioManifest;
@@ -51,6 +52,16 @@ const LANGUAGE_NAMES: Record<AudioLanguage, string> = {
 const BASE_AUDIO_LANGUAGES: AudioLanguage[] = ['fr', 'sq', 'en'];
 
 let officialProviderCache: CachedOfficialProviders | undefined;
+
+async function fetchOfficialIndex(): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), OFFICIAL_INDEX_TIMEOUT_MS);
+  try {
+    return await fetch(OFFICIAL_STREMIO_INDEX_URL, { signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 function resourceNames(manifest: StremioManifest): Set<string> {
   return new Set((manifest.resources ?? []).map(resource =>
@@ -122,7 +133,6 @@ export function mergeMovieProviders(
   configured: AddonSource[],
   automatic: AddonSource[],
 ): AddonSource[] {
-  // Configured providers win when the same manifest is present in both sets.
   return dedupeProviders([
     ...configured.filter(provider => provider.enabled && !provider.deletedAt),
     ...automatic.filter(provider => provider.enabled && !provider.deletedAt),
@@ -135,7 +145,7 @@ export async function discoverOfficialMovieProviders(): Promise<DiscoveredMovieP
   }
 
   try {
-    const response = await fetch(OFFICIAL_STREMIO_INDEX_URL);
+    const response = await fetchOfficialIndex();
     if (!response.ok) throw new Error(`Official add-on index HTTP ${response.status}`);
     const payload = await response.json() as unknown;
     if (!Array.isArray(payload)) throw new Error('Official add-on index had an unexpected format.');
@@ -146,9 +156,6 @@ export async function discoverOfficialMovieProviders(): Promise<DiscoveredMovieP
         .filter((provider): provider is DiscoveredMovieProvider => provider !== null),
     );
 
-    // Cinemeta is FILMA's permanent catalog/metadata anchor. Keep it available
-    // even when other providers are configured, and keep it first so the home
-    // screen always has one predictable movie/series catalog.
     const cinemetaIndex = providers.findIndex(provider => provider.id === 'auto-stremio:com.linvo.cinemeta');
     if (cinemetaIndex === -1) {
       providers.unshift(fallbackCinemeta());

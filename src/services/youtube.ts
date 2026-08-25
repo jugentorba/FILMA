@@ -3,6 +3,7 @@ import type { AppLanguage } from '../types';
 const YOUTUBE_API_BASE = 'https://www.googleapis.com/youtube/v3';
 const API_KEY = process.env.EXPO_PUBLIC_YOUTUBE_API_KEY?.trim();
 const RTSH_ARKIV_HANDLE = '@RTSHArkiv';
+const YOUTUBE_TIMEOUT_MS = 12_000;
 
 export type YouTubeVideo = {
   id: string;
@@ -95,9 +96,22 @@ function languageRegion(language: AppLanguage): { language: string; region: stri
 async function youtubeGet<T>(path: string, params: Record<string, string>): Promise<T> {
   if (!API_KEY) throw new Error('YouTube API key is not configured in this FILMA build.');
   const query = new URLSearchParams({ ...params, key: API_KEY });
-  const response = await fetch(`${YOUTUBE_API_BASE}/${path}?${query.toString()}`, {
-    headers: { Accept: 'application/json' },
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), YOUTUBE_TIMEOUT_MS);
+  let response: Response;
+  try {
+    response = await fetch(`${YOUTUBE_API_BASE}/${path}?${query.toString()}`, {
+      headers: { Accept: 'application/json' },
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error(`YouTube request timed out after ${Math.round(YOUTUBE_TIMEOUT_MS / 1000)}s.`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
   if (!response.ok) {
     const body = await response.text().catch(() => '');
     throw new Error(`YouTube API HTTP ${response.status}${body ? `: ${body.slice(0, 180)}` : ''}`);

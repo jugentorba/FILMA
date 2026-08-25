@@ -65,6 +65,22 @@ const LANGUAGE_ALIASES: Record<AudioLanguage, string[]> = {
 };
 
 const BASE_AUDIO_LANGUAGES: AudioLanguage[] = ['fr', 'sq', 'en'];
+const STREMIO_TIMEOUT_MS = 12_000;
+
+async function fetchWithTimeout(url: string, timeoutMs = STREMIO_TIMEOUT_MS): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { signal: controller.signal });
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error(`Stremio request timed out after ${Math.round(timeoutMs / 1000)}s.`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 function addonBase(manifestUrl: string): string {
   return manifestUrl.replace(/\/manifest\.json(?:\?.*)?$/i, '').replace(/\/$/, '');
@@ -156,7 +172,7 @@ export function catalogCanLoadWithoutSearch(
 }
 
 export async function fetchManifest(manifestUrl: string): Promise<StremioManifest> {
-  const response = await fetch(manifestUrl);
+  const response = await fetchWithTimeout(manifestUrl);
   if (!response.ok) throw new Error(`Add-on manifest HTTP ${response.status}`);
   return response.json() as Promise<StremioManifest>;
 }
@@ -173,7 +189,7 @@ export async function fetchCatalog(
     .join('&');
   const suffix = extraArgs ? `/${extraArgs}.json` : '.json';
   const url = `${addonBase(manifestUrl)}/catalog/${encodeURIComponent(type)}/${encodeURIComponent(catalogId)}${suffix}`;
-  const response = await fetch(url);
+  const response = await fetchWithTimeout(url);
   if (!response.ok) throw new Error(`Catalog HTTP ${response.status}`);
   const payload = (await response.json()) as { metas?: StremioMeta[] };
 
@@ -186,7 +202,7 @@ export async function fetchMeta(
   id: string,
 ): Promise<StremioDetailedMeta> {
   const url = `${addonBase(manifestUrl)}/meta/${encodeURIComponent(type)}/${encodeURIComponent(id)}.json`;
-  const response = await fetch(url);
+  const response = await fetchWithTimeout(url);
   if (!response.ok) throw new Error(`Metadata HTTP ${response.status}`);
   const payload = (await response.json()) as { meta?: StremioDetailedMeta };
   if (!payload.meta) throw new Error('Add-on returned no detailed metadata.');
@@ -223,7 +239,7 @@ export async function fetchStreams(
   id: string,
 ): Promise<StremioStream[]> {
   const url = `${addonBase(manifestUrl)}/stream/${encodeURIComponent(type)}/${encodeURIComponent(id)}.json`;
-  const response = await fetch(url);
+  const response = await fetchWithTimeout(url);
   if (!response.ok) throw new Error(`Streams HTTP ${response.status}`);
   const payload = (await response.json()) as {
     streams?: Array<{ title?: string; name?: string; url?: string; externalUrl?: string }>;
