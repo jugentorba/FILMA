@@ -33,6 +33,51 @@ export function LiveTvScreen({ onSelect, onOpenSettings }: Props) {
   const groupListRef = useRef<FlatList<{ name: string; count: number }>>(null);
   const channelListRef = useRef<FlatList<LiveChannel>>(null);
 
+  const copy = state.preferences.appLanguage === 'fr'
+    ? {
+        title: 'TV en direct',
+        addSource: 'Ajoutez votre propre playlist M3U ou M3U8 légale/publique. FILMA la lira et actualisera automatiquement la liste des chaînes.',
+        openSettings: 'Ouvrir les réglages',
+        refreshing: 'Actualisation…',
+        refresh: 'Actualiser',
+        channels: 'chaînes',
+        sourcesOnline: 'sources en ligne',
+        search: 'Rechercher des chaînes ou groupes',
+        all: 'Toutes',
+        noMatch: 'Aucune chaîne ne correspond à ce filtre.',
+        noSource: 'Aucune playlist configurée n’a pu être chargée. Vérifiez les URL dans les Réglages.',
+        unavailable: (count: number, working: number) => `${count} playlist${count === 1 ? '' : 's'} indisponible${count === 1 ? '' : 's'}. FILMA affiche les chaînes des ${working} source${working === 1 ? '' : 's'} disponible${working === 1 ? '' : 's'}.`,
+      }
+    : state.preferences.appLanguage === 'sq'
+      ? {
+          title: 'TV Live',
+          addSource: 'Shto playlistën tënde ligjore/publike M3U ose M3U8. FILMA do ta lexojë dhe do ta rifreskojë automatikisht listën e kanaleve.',
+          openSettings: 'Hap cilësimet',
+          refreshing: 'Duke rifreskuar…',
+          refresh: 'Rifresko',
+          channels: 'kanale',
+          sourcesOnline: 'burime online',
+          search: 'Kërko kanale ose grupe',
+          all: 'Të gjitha',
+          noMatch: 'Asnjë kanal nuk përputhet me këtë filtër.',
+          noSource: 'Asnjë playlistë e konfiguruar nuk u ngarkua. Kontrollo URL-të te Cilësimet.',
+          unavailable: (count: number, working: number) => `${count} playlist${count === 1 ? 'ë' : 'a'} nuk është e disponueshme. FILMA po shfaq kanalet nga ${working} burim${working === 1 ? '' : 'e'} që funksionojnë.`,
+        }
+      : {
+          title: 'Live TV',
+          addSource: 'Add your own legal/public M3U or M3U8 playlist. FILMA will parse it and refresh the channel list automatically.',
+          openSettings: 'Open Settings',
+          refreshing: 'Refreshing…',
+          refresh: 'Refresh',
+          channels: 'channels',
+          sourcesOnline: 'sources online',
+          search: 'Search channels or groups',
+          all: 'All',
+          noMatch: 'No channels match this filter.',
+          noSource: 'No configured playlist could be loaded. Check the playlist URLs in Settings.',
+          unavailable: (count: number, working: number) => `${count} playlist${count === 1 ? '' : 's'} unavailable. FILMA is showing channels from ${working} working source${working === 1 ? '' : 's'}.`,
+        };
+
   const activePlaylists = useMemo(
     () => state.playlists.filter(source => source.enabled && !source.deletedAt),
     [state.playlists],
@@ -97,12 +142,12 @@ export function LiveTvScreen({ onSelect, onOpenSettings }: Props) {
     setSourceHealth(health);
     setChannels(nextChannels);
     if (!nextChannels.length) {
-      setError('No configured playlist could be loaded. Check the playlist URLs in Settings.');
+      setError(copy.noSource);
     } else if (failed.length) {
-      setError(`${failed.length} playlist${failed.length === 1 ? '' : 's'} unavailable. FILMA is showing channels from the working source${health.length - failed.length === 1 ? '' : 's'}.`);
+      setError(copy.unavailable(failed.length, health.length - failed.length));
     }
     setLoading(false);
-  }, [activePlaylists]);
+  }, [activePlaylists, copy]);
 
   useEffect(() => {
     void refresh();
@@ -152,11 +197,9 @@ export function LiveTvScreen({ onSelect, onOpenSettings }: Props) {
   if (!activePlaylists.length) {
     return (
       <View style={styles.empty}>
-        <Text style={styles.title}>Live TV</Text>
-        <Text style={styles.emptyText}>
-          Add your own legal/public M3U or M3U8 playlist. FILMA will parse it and refresh the channel list automatically.
-        </Text>
-        <FocusButton label="Open Settings" active preferredFocus onPress={onOpenSettings} />
+        <Text style={styles.title}>{copy.title}</Text>
+        <Text style={styles.emptyText}>{copy.addSource}</Text>
+        <FocusButton label={copy.openSettings} active preferredFocus onPress={onOpenSettings} />
       </View>
     );
   }
@@ -165,18 +208,18 @@ export function LiveTvScreen({ onSelect, onOpenSettings }: Props) {
     <View style={styles.root}>
       <View style={styles.header}>
         <View style={styles.headerText}>
-          <Text style={styles.title}>Live TV</Text>
+          <Text style={styles.title}>{copy.title}</Text>
           <Text style={styles.subtitle}>
-            {channels.length} channels · {healthySources}/{activePlaylists.length} sources online
+            {channels.length} {copy.channels} · {healthySources}/{activePlaylists.length} {copy.sourcesOnline}
           </Text>
         </View>
-        <FocusButton compact label={loading ? 'Refreshing…' : 'Refresh'} onPress={() => void refresh()} />
+        <FocusButton compact label={loading ? copy.refreshing : copy.refresh} onPress={() => void refresh()} />
       </View>
 
       <TextInput
         value={query}
         onChangeText={setQuery}
-        placeholder="Search channels or groups"
+        placeholder={copy.search}
         placeholderTextColor={theme.muted}
         style={styles.search}
         autoCorrect={false}
@@ -196,7 +239,7 @@ export function LiveTvScreen({ onSelect, onOpenSettings }: Props) {
         renderItem={({ item, index }) => (
           <FocusButton
             compact
-            label={`${item.name === 'all' ? 'All' : item.name} (${item.count})`}
+            label={`${item.name === 'all' ? copy.all : item.name} (${item.count})`}
             active={selectedGroup === item.name}
             preferredFocus={item.name === 'all'}
             onFocus={() => {
@@ -234,17 +277,13 @@ export function LiveTvScreen({ onSelect, onOpenSettings }: Props) {
             onPress={() => onSelect({
               id: `live:${item.id}`,
               title: item.name,
-              subtitle: item.group ?? 'Live TV',
+              subtitle: item.group ?? copy.title,
               poster: item.logo,
               streamUrl: item.url,
             })}
           />
         )}
-        ListEmptyComponent={(
-          <Text style={styles.emptyList}>
-            No channels match this filter.
-          </Text>
-        )}
+        ListEmptyComponent={<Text style={styles.emptyList}>{copy.noMatch}</Text>}
       />
     </View>
   );
