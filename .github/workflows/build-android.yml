@@ -25,7 +25,7 @@ jobs:
           node-version: '22.13.1'
 
       - name: Setup Java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
@@ -35,6 +35,9 @@ jobs:
 
       - name: Generate mobile Android project
         run: npx expo prebuild --platform android --clean --no-install
+
+      - name: Align mobile Gradle wrapper
+        run: node scripts/fix-android-gradle-wrapper.mjs
 
       - name: Build mobile release APK
         run: |
@@ -55,6 +58,9 @@ jobs:
 
       - name: Generate Android TV project
         run: EXPO_TV=1 npx expo prebuild --platform android --clean --no-install
+
+      - name: Align Android TV Gradle wrapper
+        run: node scripts/fix-android-gradle-wrapper.mjs
 
       - name: Build Android TV release APK
         run: |
