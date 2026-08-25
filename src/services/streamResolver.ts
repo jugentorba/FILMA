@@ -1,11 +1,6 @@
 import type { AddonSource, AudioLanguage, MediaItem } from '../types';
 import { discoverAutomaticStreamProviders, mergeMovieProviders } from './sourceDiscovery';
-import {
-  fetchManifest,
-  fetchStreams,
-  rankStreamsByPreferredAudio,
-  type StremioManifest,
-} from './stremio';
+import { fetchManifest, fetchStreams, rankStreamsByPreferredAudio, type StremioManifest } from './stremio';
 
 export type ResolvedStream = {
   title: string;
@@ -28,11 +23,7 @@ export type StreamResolutionDiagnostics = {
   failedProviders: number;
 };
 
-export type StreamResolution = {
-  streams: ResolvedStream[];
-  diagnostics: StreamResolutionDiagnostics;
-};
-
+export type StreamResolution = { streams: ResolvedStream[]; diagnostics: StreamResolutionDiagnostics };
 type ManifestCacheEntry = { manifest: StremioManifest; fetchedAt: number };
 type ProviderCandidates = { direct: ResolvedStream[]; external: ResolvedStream[] };
 type MediaIdentity = { type: string; id: string };
@@ -55,13 +46,7 @@ async function manifestFor(url: string): Promise<StremioManifest> {
 }
 
 function streamResource(manifest: StremioManifest) {
-  return (manifest.resources ?? []).find(resource =>
-    typeof resource === 'string' ? resource === 'stream' : resource.name === 'stream',
-  );
-}
-
-function providerIsStreamCapable(manifest: StremioManifest): boolean {
-  return Boolean(streamResource(manifest));
+  return (manifest.resources ?? []).find(resource => typeof resource === 'string' ? resource === 'stream' : resource.name === 'stream');
 }
 
 function providerSupports(manifest: StremioManifest, mediaType: string, id: string): boolean {
@@ -116,42 +101,26 @@ function emptyDiagnostics(configuredProviders: number): StreamResolutionDiagnost
   };
 }
 
-async function resolveProviderBatch(
-  providers: AddonSource[],
-  identity: MediaIdentity,
-  diagnostics: StreamResolutionDiagnostics,
-): Promise<ProviderCandidates[]> {
+async function resolveProviderBatch(providers: AddonSource[], identity: MediaIdentity, diagnostics: StreamResolutionDiagnostics): Promise<ProviderCandidates[]> {
   return Promise.all(providers.map(async addon => {
     try {
       const manifest = await manifestFor(addon.manifestUrl);
       diagnostics.manifestsLoaded += 1;
-      if (!providerIsStreamCapable(manifest)) return { direct: [], external: [] };
+      if (!streamResource(manifest)) return { direct: [], external: [] };
       diagnostics.streamCapableProviders += 1;
       if (!providerSupports(manifest, identity.type, identity.id)) return { direct: [], external: [] };
       diagnostics.compatibleProviders += 1;
-
       const streams = await fetchStreams(addon.manifestUrl, identity.type, identity.id);
       diagnostics.providerResponses += 1;
       diagnostics.totalReturnedEntries += streams.length;
       const direct: ResolvedStream[] = [];
       const external: ResolvedStream[] = [];
-
       for (const stream of streams) {
         if (stream.url && /^https?:\/\//i.test(stream.url)) {
-          direct.push({
-            title: stream.title,
-            url: stream.url,
-            providerName: manifest.name || addon.name,
-            providerManifestUrl: addon.manifestUrl,
-          });
+          direct.push({ title: stream.title, url: stream.url, providerName: manifest.name || addon.name, providerManifestUrl: addon.manifestUrl });
         } else if (stream.externalUrl && /^https?:\/\//i.test(stream.externalUrl)) {
           diagnostics.externalOnlyEntries += 1;
-          external.push({
-            title: stream.title,
-            url: `${EXTERNAL_PROVIDER_PREFIX}${encodeURIComponent(stream.externalUrl)}`,
-            providerName: manifest.name || addon.name,
-            providerManifestUrl: addon.manifestUrl,
-          });
+          external.push({ title: stream.title, url: `${EXTERNAL_PROVIDER_PREFIX}${encodeURIComponent(stream.externalUrl)}`, providerName: manifest.name || addon.name, providerManifestUrl: addon.manifestUrl });
         }
       }
       return { direct, external };
@@ -162,60 +131,73 @@ async function resolveProviderBatch(
   }));
 }
 
-function rankedDirect(candidates: ProviderCandidates[], preferredAudioLanguages: AudioLanguage[]): ResolvedStream[] {
-  return dedupeStreams(rankStreamsByPreferredAudio(
-    candidates.flatMap(candidate => candidate.direct),
-    preferredAudioLanguages,
-  ));
+function rankedDirect(candidates: ProviderCandidates[], preferred: AudioLanguage[]): ResolvedStream[] {
+  return dedupeStreams(rankStreamsByPreferredAudio(candidates.flatMap(candidate => candidate.direct), preferred));
 }
 
-function rankedExternal(candidates: ProviderCandidates[], preferredAudioLanguages: AudioLanguage[]): ResolvedStream[] {
-  return dedupeStreams(rankStreamsByPreferredAudio(
-    candidates.flatMap(candidate => candidate.external),
-    preferredAudioLanguages,
-  ));
+function rankedExternal(candidates: ProviderCandidates[], preferred: AudioLanguage[]): ResolvedStream[] {
+  return dedupeStreams(rankStreamsByPreferredAudio(candidates.flatMap(candidate => candidate.external), preferred));
 }
 
-export async function resolveStreamsAcrossAddons(
-  item: MediaItem,
-  addons: AddonSource[],
-  preferredAudioLanguages: AudioLanguage[],
-): Promise<StreamResolution> {
+function providerUrl(provider: AddonSource): string {
+  return provider.manifestUrl.trim().toLocaleLowerCase();
+}
+
+export async function resolveStreamsAcrossAddons(item: MediaItem, addons: AddonSource[], preferredAudioLanguages: AudioLanguage[]): Promise<StreamResolution> {
   recentStreamCandidates.delete(item.id);
-
   const configured = addons.filter(addon => addon.enabled && !addon.deletedAt);
   const diagnostics = emptyDiagnostics(configured.length);
   const identity = canonicalIdentity(item);
   if (!identity) return { streams: [], diagnostics };
 
-  const sourceProvider = itemProvider(item);
-  const primaryProviders = mergeMovieProviders(configured, sourceProvider ? [sourceProvider] : []);
-  diagnostics.enabledProviders = primaryProviders.length;
-
-  // Start fallback discovery in parallel, but do not block the item's own source.
+  const source = itemProvider(item);
   const automaticPromise = discoverAutomaticStreamProviders().catch(() => [] as AddonSource[]);
-  const primaryCandidates = await resolveProviderBatch(primaryProviders, identity, diagnostics);
-  const primaryDirect = rankedDirect(primaryCandidates, preferredAudioLanguages);
+  const allCandidates: ProviderCandidates[] = [];
+  const attemptedUrls = new Set<string>();
 
-  if (primaryDirect.length) {
-    diagnostics.directPlayableEntries = primaryDirect.length;
-    recentStreamCandidates.set(item.id, primaryDirect);
-    return { streams: primaryDirect, diagnostics };
+  // Stage 1: the provider that supplied this item. This is the fastest path for
+  // FILMA Free and for user add-ons that provide both catalog and streams.
+  if (source) {
+    diagnostics.enabledProviders += 1;
+    attemptedUrls.add(providerUrl(source));
+    const candidates = await resolveProviderBatch([source], identity, diagnostics);
+    allCandidates.push(...candidates);
+    const direct = rankedDirect(candidates, preferredAudioLanguages);
+    if (direct.length) {
+      diagnostics.directPlayableEntries = direct.length;
+      recentStreamCandidates.set(item.id, direct);
+      return { streams: direct, diagnostics };
+    }
   }
 
+  // Stage 2: enabled providers already present in the user's app state.
+  const configuredFallbacks = mergeMovieProviders([], configured).filter(provider => !attemptedUrls.has(providerUrl(provider)));
+  configuredFallbacks.forEach(provider => attemptedUrls.add(providerUrl(provider)));
+  diagnostics.enabledProviders += configuredFallbacks.length;
+  if (configuredFallbacks.length) {
+    const candidates = await resolveProviderBatch(configuredFallbacks, identity, diagnostics);
+    allCandidates.push(...candidates);
+    const direct = rankedDirect(candidates, preferredAudioLanguages);
+    if (direct.length) {
+      diagnostics.directPlayableEntries = direct.length;
+      recentStreamCandidates.set(item.id, direct);
+      return { streams: direct, diagnostics };
+    }
+  }
+
+  // Stage 3: network-discovered automatic fallbacks only when the local paths
+  // did not produce a direct playable URL.
   const automatic = await automaticPromise;
   diagnostics.automaticProviders = automatic.length;
-  const primaryUrls = new Set(primaryProviders.map(provider => provider.manifestUrl.trim().toLocaleLowerCase()));
-  const secondaryProviders = mergeMovieProviders([], automatic).filter(provider =>
-    !primaryUrls.has(provider.manifestUrl.trim().toLocaleLowerCase()),
-  );
-  diagnostics.enabledProviders = primaryProviders.length + secondaryProviders.length;
+  const automaticFallbacks = mergeMovieProviders([], automatic).filter(provider => !attemptedUrls.has(providerUrl(provider)));
+  diagnostics.enabledProviders += automaticFallbacks.length;
+  if (automaticFallbacks.length) {
+    const candidates = await resolveProviderBatch(automaticFallbacks, identity, diagnostics);
+    allCandidates.push(...candidates);
+  }
 
-  const secondaryCandidates = await resolveProviderBatch(secondaryProviders, identity, diagnostics);
-  const allCandidates = [...primaryCandidates, ...secondaryCandidates];
   const direct = rankedDirect(allCandidates, preferredAudioLanguages);
   diagnostics.directPlayableEntries = direct.length;
-
   const resolved = direct.length ? direct : rankedExternal(allCandidates, preferredAudioLanguages);
   recentStreamCandidates.set(item.id, resolved);
   return { streams: resolved, diagnostics };
