@@ -3,10 +3,19 @@ import type { StremioManifest } from './stremio';
 
 const OFFICIAL_STREMIO_INDEX_URL = 'https://raw.githubusercontent.com/Stremio/stremio-official-addons/master/index.json';
 const CINEMETA_MANIFEST_URL = 'https://v3-cinemeta.strem.io/manifest.json';
+const WATCHHUB_MANIFEST_URL = 'https://watchhub.strem.io/manifest.json';
 const IPTV_ORG_COUNTRY_BASE = 'https://iptv-org.github.io/iptv/countries';
 const DISCOVERY_TIMESTAMP = '1970-01-01T00:00:00.000Z';
 const OFFICIAL_INDEX_CACHE_MS = 30 * 60 * 1000;
 const OFFICIAL_INDEX_TIMEOUT_MS = 10_000;
+
+const UNSUPPORTED_AUTOMATIC_PROVIDER_IDS = new Set([
+  // FILMA does not bundle a BitTorrent engine. Showing this provider as an
+  // automatic playback source would recreate the "provider found but cannot play" problem.
+  'org.stremio.pubdomainmovies',
+  // This provider only works when the Stremio desktop service is running locally.
+  'org.stremio.local',
+]);
 
 type OfficialAddonIndexEntry = {
   manifest?: StremioManifest;
@@ -79,10 +88,16 @@ function normalizeManifestUrl(value: string | undefined): string | null {
   return `${raw.replace(/\/$/, '')}/manifest.json`;
 }
 
+function providerRuntimeSupported(manifest: StremioManifest, manifestUrl: string): boolean {
+  if (UNSUPPORTED_AUTOMATIC_PROVIDER_IDS.has(manifest.id)) return false;
+  if (/^https?:\/\/(?:127\.0\.0\.1|localhost)(?::|\/)/i.test(manifestUrl)) return false;
+  return true;
+}
+
 function providerFromEntry(entry: OfficialAddonIndexEntry): DiscoveredMovieProvider | null {
   if (!entry.flags?.official || !entry.manifest) return null;
   const manifestUrl = normalizeManifestUrl(entry.transportUrl);
-  if (!manifestUrl) return null;
+  if (!manifestUrl || !providerRuntimeSupported(entry.manifest, manifestUrl)) return null;
 
   const mediaTypes = new Set(entry.manifest.types ?? []);
   if (!mediaTypes.has('movie') && !mediaTypes.has('series')) return null;
@@ -122,6 +137,36 @@ function fallbackCinemeta(): DiscoveredMovieProvider {
   };
 }
 
+function fallbackWatchHub(): DiscoveredMovieProvider {
+  return {
+    id: 'auto-stremio:org.stremio.watchhub',
+    name: 'WatchHub',
+    manifestUrl: WATCHHUB_MANIFEST_URL,
+    enabled: true,
+    createdAt: DISCOVERY_TIMESTAMP,
+    updatedAt: DISCOVERY_TIMESTAMP,
+    automatic: true,
+    providesCatalog: false,
+    providesMeta: false,
+    providesStream: true,
+  };
+}
+
+function ensureCoreProviders(providers: DiscoveredMovieProvider[]): DiscoveredMovieProvider[] {
+  const byId = new Map(providers.map(provider => [provider.id, provider] as const));
+  if (!byId.has('auto-stremio:com.linvo.cinemeta')) byId.set('auto-stremio:com.linvo.cinemeta', fallbackCinemeta());
+  if (!byId.has('auto-stremio:org.stremio.watchhub')) byId.set('auto-stremio:org.stremio.watchhub', fallbackWatchHub());
+
+  const ordered: DiscoveredMovieProvider[] = [
+    byId.get('auto-stremio:com.linvo.cinemeta')!,
+    byId.get('auto-stremio:org.stremio.watchhub')!,
+  ];
+  for (const provider of providers) {
+    if (!ordered.some(item => item.id === provider.id)) ordered.push(provider);
+  }
+  return ordered;
+}
+
 function dedupeProviders<T extends AddonSource>(providers: T[]): T[] {
   const seen = new Set<string>();
   return providers.filter(provider => {
@@ -153,24 +198,18 @@ export async function discoverOfficialMovieProviders(): Promise<DiscoveredMovieP
     const payload = await response.json() as unknown;
     if (!Array.isArray(payload)) throw new Error('Official add-on index had an unexpected format.');
 
-    const providers = dedupeProviders(
+    const providers = ensureCoreProviders(dedupeProviders(
       payload
         .map(entry => providerFromEntry(entry as OfficialAddonIndexEntry))
         .filter((provider): provider is DiscoveredMovieProvider => provider !== null),
-    );
-
-    const cinemetaIndex = providers.findIndex(provider => provider.id === 'auto-stremio:com.linvo.cinemeta');
-    if (cinemetaIndex === -1) {
-      providers.unshift(fallbackCinemeta());
-    } else if (cinemetaIndex > 0) {
-      const [cinemeta] = providers.splice(cinemetaIndex, 1);
-      providers.unshift(cinemeta);
-    }
+    ));
 
     officialProviderCache = { fetchedAt: Date.now(), providers };
     return providers;
   } catch {
-    const providers = [fallbackCinemeta()];
+    // Keep both metadata discovery and a legitimate where-to-watch provider
+    // available even when GitHub/Stremio discovery is temporarily unreachable.
+    const providers = [fallbackCinemeta(), fallbackWatchHub()];
     officialProviderCache = { fetchedAt: Date.now(), providers };
     return providers;
   }
@@ -214,8 +253,6 @@ export function automaticTvPlaylists(
     countrySources.push(...(COUNTRY_SOURCES_BY_LANGUAGE[language] ?? []));
   }
 
-  // France should always remain available because it is one of FILMA's base
-  // language/country experiences, even when the user temporarily changes audio priorities.
   if (!countrySources.some(source => source.code === 'fr')) {
     countrySources.push({ code: 'fr', countryName: 'France', countryGroup: 'France' });
   }
