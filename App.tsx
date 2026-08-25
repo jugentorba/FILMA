@@ -4,10 +4,11 @@ import { ActivityIndicator, Platform, SafeAreaView, StyleSheet, Text, View } fro
 import { HomeScreen } from './src/screens/HomeScreen';
 import { LiveTvScreen } from './src/screens/LiveTvScreen';
 import { SettingsScreen } from './src/screens/SettingsScreen';
-import { fetchStreams } from './src/services/stremio';
+import { fetchMeta, fetchStreams, mediaItemForEpisode, type StremioVideo } from './src/services/stremio';
 import { DropboxSyncProvider } from './src/store/DropboxSyncContext';
 import { FilmaProvider, useFilma } from './src/store/FilmaContext';
 import type { MediaItem } from './src/types';
+import { EpisodePickerModal } from './src/ui/EpisodePickerModal';
 import { FocusButton } from './src/ui/FocusButton';
 import { PlayerModal } from './src/ui/PlayerModal';
 import { StreamPickerModal, type StreamChoice } from './src/ui/StreamPickerModal';
@@ -20,11 +21,17 @@ type PendingStreams = {
   streams: StreamChoice[];
 };
 
+type PendingEpisodes = {
+  series: MediaItem;
+  episodes: StremioVideo[];
+};
+
 function FilmaApp() {
   const { ready, state, setMode, updateProgress, toggleFavorite } = useFilma();
   const [screen, setScreen] = useState<Screen>('home');
   const [selected, setSelected] = useState<MediaItem | null>(null);
   const [pendingStreams, setPendingStreams] = useState<PendingStreams | null>(null);
+  const [pendingEpisodes, setPendingEpisodes] = useState<PendingEpisodes | null>(null);
   const [resolvingTitle, setResolvingTitle] = useState<string>();
   const [playbackError, setPlaybackError] = useState<string>();
 
@@ -38,14 +45,7 @@ function FilmaApp() {
     setScreen('live');
   };
 
-  const handleSelect = async (item: MediaItem) => {
-    setPlaybackError(undefined);
-
-    if (item.streamUrl) {
-      setSelected(item);
-      return;
-    }
-
+  const resolveStreamsFor = async (item: MediaItem) => {
     if (item.source?.kind !== 'stremio') {
       setPlaybackError('This item does not provide a playable source.');
       return;
@@ -56,7 +56,7 @@ function FilmaApp() {
       const result = await fetchStreams(
         item.source.manifestUrl,
         item.source.mediaType,
-        item.source.mediaId,
+        item.source.videoId ?? item.source.mediaId,
       );
       const streams: StreamChoice[] = result
         .filter((stream): stream is typeof stream & { url: string } => Boolean(stream.url && /^https?:\/\//i.test(stream.url)))
@@ -76,11 +76,45 @@ function FilmaApp() {
     }
   };
 
-  const handleProgress = useCallback((positionSeconds: number, durationSeconds: number) => {
-    if (selected?.id && !selected.id.startsWith('live:')) {
-      updateProgress(selected.id, positionSeconds, durationSeconds);
+  const handleSelect = async (item: MediaItem) => {
+    setPlaybackError(undefined);
+
+    if (item.streamUrl) {
+      setSelected(item);
+      return;
     }
-  }, [selected?.id, updateProgress]);
+
+    if (item.source?.kind !== 'stremio') {
+      setPlaybackError('This item does not provide a playable source.');
+      return;
+    }
+
+    if (item.source.mediaType === 'series' && !item.source.videoId) {
+      setResolvingTitle(`Episodes · ${item.title}`);
+      try {
+        const meta = await fetchMeta(item.source.manifestUrl, item.source.mediaType, item.source.mediaId);
+        const episodes = (meta.videos ?? []).filter(video => Boolean(video.id && video.title));
+        if (!episodes.length) {
+          setPlaybackError('This series add-on returned no episode list.');
+          return;
+        }
+        setPendingEpisodes({ series: item, episodes });
+      } catch (error) {
+        setPlaybackError(error instanceof Error ? error.message : 'Could not load series episodes.');
+      } finally {
+        setResolvingTitle(undefined);
+      }
+      return;
+    }
+
+    await resolveStreamsFor(item);
+  };
+
+  const handleProgress = useCallback((positionSeconds: number, durationSeconds: number) => {
+    if (selected && !selected.id.startsWith('live:')) {
+      updateProgress(selected, positionSeconds, durationSeconds);
+    }
+  }, [selected, updateProgress]);
 
   if (!ready) {
     return (
@@ -115,7 +149,7 @@ function FilmaApp() {
       {resolvingTitle ? (
         <View style={styles.resolveBar}>
           <ActivityIndicator size="small" />
-          <Text style={styles.resolveText}>Finding streams for {resolvingTitle}…</Text>
+          <Text style={styles.resolveText}>Loading {resolvingTitle}…</Text>
         </View>
       ) : null}
 
@@ -124,6 +158,19 @@ function FilmaApp() {
         {screen === 'live' ? <LiveTvScreen onSelect={item => void handleSelect(item)} onOpenSettings={() => setScreen('settings')} /> : null}
         {screen === 'settings' ? <SettingsScreen /> : null}
       </View>
+
+      {pendingEpisodes ? (
+        <EpisodePickerModal
+          series={pendingEpisodes.series}
+          episodes={pendingEpisodes.episodes}
+          onChoose={video => {
+            const item = mediaItemForEpisode(pendingEpisodes.series, video);
+            setPendingEpisodes(null);
+            void resolveStreamsFor(item);
+          }}
+          onClose={() => setPendingEpisodes(null)}
+        />
+      ) : null}
 
       {pendingStreams ? (
         <StreamPickerModal
