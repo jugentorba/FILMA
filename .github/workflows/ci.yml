@@ -12,7 +12,7 @@ concurrency:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -39,3 +39,9 @@ jobs:
 
       - name: Android TV prebuild
         run: EXPO_TV=1 npx expo prebuild --platform android --clean --no-install
+
+      - name: Mobile iOS prebuild
+        run: npx expo prebuild --platform ios --clean --no-install
+
+      - name: Apple TV prebuild
+        run: EXPO_TV=1 npx expo prebuild --platform ios --clean --no-install
