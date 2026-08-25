@@ -1,6 +1,6 @@
 import { useEventListener } from 'expo';
 import { VideoView, useVideoPlayer } from 'expo-video';
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Modal, Platform, SafeAreaView, StyleSheet, Text, View } from 'react-native';
 import type { MediaItem, WatchProgress } from '../types';
 import { FocusButton } from './FocusButton';
@@ -16,6 +16,9 @@ type Props = {
 };
 
 export function PlayerModal({ item, progress, onProgress, onClose, onToggleFavorite, favorite }: Props) {
+  const progressHandler = useRef(onProgress);
+  progressHandler.current = onProgress;
+
   const player = useVideoPlayer(item.streamUrl ?? null, instance => {
     instance.timeUpdateEventInterval = 5;
     if (progress?.positionSeconds && progress.positionSeconds > 5) {
@@ -26,15 +29,15 @@ export function PlayerModal({ item, progress, onProgress, onClose, onToggleFavor
 
   useEventListener(player, 'timeUpdate', ({ currentTime }) => {
     if (Number.isFinite(currentTime) && Number.isFinite(player.duration) && player.duration > 0) {
-      onProgress(currentTime, player.duration);
+      progressHandler.current(currentTime, player.duration);
     }
   });
 
   useEffect(() => () => {
     if (Number.isFinite(player.currentTime) && Number.isFinite(player.duration) && player.duration > 0) {
-      onProgress(player.currentTime, player.duration);
+      progressHandler.current(player.currentTime, player.duration);
     }
-  }, [onProgress, player]);
+  }, [player]);
 
   return (
     <Modal visible animationType="fade" supportedOrientations={['landscape', 'portrait']} onRequestClose={onClose}>
