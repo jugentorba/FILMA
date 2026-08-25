@@ -181,7 +181,13 @@ function normalizePlaylist(raw: unknown): PlaylistSource | null {
 
   const createdAt = timestamp(raw.createdAt);
   const deletedAt = stringValue(raw.deletedAt);
-  const kind = raw.kind === 'xtream' ? 'xtream' : raw.kind === 'm3u' ? 'm3u' : undefined;
+  const kind = raw.kind === 'xtream'
+    ? 'xtream'
+    : raw.kind === 'file'
+      ? 'file'
+      : raw.kind === 'm3u'
+        ? 'm3u'
+        : undefined;
   const credentialsKey = stringValue(raw.credentialsKey);
   return {
     id,
