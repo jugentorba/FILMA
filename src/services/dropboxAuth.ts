@@ -7,7 +7,9 @@ import { Platform } from 'react-native';
 WebBrowser.maybeCompleteAuthSession();
 
 const TOKEN_KEY = 'filma.dropbox.oauth.v1';
-const DROPBOX_CLIENT_ID = process.env.EXPO_PUBLIC_DROPBOX_APP_KEY?.trim() ?? '';
+// Dropbox App Keys are public OAuth client identifiers. Keep the environment
+// override for alternate builds, while FILMA's normal builds use this app key.
+const DROPBOX_CLIENT_ID = process.env.EXPO_PUBLIC_DROPBOX_APP_KEY?.trim() || '4xn65kgja3fsiui';
 
 const discovery: AuthSession.DiscoveryDocument = {
   authorizationEndpoint: 'https://www.dropbox.com/oauth2/authorize',
