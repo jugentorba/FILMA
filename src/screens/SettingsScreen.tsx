@@ -1,11 +1,13 @@
 import React, { useMemo, useState } from 'react';
 import { Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useDropboxSync } from '../store/DropboxSyncContext';
 import { useFilma } from '../store/FilmaContext';
 import { FocusButton } from '../ui/FocusButton';
 import { theme } from '../ui/theme';
 
 export function SettingsScreen() {
   const { deviceId, state, addPlaylist, removePlaylist, addAddon, removeAddon } = useFilma();
+  const dropbox = useDropboxSync();
   const [playlistName, setPlaylistName] = useState('');
   const [playlistUrl, setPlaylistUrl] = useState('');
   const [addonName, setAddonName] = useState('');
@@ -39,6 +41,14 @@ export function SettingsScreen() {
     setMessage('Add-on added.');
   };
 
+  const syncStatus = dropbox.status === 'syncing'
+    ? 'Syncing…'
+    : dropbox.connected
+      ? 'Connected'
+      : dropbox.status === 'checking'
+        ? 'Checking…'
+        : 'Not connected';
+
   return (
     <ScrollView style={styles.root} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
       <Text style={styles.title}>Settings</Text>
@@ -47,6 +57,59 @@ export function SettingsScreen() {
       </Text>
 
       {message ? <Text style={styles.message}>{message}</Text> : null}
+
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>Cross-device sync</Text>
+        <Text style={styles.help}>
+          Continue Watching, favorites, playlists and add-ons can synchronize through your own Dropbox App Folder. FILMA stores the OAuth session securely on this device and never embeds a Dropbox app secret.
+        </Text>
+
+        <View style={styles.statusRow}>
+          <Text style={styles.statusLabel}>Dropbox</Text>
+          <Text style={[styles.statusValue, dropbox.connected ? styles.statusOk : undefined]}>{syncStatus}</Text>
+        </View>
+
+        {!dropbox.configured ? (
+          <Text style={styles.warning}>
+            Dropbox login is implemented, but this build still needs EXPO_PUBLIC_DROPBOX_APP_KEY before sign-in can be enabled.
+          </Text>
+        ) : null}
+
+        {dropbox.needsTvPairing ? (
+          <Text style={styles.warning}>
+            Apple TV cannot open the phone-style Dropbox authorization page. Connect Dropbox on a phone first; FILMA TV pairing is the next sync step.
+          </Text>
+        ) : null}
+
+        {dropbox.error ? <Text style={styles.error}>{dropbox.error}</Text> : null}
+
+        <View style={styles.syncActions}>
+          {!dropbox.connected ? (
+            <FocusButton
+              label="Connect Dropbox"
+              active
+              onPress={() => void dropbox.connect()}
+            />
+          ) : (
+            <>
+              <FocusButton
+                label={dropbox.status === 'syncing' ? 'Syncing…' : 'Sync now'}
+                active
+                onPress={() => void dropbox.syncNow().catch(() => undefined)}
+              />
+              <FocusButton
+                label="Disconnect"
+                onPress={() => void dropbox.disconnect()}
+              />
+            </>
+          )}
+        </View>
+
+        {dropbox.lastSyncAt ? (
+          <Text style={styles.lastSync}>Last sync: {new Date(dropbox.lastSyncAt).toLocaleString()}</Text>
+        ) : null}
+        <Text style={styles.device}>This installation: {deviceId}</Text>
+      </View>
 
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Live TV playlists</Text>
@@ -112,14 +175,6 @@ export function SettingsScreen() {
             <FocusButton compact label="Remove" onPress={() => removeAddon(item.id)} />
           </View>
         ))}
-      </View>
-
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Cross-device sync</Text>
-        <Text style={styles.help}>
-          FILMA keeps watch progress and source changes merge-safe across devices. Dropbox transport is available in the project and can be connected without a paid FILMA server.
-        </Text>
-        <Text style={styles.device}>This installation: {deviceId}</Text>
       </View>
     </ScrollView>
   );
@@ -208,6 +263,46 @@ const styles = StyleSheet.create({
   sourceUrl: {
     color: theme.muted,
     marginTop: 3,
+  },
+  statusRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderTopColor: theme.border,
+  },
+  statusLabel: {
+    color: theme.text,
+    fontWeight: '800',
+  },
+  statusValue: {
+    color: theme.muted,
+    fontWeight: '800',
+  },
+  statusOk: {
+    color: theme.success,
+  },
+  warning: {
+    color: '#fde68a',
+    lineHeight: 21,
+    marginTop: 10,
+  },
+  error: {
+    color: '#fda4af',
+    lineHeight: 21,
+    marginTop: 10,
+  },
+  syncActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginTop: 16,
+    marginBottom: 12,
+  },
+  lastSync: {
+    color: theme.muted,
+    marginBottom: 8,
   },
   device: {
     color: theme.text,
