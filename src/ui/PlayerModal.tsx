@@ -23,6 +23,7 @@ const PLAYBACK_START_TIMEOUT_MS = 15_000;
 export function PlayerModal({ item, progress, onProgress, onClose, onToggleFavorite, favorite }: Props) {
   const { state } = useFilma();
   const text = stringsFor(state.preferences.appLanguage);
+  const isLive = item.id.startsWith('live:');
   const progressHandler = useRef(onProgress);
   progressHandler.current = onProgress;
   const replacingRef = useRef(false);
@@ -37,23 +38,32 @@ export function PlayerModal({ item, progress, onProgress, onClose, onToggleFavor
   const copy = useMemo(() => state.preferences.appLanguage === 'fr'
     ? {
         trying: (current: number, total: number) => `Essai d’une autre source (${current}/${total})…`,
-        failed: 'FILMA a essayé toutes les sources disponibles, mais aucune ne peut lire ce titre.',
+        failed: isLive
+          ? 'FILMA a essayé toutes les sources disponibles pour cette chaîne, mais aucune ne fonctionne.'
+          : 'FILMA a essayé toutes les sources disponibles, mais aucune ne peut lire ce titre.',
         timeout: 'Cette source met trop de temps à démarrer. FILMA essaie la suivante.',
-        player: 'Lecteur FILMA',
+        nextSource: 'Source suivante',
+        player: isLive ? 'TV en direct · FILMA' : 'Lecteur FILMA',
       }
     : state.preferences.appLanguage === 'sq'
       ? {
           trying: (current: number, total: number) => `Po provohet një burim tjetër (${current}/${total})…`,
-          failed: 'FILMA provoi të gjitha burimet e disponueshme, por asnjëri nuk mund ta luajë këtë titull.',
+          failed: isLive
+            ? 'FILMA provoi të gjitha burimet e disponueshme për këtë kanal, por asnjëri nuk funksionoi.'
+            : 'FILMA provoi të gjitha burimet e disponueshme, por asnjëri nuk mund ta luajë këtë titull.',
           timeout: 'Ky burim po vonon shumë për të nisur. FILMA po provon tjetrin.',
-          player: 'Luajtësi FILMA',
+          nextSource: 'Burimi tjetër',
+          player: isLive ? 'TV Live · FILMA' : 'Luajtësi FILMA',
         }
       : {
           trying: (current: number, total: number) => `Trying another source (${current}/${total})…`,
-          failed: 'FILMA tried every available provider, but none could play this title.',
+          failed: isLive
+            ? 'FILMA tried every available source for this channel, but none could play it.'
+            : 'FILMA tried every available provider, but none could play this title.',
           timeout: 'This source is taking too long to start. FILMA is trying the next one.',
-          player: 'FILMA player',
-        }, [state.preferences.appLanguage]);
+          nextSource: 'Next source',
+          player: isLive ? 'Live TV · FILMA' : 'FILMA player',
+        }, [isLive, state.preferences.appLanguage]);
 
   const candidateUrls = useMemo(() => {
     const urls = [
@@ -98,7 +108,7 @@ export function PlayerModal({ item, progress, onProgress, onClose, onToggleFavor
           const resumeAt = Math.max(lastKnownPositionRef.current, progress?.completed ? 0 : (progress?.positionSeconds ?? 0));
           await player.replaceAsync(nextUrl);
           currentUrlRef.current = nextUrl;
-          if (resumeAt > 5) player.currentTime = resumeAt;
+          if (!isLive && resumeAt > 5) player.currentTime = resumeAt;
           player.play();
           setSourceAttempt(value => value + 1);
           return;
@@ -110,7 +120,16 @@ export function PlayerModal({ item, progress, onProgress, onClose, onToggleFavor
     } finally {
       replacingRef.current = false;
     }
-  }, [candidateUrls, copy.failed, copy.trying, player, progress?.completed, progress?.positionSeconds]);
+  }, [candidateUrls, copy.failed, copy.trying, isLive, player, progress?.completed, progress?.positionSeconds]);
+
+  const manuallyTryNextSource = useCallback(() => {
+    const currentUrl = currentUrlRef.current;
+    const remainingOtherSource = candidateUrls.some(url => url !== currentUrl && !failedUrlsRef.current.has(url));
+    if (!remainingOtherSource) failedUrlsRef.current.clear();
+    setTerminalError(undefined);
+    setSourceReady(false);
+    void switchToNextCandidate();
+  }, [candidateUrls, switchToNextCandidate]);
 
   useEventListener(player, 'statusChange', ({ status, error }) => {
     if (status === 'readyToPlay') {
@@ -127,7 +146,7 @@ export function PlayerModal({ item, progress, onProgress, onClose, onToggleFavor
 
   useEventListener(player, 'timeUpdate', ({ currentTime }) => {
     if (Number.isFinite(currentTime)) lastKnownPositionRef.current = Math.max(0, currentTime);
-    if (Number.isFinite(currentTime) && Number.isFinite(player.duration) && player.duration > 0) {
+    if (!isLive && Number.isFinite(currentTime) && Number.isFinite(player.duration) && player.duration > 0) {
       progressHandler.current(currentTime, player.duration);
     }
   });
@@ -141,10 +160,10 @@ export function PlayerModal({ item, progress, onProgress, onClose, onToggleFavor
   }, [copy.timeout, sourceAttempt, sourceReady, switchToNextCandidate, terminalError]);
 
   useEffect(() => () => {
-    if (Number.isFinite(player.currentTime) && Number.isFinite(player.duration) && player.duration > 0) {
+    if (!isLive && Number.isFinite(player.currentTime) && Number.isFinite(player.duration) && player.duration > 0) {
       progressHandler.current(player.currentTime, player.duration);
     }
-  }, [player]);
+  }, [isLive, player]);
 
   return (
     <Modal visible animationType="fade" supportedOrientations={['landscape', 'portrait']} onRequestClose={onClose}>
@@ -167,7 +186,8 @@ export function PlayerModal({ item, progress, onProgress, onClose, onToggleFavor
             <Text style={styles.subtitle}>{item.subtitle ?? copy.player}</Text>
           </View>
           <View style={styles.actions}>
-            <FocusButton compact label={`${favorite ? '♥' : '♡'} ${text.favorites}`} active={favorite} onPress={onToggleFavorite} />
+            {candidateUrls.length > 1 ? <FocusButton compact label={`↻ ${copy.nextSource}`} onPress={manuallyTryNextSource} /> : null}
+            {!isLive ? <FocusButton compact label={`${favorite ? '♥' : '♡'} ${text.favorites}`} active={favorite} onPress={onToggleFavorite} /> : null}
             <FocusButton compact label={text.dismiss} onPress={onClose} />
           </View>
         </View>
@@ -234,6 +254,8 @@ const styles = StyleSheet.create({
   },
   actions: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'flex-end',
     gap: 10,
   },
 });
