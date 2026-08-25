@@ -1,6 +1,7 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, FlatList, Image, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { fetchPlaylist, mergeLiveChannels } from '../services/m3u';
+import { channelIdentity, fetchPlaylist, mergeLiveChannels } from '../services/m3u';
 import { useFilma } from '../store/FilmaContext';
 import type { LiveChannel, MediaItem } from '../types';
 import { FocusButton } from '../ui/FocusButton';
@@ -30,6 +31,7 @@ type ChannelRowProps = {
 };
 
 const AUTO_REFRESH_MS = 5 * 60 * 1000;
+const LAST_LIVE_CHANNEL_KEY = 'filma.live.last-channel.v1';
 
 function asMediaItem(channel: LiveChannel): MediaItem {
   return {
@@ -124,6 +126,7 @@ export function LiveTvScreen({ onOpenSettings }: Props) {
   const [playingChannel, setPlayingChannel] = useState<LiveChannel | null>(null);
   const [playbackQueue, setPlaybackQueue] = useState<LiveChannel[]>([]);
   const [playbackIndex, setPlaybackIndex] = useState(0);
+  const didRestoreLastChannelRef = useRef(false);
   const countryListRef = useRef<FlatList<{ name: string; count: number }>>(null);
   const groupListRef = useRef<FlatList<{ name: string; count: number }>>(null);
   const channelListRef = useRef<FlatList<LiveChannel>>(null);
@@ -180,6 +183,10 @@ export function LiveTvScreen({ onOpenSettings }: Props) {
     () => state.playlists.filter(source => source.enabled && !source.deletedAt),
     [state.playlists],
   );
+
+  const rememberChannel = useCallback((channel: LiveChannel) => {
+    void AsyncStorage.setItem(LAST_LIVE_CHANNEL_KEY, channelIdentity(channel)).catch(() => undefined);
+  }, []);
 
   const refresh = useCallback(async () => {
     if (!activePlaylists.length) {
@@ -239,6 +246,29 @@ export function LiveTvScreen({ onOpenSettings }: Props) {
     } else if (failed.length) {
       setError(copy.unavailable(failed.length, health.length - failed.length));
     }
+
+    if (!didRestoreLastChannelRef.current && nextChannels.length) {
+      didRestoreLastChannelRef.current = true;
+      try {
+        const savedIdentity = await AsyncStorage.getItem(LAST_LIVE_CHANNEL_KEY);
+        if (savedIdentity) {
+          const restored = nextChannels.find(channel => channelIdentity(channel) === savedIdentity);
+          if (restored) {
+            const country = restored.country || 'Other';
+            const queue = nextChannels.filter(channel => (channel.country || 'Other') === country);
+            const index = Math.max(0, queue.findIndex(channel => channelIdentity(channel) === savedIdentity));
+            setSelectedCountry(country);
+            setSelectedGroup('all');
+            setPlaybackQueue(queue);
+            setPlaybackIndex(index);
+            setPlayingChannel(queue[index]);
+          }
+        }
+      } catch {
+        // Missing/corrupt resume data should never block Live TV.
+      }
+    }
+
     setLoading(false);
   }, [activePlaylists, copy]);
 
@@ -313,6 +343,7 @@ export function LiveTvScreen({ onOpenSettings }: Props) {
     setPlaybackQueue(visibleChannels);
     setPlaybackIndex(index);
     setPlayingChannel(channel);
+    rememberChannel(channel);
   };
 
   const selectChannelAt = (index: number) => {
@@ -320,6 +351,7 @@ export function LiveTvScreen({ onOpenSettings }: Props) {
     if (!channel) return;
     setPlaybackIndex(index);
     setPlayingChannel(channel);
+    rememberChannel(channel);
   };
 
   const zapChannel = (delta: number) => {
@@ -470,10 +502,7 @@ export function LiveTvScreen({ onOpenSettings }: Props) {
 }
 
 const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: theme.background,
-  },
+  root: { flex: 1, backgroundColor: theme.background },
   empty: {
     flex: 1,
     alignItems: 'flex-start',
