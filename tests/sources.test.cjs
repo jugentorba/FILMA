@@ -127,16 +127,29 @@ function playlist(id, name, url) {
   assert.deepEqual(
     automatic.map(item => item.url),
     [
-      'https://iptv-org.github.io/iptv/languages/fra.m3u',
-      'https://iptv-org.github.io/iptv/languages/sqi.m3u',
-      'https://iptv-org.github.io/iptv/languages/eng.m3u',
+      'https://iptv-org.github.io/iptv/countries/al.m3u',
+      'https://iptv-org.github.io/iptv/countries/xk.m3u',
+      'https://iptv-org.github.io/iptv/countries/fr.m3u',
+      'https://iptv-org.github.io/iptv/countries/uk.m3u',
+      'https://iptv-org.github.io/iptv/countries/us.m3u',
     ],
   );
+  assert.deepEqual(automatic.slice(0, 2).map(item => item.countryGroup), ['Albania', 'Albania']);
 }
 
 {
   const automatic = automaticTvPlaylists(['de', 'fr', 'de', 'en'], 'fr');
-  assert.deepEqual(automatic.map(item => item.id), ['auto-tv:deu', 'auto-tv:fra', 'auto-tv:eng']);
+  assert.deepEqual(
+    automatic.map(item => item.id),
+    [
+      'auto-tv:country:al',
+      'auto-tv:country:xk',
+      'auto-tv:country:de',
+      'auto-tv:country:fr',
+      'auto-tv:country:uk',
+      'auto-tv:country:us',
+    ],
+  );
 }
 
 {
