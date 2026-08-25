@@ -5,7 +5,7 @@ import { FlatList, Image, Linking, Modal, Platform, Pressable, SafeAreaView, Sty
 import { stringsFor } from '../i18n';
 import { resolvedStreamsForItem } from '../services/streamResolver';
 import { useFilma } from '../store/FilmaContext';
-import type { LiveChannel, MediaItem, WatchProgress } from '../types';
+import type { AppLanguage, AudioLanguage, LiveChannel, MediaItem, WatchProgress } from '../types';
 import { FocusButton } from './FocusButton';
 import { theme } from './theme';
 
@@ -24,8 +24,26 @@ type Props = {
   onSelectChannel?(index: number): void;
 };
 
+type LanguageTrack = {
+  language: string;
+  label: string;
+  name?: string;
+  isDefault?: boolean;
+  autoSelect?: boolean;
+};
+
 const PLAYBACK_START_TIMEOUT_MS = 15_000;
 const EXTERNAL_PROVIDER_PREFIX = 'external-provider:';
+
+const LANGUAGE_ALIASES: Record<AppLanguage | AudioLanguage, string[]> = {
+  en: ['en', 'eng', 'english', 'anglais', 'anglisht'],
+  fr: ['fr', 'fra', 'fre', 'french', 'francais', 'français', 'frengjisht'],
+  sq: ['sq', 'sqi', 'alb', 'albanian', 'shqip', 'albanais'],
+  it: ['it', 'ita', 'italian', 'italiano', 'italien'],
+  es: ['es', 'spa', 'spanish', 'espanol', 'español', 'espagnol'],
+  de: ['de', 'deu', 'ger', 'german', 'deutsch', 'allemand'],
+  tr: ['tr', 'tur', 'turkish', 'turkce', 'türkçe', 'turc'],
+};
 
 function externalProviderUrl(value?: string): string | undefined {
   if (!value?.startsWith(EXTERNAL_PROVIDER_PREFIX)) return undefined;
@@ -34,6 +52,41 @@ function externalProviderUrl(value?: string): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+function normalizeLanguage(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLocaleLowerCase()
+    .replace(/_/g, '-');
+}
+
+function trackText(track: LanguageTrack): string {
+  return normalizeLanguage([track.language, track.label, track.name].filter(Boolean).join(' '));
+}
+
+function trackMatches(track: LanguageTrack, language: AppLanguage | AudioLanguage): boolean {
+  const text = trackText(track);
+  const primary = normalizeLanguage(track.language).split('-')[0];
+  return LANGUAGE_ALIASES[language].some(alias => {
+    const normalizedAlias = normalizeLanguage(alias);
+    return primary === normalizedAlias || text.includes(normalizedAlias);
+  });
+}
+
+function bestLanguageTrack<T extends LanguageTrack>(
+  tracks: T[],
+  languages: Array<AppLanguage | AudioLanguage>,
+  allowAnyFallback: boolean,
+): T | undefined {
+  for (const language of languages) {
+    const match = tracks.find(track => trackMatches(track, language));
+    if (match) return match;
+  }
+  if (!allowAnyFallback) return tracks.find(track => track.isDefault || track.autoSelect);
+  return tracks.find(track => track.isDefault || track.autoSelect) ?? tracks[0];
 }
 
 export function PlayerModal({
@@ -232,6 +285,25 @@ export function PlayerModal({
     }
     if (event.eventType === 'down') {
       onNextChannel?.();
+    }
+  });
+
+  useEventListener(player, 'sourceLoad', ({ availableAudioTracks, availableSubtitleTracks }) => {
+    if (Platform.OS === 'web' || (Platform.OS === 'ios' && Platform.isTV)) return;
+
+    const audioPreferences = state.preferences.preferredAudioLanguages;
+    if (audioPreferences.length && availableAudioTracks.length) {
+      const preferredAudio = bestLanguageTrack(availableAudioTracks, audioPreferences, false);
+      if (preferredAudio) player.audioTrack = preferredAudio;
+    }
+
+    if (availableSubtitleTracks.length) {
+      const subtitlePreferences = [
+        state.preferences.appLanguage,
+        ...state.preferences.preferredAudioLanguages.filter(language => language !== state.preferences.appLanguage),
+      ];
+      const preferredSubtitle = bestLanguageTrack(availableSubtitleTracks, subtitlePreferences, true);
+      if (preferredSubtitle) player.subtitleTrack = preferredSubtitle;
     }
   });
 
