@@ -39,7 +39,6 @@ function ChannelCard({ channel, index, onFocus, onPress }: ChannelCardProps) {
       accessibilityRole="button"
       accessibilityLabel={channel.name}
       focusable
-      hasTVPreferredFocus={Platform.isTV && index === 0}
       onFocus={() => {
         setFocused(true);
         onFocus(index);
