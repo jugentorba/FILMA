@@ -14,6 +14,11 @@ function normalized(value?: string): string {
   return (value ?? '').trim().toLocaleLowerCase().replace(/\s+/g, ' ');
 }
 
+function inferredGroup(name: string, rawGroup?: string): string | undefined {
+  if (/\b(sport|sports|supersport)\b/i.test(name)) return 'Sports';
+  return rawGroup;
+}
+
 export function channelIdentity(channel: LiveChannel): string {
   if (channel.tvgId?.trim()) return `tvg:${normalized(channel.tvgId)}`;
   return `name:${normalized(channel.country)}:${normalized(channel.group)}:${normalized(channel.name)}`;
@@ -77,14 +82,15 @@ export function parseM3U(text: string): LiveChannel[] {
     const displayName = commaIndex >= 0 ? meta?.slice(commaIndex + 1).trim() : undefined;
     const name = displayName || `Channel ${channels.length + 1}`;
     const tvgId = attr(meta ?? '', 'tvg-id');
-    const stableKey = `${tvgId ?? ''}|${attr(meta ?? '', 'group-title') ?? ''}|${name}|${line}`;
+    const rawGroup = attr(meta ?? '', 'group-title');
+    const stableKey = `${tvgId ?? ''}|${rawGroup ?? ''}|${name}|${line}`;
 
     channels.push({
       id: encodeURIComponent(stableKey),
       name,
       url: line,
       logo: attr(meta ?? '', 'tvg-logo'),
-      group: attr(meta ?? '', 'group-title'),
+      group: inferredGroup(name, rawGroup),
       tvgId,
     });
     meta = undefined;
