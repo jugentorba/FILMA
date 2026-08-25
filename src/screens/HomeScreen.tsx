@@ -1,9 +1,9 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, FlatList, Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { demoMovies } from '../data/demo';
 import { fetchCatalog, fetchManifest } from '../services/stremio';
 import { useFilma } from '../store/FilmaContext';
-import type { MediaItem } from '../types';
+import type { FilmaState, MediaItem } from '../types';
 import { FocusButton } from '../ui/FocusButton';
 import { MediaCard } from '../ui/MediaCard';
 import { theme } from '../ui/theme';
@@ -17,6 +17,54 @@ type CatalogRow = {
   title: string;
   items: MediaItem[];
 };
+
+type MediaRowProps = {
+  title: string;
+  data: MediaItem[];
+  state: FilmaState;
+  onSelect(item: MediaItem): void;
+};
+
+function MediaRow({ title, data, state, onSelect }: MediaRowProps) {
+  const listRef = useRef<FlatList<MediaItem>>(null);
+
+  return (
+    <View style={styles.section}>
+      <Text style={styles.sectionTitle}>{title}</Text>
+      <FlatList
+        ref={listRef}
+        horizontal
+        data={data}
+        keyExtractor={item => item.id}
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.rowContent}
+        initialNumToRender={Platform.isTV ? 10 : 6}
+        onScrollToIndexFailed={({ index, averageItemLength }) => {
+          listRef.current?.scrollToOffset({
+            offset: Math.max(0, index * averageItemLength),
+            animated: true,
+          });
+        }}
+        renderItem={({ item, index }) => {
+          const favorite = state.favorites[item.id];
+          return (
+            <MediaCard
+              item={item}
+              progress={state.progress[item.id]}
+              favorite={Boolean(favorite && !favorite.deletedAt)}
+              onFocus={() => {
+                if (Platform.isTV) {
+                  listRef.current?.scrollToIndex({ index, viewPosition: 0.34, animated: true });
+                }
+              }}
+              onPress={() => onSelect(item)}
+            />
+          );
+        }}
+      />
+    </View>
+  );
+}
 
 export function HomeScreen({ onSelect }: Props) {
   const { state } = useFilma();
@@ -122,28 +170,7 @@ export function HomeScreen({ onSelect }: Props) {
   const hero = continueWatching[0] ?? addonRows[0]?.items[0] ?? demoMovies[0];
 
   const row = (title: string, data: MediaItem[], keyPrefix = title) => (
-    <View style={styles.section} key={keyPrefix}>
-      <Text style={styles.sectionTitle}>{title}</Text>
-      <FlatList
-        horizontal
-        data={data}
-        keyExtractor={item => item.id}
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.rowContent}
-        initialNumToRender={Platform.isTV ? 10 : 6}
-        renderItem={({ item }) => {
-          const favorite = state.favorites[item.id];
-          return (
-            <MediaCard
-              item={item}
-              progress={state.progress[item.id]}
-              favorite={Boolean(favorite && !favorite.deletedAt)}
-              onPress={() => onSelect(item)}
-            />
-          );
-        }}
-      />
-    </View>
+    <MediaRow key={keyPrefix} title={title} data={data} state={state} onSelect={onSelect} />
   );
 
   return (
@@ -155,7 +182,13 @@ export function HomeScreen({ onSelect }: Props) {
           Movies open first. Continue on this device or pick up from your saved watch position on another device after sync.
         </Text>
         <View style={styles.heroActions}>
-          <FocusButton label={state.progress[hero.id] ? '▶ Continue' : '▶ Play'} active onPress={() => onSelect(hero)} />
+          <FocusButton
+            label={state.progress[hero.id] ? '▶ Continue' : '▶ Play'}
+            active
+            preferredFocus
+            accessibilityHint={state.progress[hero.id] ? 'Resume from the saved position' : 'Open this title'}
+            onPress={() => onSelect(hero)}
+          />
         </View>
       </View>
 
