@@ -191,7 +191,13 @@ function FilmaApp() {
       ) : null}
 
       <View style={styles.content}>
-        {screen === 'home' ? <HomeScreen onSelect={item => void handleSelect(item)} onOpenSettings={goSettings} /> : null}
+        {screen === 'home' ? (
+          <HomeScreen
+            onSelect={item => void handleSelect(item)}
+            onOpenYouTubeVideo={video => void handleYouTubeVideo(video)}
+            onOpenSettings={goSettings}
+          />
+        ) : null}
         {screen === 'live' ? <LiveTvScreen onSelect={item => void handleSelect(item)} onOpenSettings={goSettings} /> : null}
         {screen === 'youtube' && Platform.isTV ? <YouTubeScreen onOpenVideo={video => void handleYouTubeVideo(video)} /> : null}
         {screen === 'settings' ? <SettingsScreen /> : null}
