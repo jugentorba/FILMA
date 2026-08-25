@@ -16,6 +16,7 @@ import { EpisodePickerModal } from './src/ui/EpisodePickerModal';
 import { FocusButton } from './src/ui/FocusButton';
 import { PlayerModal } from './src/ui/PlayerModal';
 import { StreamPickerModal, type StreamChoice } from './src/ui/StreamPickerModal';
+import { YouTubePlayerModal } from './src/ui/YouTubePlayerModal';
 import { theme } from './src/ui/theme';
 
 type Screen = 'home' | 'live' | 'youtube' | 'settings';
@@ -50,6 +51,7 @@ function FilmaApp() {
   const text = stringsFor(state.preferences.appLanguage);
   const [screen, setScreen] = useState<Screen>('home');
   const [selected, setSelected] = useState<MediaItem | null>(null);
+  const [selectedYouTube, setSelectedYouTube] = useState<YouTubeVideo | null>(null);
   const [pendingStreams, setPendingStreams] = useState<PendingStreams | null>(null);
   const [pendingEpisodes, setPendingEpisodes] = useState<PendingEpisodes | null>(null);
   const [resolvingTitle, setResolvingTitle] = useState<string>();
@@ -124,10 +126,15 @@ function FilmaApp() {
 
   const handleYouTubeVideo = async (video: YouTubeVideo) => {
     setPlaybackError(undefined);
+
+    if (Platform.isTV && Platform.OS === 'android') {
+      setSelectedYouTube(video);
+      return;
+    }
+
     try {
-      // Apple does not expose a web view on tvOS, so the standards-compliant
-      // playback bridge uses YouTube's own watch URL. Android TV can later host
-      // the official IFrame Player without changing the browsing/data model.
+      // tvOS does not expose a supported WebView. Keep Apple TV on YouTube's
+      // own URL handling rather than extracting or proxying video streams.
       await Linking.openURL(youtubeWatchUrl(video.id));
     } catch (error) {
       setPlaybackError(error instanceof Error ? error.message : 'Could not open this YouTube video.');
@@ -224,6 +231,15 @@ function FilmaApp() {
           streams={pendingStreams.streams}
           onChoose={stream => { setSelected({ ...pendingStreams.item, streamUrl: stream.url }); setPendingStreams(null); }}
           onClose={() => setPendingStreams(null)}
+        />
+      ) : null}
+
+      {selectedYouTube ? (
+        <YouTubePlayerModal
+          videoId={selectedYouTube.id}
+          title={selectedYouTube.title}
+          channelTitle={selectedYouTube.channelTitle}
+          onClose={() => setSelectedYouTube(null)}
         />
       ) : null}
 
