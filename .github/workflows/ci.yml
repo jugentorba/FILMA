@@ -2,7 +2,7 @@ name: FILMA CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, sync-v2-hardening]
   pull_request:
 
 concurrency:
@@ -22,11 +22,23 @@ jobs:
         with:
           node-version: '22.13.1'
 
-      - name: Install dependencies
-        run: yarn install --non-interactive
+      - name: Install locked dependencies
+        run: yarn install --frozen-lockfile --non-interactive
 
       - name: TypeScript
         run: yarn typecheck
+
+      - name: Sync migration and conflict tests
+        run: |
+          rm -rf .sync-test-build
+          ./node_modules/.bin/tsc src/types.ts src/services/sync.ts src/services/stateSchema.ts \
+            --outDir .sync-test-build \
+            --module commonjs \
+            --target ES2020 \
+            --skipLibCheck \
+            --esModuleInterop
+          node tests/sync.test.cjs
+          rm -rf .sync-test-build
 
       - name: Expo config
         run: npx expo config --type public
