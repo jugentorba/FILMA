@@ -38,7 +38,13 @@ type ManifestCacheEntry = {
   fetchedAt: number;
 };
 
+type ProviderCandidates = {
+  direct: ResolvedStream[];
+  external: ResolvedStream[];
+};
+
 const MANIFEST_CACHE_TTL_MS = 5 * 60 * 1000;
+const EXTERNAL_PROVIDER_PREFIX = 'external-provider:';
 const manifestCache = new Map<string, ManifestCacheEntry>();
 const recentStreamCandidates = new Map<string, ResolvedStream[]>();
 
@@ -93,6 +99,16 @@ function itemProvider(item: MediaItem): AddonSource | null {
   };
 }
 
+function dedupeStreams(streams: ResolvedStream[]): ResolvedStream[] {
+  const seen = new Set<string>();
+  return streams.filter(stream => {
+    const key = `${stream.url}|${stream.title}|${stream.providerManifestUrl}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 export async function resolveStreamsAcrossAddons(
   item: MediaItem,
   addons: AddonSource[],
@@ -125,47 +141,65 @@ export async function resolveStreamsAcrossAddons(
   const identity = canonicalIdentity(item);
   if (!identity) return { streams: [], diagnostics };
 
-  const candidates = await Promise.all(activeAddons.map(async addon => {
+  const providerCandidates = await Promise.all(activeAddons.map(async addon: AddonSource): Promise<ProviderCandidates> => {
     try {
       const manifest = await manifestFor(addon.manifestUrl);
       diagnostics.manifestsLoaded += 1;
-      if (!providerIsStreamCapable(manifest)) return [];
+      if (!providerIsStreamCapable(manifest)) return { direct: [], external: [] };
       diagnostics.streamCapableProviders += 1;
-      if (!providerSupports(manifest, identity.type, identity.id)) return [];
+      if (!providerSupports(manifest, identity.type, identity.id)) return { direct: [], external: [] };
       diagnostics.compatibleProviders += 1;
 
       const streams = await fetchStreams(addon.manifestUrl, identity.type, identity.id);
       diagnostics.providerResponses += 1;
       diagnostics.totalReturnedEntries += streams.length;
-      diagnostics.externalOnlyEntries += streams.filter(stream => !stream.url && Boolean(stream.externalUrl)).length;
 
-      return streams.flatMap(stream => {
-        if (!stream.url || !/^https?:\/\//i.test(stream.url)) return [];
-        return [{
-          title: stream.title,
-          url: stream.url,
-          providerName: manifest.name || addon.name,
-          providerManifestUrl: addon.manifestUrl,
-        } satisfies ResolvedStream];
-      });
+      const direct: ResolvedStream[] = [];
+      const external: ResolvedStream[] = [];
+
+      for (const stream of streams) {
+        if (stream.url && /^https?:\/\//i.test(stream.url)) {
+          direct.push({
+            title: stream.title,
+            url: stream.url,
+            providerName: manifest.name || addon.name,
+            providerManifestUrl: addon.manifestUrl,
+          });
+          continue;
+        }
+
+        if (stream.externalUrl && /^https?:\/\//i.test(stream.externalUrl)) {
+          diagnostics.externalOnlyEntries += 1;
+          external.push({
+            title: stream.title,
+            url: `${EXTERNAL_PROVIDER_PREFIX}${encodeURIComponent(stream.externalUrl)}`,
+            providerName: manifest.name || addon.name,
+            providerManifestUrl: addon.manifestUrl,
+          });
+        }
+      }
+
+      return { direct, external };
     } catch {
       diagnostics.failedProviders += 1;
-      return [];
+      return { direct: [], external: [] };
     }
   }));
 
-  const merged = candidates.flat();
-  diagnostics.directPlayableEntries = merged.length;
-  const ranked = rankStreamsByPreferredAudio(merged, preferredAudioLanguages);
+  const directMerged = providerCandidates.flatMap(candidate => candidate.direct);
+  diagnostics.directPlayableEntries = directMerged.length;
+  const rankedDirect = dedupeStreams(rankStreamsByPreferredAudio(directMerged, preferredAudioLanguages));
 
-  const seen = new Set<string>();
-  const streams = ranked.filter(stream => {
-    const key = `${stream.url}|${stream.title}|${stream.providerManifestUrl}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
+  // If a direct HTTP/HLS stream exists, keep playback fully inside FILMA.
+  // Otherwise retain legal provider hand-off links (for example official
+  // "where to watch" providers) instead of presenting a dead-end error.
+  const resolved = rankedDirect.length
+    ? rankedDirect
+    : dedupeStreams(rankStreamsByPreferredAudio(
+        providerCandidates.flatMap(candidate => candidate.external),
+        preferredAudioLanguages,
+      ));
 
-  recentStreamCandidates.set(item.id, streams);
-  return { streams, diagnostics };
+  recentStreamCandidates.set(item.id, resolved);
+  return { streams: resolved, diagnostics };
 }
