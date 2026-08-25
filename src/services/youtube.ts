@@ -2,6 +2,7 @@ import type { AppLanguage } from '../types';
 
 const YOUTUBE_API_BASE = 'https://www.googleapis.com/youtube/v3';
 const API_KEY = process.env.EXPO_PUBLIC_YOUTUBE_API_KEY?.trim();
+const RTSH_ARKIV_HANDLE = '@RTSHArkiv';
 
 export type YouTubeVideo = {
   id: string;
@@ -30,8 +31,13 @@ type VideoItem = {
   snippet?: SearchItem['snippet'];
 };
 
+type ChannelItem = {
+  id?: string;
+};
+
 type SearchResponse = { items?: SearchItem[]; nextPageToken?: string };
 type VideosResponse = { items?: VideoItem[]; nextPageToken?: string };
+type ChannelsResponse = { items?: ChannelItem[] };
 
 function decodeHtml(value: string): string {
   return value
@@ -133,6 +139,32 @@ export async function searchYouTubeVideos(query: string, language: AppLanguage):
   return (response.items ?? []).flatMap(item => {
     const video = mapSearchItem(item);
     return video ? [video] : [];
+  });
+}
+
+export async function fetchRtshArchiveMovies(): Promise<YouTubeVideo[]> {
+  const channels = await youtubeGet<ChannelsResponse>('channels', {
+    part: 'id',
+    forHandle: RTSH_ARKIV_HANDLE,
+    maxResults: '1',
+  });
+  const channelId = channels.items?.[0]?.id;
+  if (!channelId) return [];
+
+  const response = await youtubeGet<SearchResponse>('search', {
+    part: 'snippet',
+    type: 'video',
+    channelId,
+    maxResults: '36',
+    q: 'film shqiptar',
+    order: 'date',
+    relevanceLanguage: 'sq',
+    safeSearch: 'moderate',
+  });
+
+  return (response.items ?? []).flatMap(item => {
+    const video = mapSearchItem(item);
+    return video && video.channelId === channelId ? [video] : [];
   });
 }
 
