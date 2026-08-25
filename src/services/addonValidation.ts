@@ -4,10 +4,10 @@ export type PlaybackManifestValidation =
   | { valid: true; name: string }
   | { valid: false; reason: 'invalid-manifest' | 'no-stream-resource' | 'unsupported-media-type' };
 
-function resourceNames(manifest: StremioManifest): Set<string> {
-  return new Set((manifest.resources ?? []).map(resource =>
-    typeof resource === 'string' ? resource : resource.name,
-  ));
+function streamResources(manifest: StremioManifest) {
+  return (manifest.resources ?? []).filter(resource =>
+    typeof resource === 'string' ? resource === 'stream' : resource.name === 'stream',
+  );
 }
 
 export function validatePlaybackManifest(manifest: StremioManifest): PlaybackManifestValidation {
@@ -15,12 +15,16 @@ export function validatePlaybackManifest(manifest: StremioManifest): PlaybackMan
     return { valid: false, reason: 'invalid-manifest' };
   }
 
-  if (!resourceNames(manifest).has('stream')) {
+  const streams = streamResources(manifest);
+  if (!streams.length) {
     return { valid: false, reason: 'no-stream-resource' };
   }
 
-  const types = new Set(manifest.types ?? []);
-  if (types.size > 0 && !types.has('movie') && !types.has('series')) {
+  const streamTypes = streams.flatMap(resource =>
+    typeof resource === 'string' ? [] : (resource.types ?? []),
+  );
+  const declaredTypes = new Set(streamTypes.length ? streamTypes : (manifest.types ?? []));
+  if (declaredTypes.size > 0 && !declaredTypes.has('movie') && !declaredTypes.has('series')) {
     return { valid: false, reason: 'unsupported-media-type' };
   }
 
