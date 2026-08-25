@@ -8,7 +8,7 @@ const at = second => `2026-08-25T08:00:${String(second).padStart(2, '0')}.000Z`;
 function empty(mode = 'movies') {
   return {
     mode,
-    preferences: { appLanguage: 'en', preferredAudioLanguages: [], updatedAt: LEGACY_TIMESTAMP },
+    preferences: { appLanguage: 'en', preferredAudioLanguages: [], interfaceDensity: 'compact', updatedAt: LEGACY_TIMESTAMP },
     progress: {},
     favorites: {},
     playlists: [],
@@ -43,6 +43,7 @@ function empty(mode = 'movies') {
   assert.equal(legacy.mode, 'live');
   assert.equal(legacy.preferences.appLanguage, 'en', 'legacy installs receive a safe UI language default');
   assert.deepEqual(legacy.preferences.preferredAudioLanguages, [], 'legacy installs default to any audio language');
+  assert.equal(legacy.preferences.interfaceDensity, 'compact', 'legacy installs use the denser responsive interface');
   assert.equal(legacy.favorites.film.updatedAt, at(1));
   assert.equal(legacy.playlists[0].updatedAt, LEGACY_TIMESTAMP);
   assert.equal(legacy.addons[0].updatedAt, LEGACY_TIMESTAMP);
@@ -54,6 +55,7 @@ function empty(mode = 'movies') {
     preferences: {
       appLanguage: 'fr',
       preferredAudioLanguages: ['fr', 'sq', 'fr', 'invalid'],
+      interfaceDensity: 'comfortable',
       updatedAt: at(8),
     },
     progress: {
@@ -69,7 +71,21 @@ function empty(mode = 'movies') {
   });
   assert.equal(normalized.preferences.appLanguage, 'fr');
   assert.deepEqual(normalized.preferences.preferredAudioLanguages, ['fr', 'sq'], 'audio language preferences are validated and deduplicated');
+  assert.equal(normalized.preferences.interfaceDensity, 'comfortable', 'valid appearance density survives normalization');
   assert.equal(normalized.progress.film.completed, true, 'completed playback survives normalization');
+}
+
+{
+  const invalidDensity = normalizeState({
+    ...empty(),
+    preferences: {
+      appLanguage: 'en',
+      preferredAudioLanguages: [],
+      interfaceDensity: 'gigantic',
+      updatedAt: at(9),
+    },
+  });
+  assert.equal(invalidDensity.preferences.interfaceDensity, 'compact', 'invalid appearance density falls back safely');
 }
 
 {
@@ -80,13 +96,13 @@ function empty(mode = 'movies') {
 
 {
   const local = empty('live');
-  local.preferences = { appLanguage: 'en', preferredAudioLanguages: ['en'], updatedAt: at(10) };
+  local.preferences = { appLanguage: 'en', preferredAudioLanguages: ['en'], interfaceDensity: 'compact', updatedAt: at(10) };
   local.favorites.film = { mediaId: 'film', createdAt: at(1), updatedAt: at(10) };
   local.progress.film = { mediaId: 'film', positionSeconds: 100, durationSeconds: 1000, updatedAt: at(10), deviceId: 'phone' };
   local.playlists.push({ id: 'p1', name: 'TV', url: 'https://example.test/list.m3u', enabled: true, createdAt: at(1), updatedAt: at(10) });
 
   const remote = empty('movies');
-  remote.preferences = { appLanguage: 'fr', preferredAudioLanguages: ['fr', 'sq'], updatedAt: at(20) };
+  remote.preferences = { appLanguage: 'fr', preferredAudioLanguages: ['fr', 'sq'], interfaceDensity: 'comfortable', updatedAt: at(20) };
   remote.favorites.film = { mediaId: 'film', createdAt: at(1), updatedAt: at(20), deletedAt: at(20) };
   remote.progress.film = { mediaId: 'film', positionSeconds: 950, durationSeconds: 1000, updatedAt: at(20), deviceId: 'tv', completed: true };
   remote.playlists.push({ id: 'p1', name: 'TV', url: 'https://example.test/list.m3u', enabled: true, createdAt: at(1), updatedAt: at(20), deletedAt: at(20) });
@@ -96,6 +112,7 @@ function empty(mode = 'movies') {
   assert.equal(merged.mode, 'live', 'screen mode remains local to the device');
   assert.equal(merged.preferences.appLanguage, 'fr', 'newest synchronized preferences win');
   assert.deepEqual(merged.preferences.preferredAudioLanguages, ['fr', 'sq']);
+  assert.equal(merged.preferences.interfaceDensity, 'comfortable', 'appearance density follows the newest synchronized preferences');
   assert.equal(merged.progress.film.positionSeconds, 950, 'newest progress wins');
   assert.equal(merged.progress.film.completed, true, 'newest completed state wins across devices');
   assert.equal(merged.favorites.film.deletedAt, at(20), 'newer favorite deletion wins');
