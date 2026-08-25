@@ -10,6 +10,7 @@ import {
   fetchManifest,
   type StremioCatalog,
 } from '../services/stremio';
+import { fetchRtshArchiveMovies, type YouTubeVideo, youtubeConfigured } from '../services/youtube';
 import { useFilma } from '../store/FilmaContext';
 import type { FilmaState, MediaItem } from '../types';
 import { FocusButton } from '../ui/FocusButton';
@@ -18,6 +19,7 @@ import { theme } from '../ui/theme';
 
 type Props = {
   onSelect(item: MediaItem): void;
+  onOpenYouTubeVideo(video: YouTubeVideo): void;
   onOpenSettings(): void;
 };
 
@@ -87,7 +89,7 @@ function MediaRow({ title, data, state, onSelect }: MediaRowProps) {
   );
 }
 
-export function HomeScreen({ onSelect, onOpenSettings }: Props) {
+export function HomeScreen({ onSelect, onOpenYouTubeVideo, onOpenSettings }: Props) {
   const { state } = useFilma();
   const text = stringsFor(state.preferences.appLanguage);
   const [addonRows, setAddonRows] = useState<CatalogRow[]>([]);
@@ -99,6 +101,7 @@ export function HomeScreen({ onSelect, onOpenSettings }: Props) {
   const [remoteResults, setRemoteResults] = useState<MediaItem[]>([]);
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState<string>();
+  const [albanianArchiveVideos, setAlbanianArchiveVideos] = useState<YouTubeVideo[]>([]);
 
   const configuredAddons = useMemo(
     () => state.addons.filter(item => !item.deletedAt),
@@ -177,6 +180,45 @@ export function HomeScreen({ onSelect, onOpenSettings }: Props) {
     void load();
     return () => { cancelled = true; };
   }, [activeAddons, reloadVersion, state.preferences.preferredAudioLanguages, text.sourceLoadError]);
+
+  useEffect(() => {
+    if (!youtubeConfigured()) {
+      setAlbanianArchiveVideos([]);
+      return;
+    }
+
+    let cancelled = false;
+    void fetchRtshArchiveMovies()
+      .then(videos => {
+        if (!cancelled) setAlbanianArchiveVideos(videos);
+      })
+      .catch(() => {
+        if (!cancelled) setAlbanianArchiveVideos([]);
+      });
+
+    return () => { cancelled = true; };
+  }, [reloadVersion]);
+
+  const albanianArchiveItems = useMemo<MediaItem[]>(() =>
+    albanianArchiveVideos.map(video => ({
+      id: `youtube:${video.id}`,
+      title: video.title,
+      subtitle: 'RTSH Arkiv · Shqip',
+      poster: video.thumbnail,
+      backdrop: video.thumbnail,
+      genres: ['Albanian', 'Archive'],
+    })),
+  [albanianArchiveVideos]);
+
+  const albanianArchiveByItemId = useMemo(() => new Map(
+    albanianArchiveVideos.map(video => [`youtube:${video.id}`, video] as const),
+  ), [albanianArchiveVideos]);
+
+  const albanianArchiveTitle = state.preferences.appLanguage === 'fr'
+    ? 'Films albanais · RTSH Arkiv'
+    : state.preferences.appLanguage === 'sq'
+      ? 'Filma shqiptarë · RTSH Arkiv'
+      : 'Albanian Movies · RTSH Arkiv';
 
   const allLoadedItems = useMemo(() => {
     const resumeItems: MediaItem[] = Object.values(state.progress).flatMap(progress => progress.item ? [progress.item] : []);
@@ -352,6 +394,17 @@ export function HomeScreen({ onSelect, onOpenSettings }: Props) {
         <>
           {continueWatching.length ? <MediaRow title={text.continueWatching} data={continueWatching} state={state} onSelect={onSelect} /> : null}
           {favorites.length ? <MediaRow title={text.favorites} data={favorites} state={state} onSelect={onSelect} /> : null}
+          {albanianArchiveItems.length ? (
+            <MediaRow
+              title={albanianArchiveTitle}
+              data={albanianArchiveItems}
+              state={state}
+              onSelect={item => {
+                const video = albanianArchiveByItemId.get(item.id);
+                if (video) onOpenYouTubeVideo(video);
+              }}
+            />
+          ) : null}
           {addonRows.map(catalog => <MediaRow key={catalog.key} title={catalog.title} data={catalog.items} state={state} onSelect={onSelect} />)}
         </>
       )}
