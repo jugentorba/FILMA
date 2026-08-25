@@ -1,0 +1,135 @@
+name: FILMA Apple Native Builds
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/build-apple.yml'
+
+concurrency:
+  group: filma-apple-build
+  cancel-in-progress: true
+
+jobs:
+  build-apple-simulators:
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.13.1'
+
+      - name: Select Xcode 26.6
+        run: sudo xcode-select -s /Applications/Xcode_26.6.app/Contents/Developer
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Generate iPhone/iPad project
+        run: npx expo prebuild --platform ios --clean --no-install
+
+      - name: Install iOS pods
+        run: cd ios && pod install
+
+      - name: Build iPhone/iPad Simulator app
+        shell: bash
+        run: |
+          set -euo pipefail
+          workspace=$(find ios -maxdepth 1 -name '*.xcworkspace' | head -1)
+          if [ -z "$workspace" ]; then
+            echo 'No iOS workspace generated.' >&2
+            exit 1
+          fi
+          scheme=$(xcodebuild -workspace "$workspace" -list -json | python3 -c "import json,sys; d=json.load(sys.stdin); s=d.get('workspace',{}).get('schemes',[]); print(s[0] if s else '')")
+          if [ -z "$scheme" ]; then
+            echo 'No iOS scheme found.' >&2
+            exit 1
+          fi
+          echo "Building iOS scheme: $scheme"
+          xcodebuild \
+            -workspace "$workspace" \
+            -scheme "$scheme" \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$RUNNER_TEMP/FILMA-iOS-DerivedData" \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Package iPhone/iPad Simulator app
+        shell: bash
+        run: |
+          set -euo pipefail
+          app=$(find "$RUNNER_TEMP/FILMA-iOS-DerivedData/Build/Products" -maxdepth 2 -name '*.app' | head -1)
+          if [ -z "$app" ]; then
+            echo 'No iOS .app build product found.' >&2
+            exit 1
+          fi
+          ditto -c -k --sequesterRsrc --keepParent "$app" FILMA-iOS-Simulator.zip
+
+      - name: Upload iPhone/iPad Simulator build
+        uses: actions/upload-artifact@v4
+        with:
+          name: FILMA-iOS-Simulator
+          path: FILMA-iOS-Simulator.zip
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Generate Apple TV project
+        run: EXPO_TV=1 npx expo prebuild --platform ios --clean --no-install
+
+      - name: Install tvOS pods
+        run: cd ios && pod install
+        env:
+          EXPO_TV: '1'
+
+      - name: Build Apple TV Simulator app
+        shell: bash
+        env:
+          EXPO_TV: '1'
+        run: |
+          set -euo pipefail
+          workspace=$(find ios -maxdepth 1 -name '*.xcworkspace' | head -1)
+          if [ -z "$workspace" ]; then
+            echo 'No tvOS workspace generated.' >&2
+            exit 1
+          fi
+          scheme=$(xcodebuild -workspace "$workspace" -list -json | python3 -c "import json,sys; d=json.load(sys.stdin); s=d.get('workspace',{}).get('schemes',[]); print(s[0] if s else '')")
+          if [ -z "$scheme" ]; then
+            echo 'No tvOS scheme found.' >&2
+            exit 1
+          fi
+          echo "Building tvOS scheme: $scheme"
+          xcodebuild \
+            -workspace "$workspace" \
+            -scheme "$scheme" \
+            -configuration Debug \
+            -sdk appletvsimulator \
+            -destination 'generic/platform=tvOS Simulator' \
+            -derivedDataPath "$RUNNER_TEMP/FILMA-tvOS-DerivedData" \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Package Apple TV Simulator app
+        shell: bash
+        run: |
+          set -euo pipefail
+          app=$(find "$RUNNER_TEMP/FILMA-tvOS-DerivedData/Build/Products" -maxdepth 2 -name '*.app' | head -1)
+          if [ -z "$app" ]; then
+            echo 'No tvOS .app build product found.' >&2
+            exit 1
+          fi
+          ditto -c -k --sequesterRsrc --keepParent "$app" FILMA-Apple-TV-Simulator.zip
+
+      - name: Upload Apple TV Simulator build
+        uses: actions/upload-artifact@v4
+        with:
+          name: FILMA-Apple-TV-Simulator
+          path: FILMA-Apple-TV-Simulator.zip
+          if-no-files-found: error
+          retention-days: 30
