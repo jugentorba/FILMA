@@ -23,16 +23,16 @@ jobs:
           node-version: '22.13.1'
 
       - name: Install dependencies
-        run: npm install
+        run: yarn install --non-interactive
 
       - name: TypeScript
-        run: npm run typecheck
+        run: yarn typecheck
 
       - name: Expo config
         run: npx expo config --type public
 
       - name: Expo doctor
-        run: npm run doctor
+        run: yarn doctor
 
       - name: Mobile Android prebuild
         run: npx expo prebuild --platform android --clean --no-install
