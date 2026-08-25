@@ -97,9 +97,35 @@ function FilmaApp() {
     }
   };
 
+  const handleYouTubeVideo = async (video: YouTubeVideo) => {
+    setPlaybackError(undefined);
+
+    if (isTvMode && Platform.OS === 'android') {
+      setSelectedYouTube(video);
+      return;
+    }
+
+    try {
+      await Linking.openURL(youtubeWatchUrl(video.id));
+    } catch (error) {
+      setPlaybackError(error instanceof Error ? error.message : 'Could not open this YouTube video.');
+    }
+  };
+
   const handleSelect = async (item: MediaItem) => {
     setPlaybackError(undefined);
     if (item.streamUrl) { setSelected(item); return; }
+
+    if (item.source?.kind === 'youtube') {
+      await handleYouTubeVideo({
+        id: item.source.videoId,
+        title: item.title,
+        channelTitle: item.source.channelTitle ?? item.subtitle ?? 'YouTube',
+        thumbnail: item.poster,
+      });
+      return;
+    }
+
     if (item.source?.kind !== 'stremio') {
       setPlaybackError('This item does not provide a playable source.');
       return;
@@ -124,21 +150,6 @@ function FilmaApp() {
     }
 
     await resolveStreamsFor(item);
-  };
-
-  const handleYouTubeVideo = async (video: YouTubeVideo) => {
-    setPlaybackError(undefined);
-
-    if (isTvMode && Platform.OS === 'android') {
-      setSelectedYouTube(video);
-      return;
-    }
-
-    try {
-      await Linking.openURL(youtubeWatchUrl(video.id));
-    } catch (error) {
-      setPlaybackError(error instanceof Error ? error.message : 'Could not open this YouTube video.');
-    }
   };
 
   const handleProgress = useCallback((positionSeconds: number, durationSeconds: number) => {
