@@ -3,7 +3,7 @@ name: FILMA Apple Native Builds
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, filma-next-cleanup]
     paths:
       - '.github/workflows/build-apple.yml'
       - 'App.tsx'
@@ -20,7 +20,7 @@ concurrency:
 jobs:
   build-apple-simulators:
     runs-on: macos-26
-    timeout-minutes: 45
+    timeout-minutes: 60
     env:
       EXPO_PUBLIC_YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
     steps:
@@ -180,5 +180,47 @@ jobs:
         with:
           name: FILMA-Apple-TV-Simulator
           path: FILMA-Apple-TV-Simulator.zip
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Build unsigned Apple TV device app
+        shell: bash
+        env:
+          EXPO_TV: '1'
+        run: |
+          set -euo pipefail
+          workspace=$(find ios -maxdepth 1 -name '*.xcworkspace' | head -1)
+          xcodebuild \
+            -workspace "$workspace" \
+            -scheme FILMA \
+            -configuration Release \
+            -sdk appletvos \
+            -destination 'generic/platform=tvOS' \
+            -derivedDataPath "$RUNNER_TEMP/FILMA-tvOS-Device-DerivedData" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            build
+
+      - name: Package unsigned Apple TV IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          app="$RUNNER_TEMP/FILMA-tvOS-Device-DerivedData/Build/Products/Release-appletvos/FILMA.app"
+          if [ ! -d "$app" ]; then
+            echo 'FILMA appletvos .app build product was not found.' >&2
+            find "$RUNNER_TEMP/FILMA-tvOS-Device-DerivedData/Build/Products" -maxdepth 3 -type d -name '*.app' -print || true
+            exit 1
+          fi
+          rm -rf Payload FILMA-Apple-TV-Unsigned.ipa
+          mkdir -p Payload
+          ditto "$app" Payload/FILMA.app
+          zip -qry FILMA-Apple-TV-Unsigned.ipa Payload
+          rm -rf Payload
+
+      - name: Upload unsigned Apple TV IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: FILMA-Apple-TV-Unsigned-IPA
+          path: FILMA-Apple-TV-Unsigned.ipa
           if-no-files-found: error
           retention-days: 30
