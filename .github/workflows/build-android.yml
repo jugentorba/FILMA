@@ -30,8 +30,8 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Install dependencies
-        run: yarn install --non-interactive
+      - name: Install locked dependencies
+        run: yarn install --frozen-lockfile --non-interactive
 
       - name: Verify resolved native versions
         run: yarn list --pattern 'react-native|expo-modules-autolinking|expo-modules-core|^expo$' --depth=2
