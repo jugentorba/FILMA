@@ -45,6 +45,7 @@ export function YouTubeScreen({ onOpenVideo }: Props) {
   const [error, setError] = useState<string>();
   const [reloadVersion, setReloadVersion] = useState(0);
   const configured = youtubeConfigured();
+  const columns = Platform.isTV ? 4 : 2;
 
   const loadPopular = useCallback(async () => {
     if (!configured) return;
@@ -96,8 +97,6 @@ export function YouTubeScreen({ onOpenVideo }: Props) {
     [query, text.youtubeSearchResults, text.youtubeTrending],
   );
 
-  if (!Platform.isTV) return null;
-
   if (!configured) {
     return (
       <View style={styles.empty}>
@@ -139,23 +138,26 @@ export function YouTubeScreen({ onOpenVideo }: Props) {
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
       <FlatList
+        key={`youtube-grid-${columns}`}
         ref={listRef}
         data={videos}
-        numColumns={4}
+        numColumns={columns}
         keyExtractor={item => item.id}
         contentContainerStyle={styles.grid}
         columnWrapperStyle={styles.row}
-        initialNumToRender={12}
+        initialNumToRender={Platform.isTV ? 12 : 8}
         windowSize={7}
         onScrollToIndexFailed={({ index, averageItemLength }) => {
-          listRef.current?.scrollToOffset({ offset: Math.max(0, Math.floor(index / 4) * averageItemLength), animated: true });
+          listRef.current?.scrollToOffset({ offset: Math.max(0, Math.floor(index / columns) * averageItemLength), animated: true });
         }}
         renderItem={({ item, index }) => (
           <YouTubeCard
             video={item}
             index={index}
             onFocus={focusedIndex => {
-              listRef.current?.scrollToIndex({ index: focusedIndex, viewPosition: 0.55, animated: true });
+              if (Platform.isTV) {
+                listRef.current?.scrollToIndex({ index: focusedIndex, viewPosition: 0.55, animated: true });
+              }
             }}
             onPress={() => onOpenVideo(item)}
           />
@@ -170,51 +172,51 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: theme.background,
-    paddingHorizontal: 52,
-    paddingTop: 30,
+    paddingHorizontal: Platform.isTV ? 52 : 16,
+    paddingTop: Platform.isTV ? 30 : 20,
   },
   empty: {
     flex: 1,
     backgroundColor: theme.background,
-    paddingHorizontal: 72,
+    paddingHorizontal: Platform.isTV ? 72 : 22,
     justifyContent: 'center',
     alignItems: 'flex-start',
   },
   heroRow: { flexDirection: 'row', alignItems: 'center', gap: 16 },
   heroText: { flex: 1 },
   youtubeMark: {
-    width: 58,
-    height: 40,
+    width: Platform.isTV ? 58 : 48,
+    height: Platform.isTV ? 40 : 34,
     borderRadius: 12,
     backgroundColor: '#ff0033',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  youtubeMarkText: { color: '#fff', fontSize: 20, fontWeight: '900' },
-  title: { color: theme.text, fontSize: 40, fontWeight: '900' },
-  subtitle: { color: theme.muted, marginTop: 4, fontSize: 15 },
-  emptyText: { color: theme.muted, fontSize: 18, lineHeight: 27, maxWidth: 760, marginTop: 14 },
-  searchRow: { flexDirection: 'row', gap: 12, marginTop: 24, alignItems: 'center' },
+  youtubeMarkText: { color: '#fff', fontSize: Platform.isTV ? 20 : 16, fontWeight: '900' },
+  title: { color: theme.text, fontSize: Platform.isTV ? 40 : 30, fontWeight: '900' },
+  subtitle: { color: theme.muted, marginTop: 4, fontSize: Platform.isTV ? 15 : 13 },
+  emptyText: { color: theme.muted, fontSize: Platform.isTV ? 18 : 16, lineHeight: 27, maxWidth: 760, marginTop: 14 },
+  searchRow: { flexDirection: 'row', gap: 10, marginTop: Platform.isTV ? 24 : 18, alignItems: 'center' },
   search: {
     flex: 1,
-    minHeight: 58,
+    minHeight: Platform.isTV ? 58 : 52,
     borderRadius: 16,
     borderWidth: 1,
     borderColor: theme.border,
     backgroundColor: theme.surface,
     paddingHorizontal: 18,
     color: theme.text,
-    fontSize: 18,
+    fontSize: Platform.isTV ? 18 : 16,
   },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 14, marginTop: 26, marginBottom: 12 },
-  sectionTitle: { color: theme.text, fontSize: 24, fontWeight: '900' },
+  sectionTitle: { color: theme.text, fontSize: Platform.isTV ? 24 : 20, fontWeight: '900' },
   error: { color: '#fda4af', marginBottom: 12 },
-  grid: { paddingBottom: 80 },
-  row: { gap: 16, marginBottom: 22 },
+  grid: { paddingBottom: Platform.isTV ? 80 : 110 },
+  row: { gap: Platform.isTV ? 16 : 10, marginBottom: Platform.isTV ? 22 : 16 },
   card: {
     flex: 1,
-    maxWidth: '25%',
-    padding: 8,
+    maxWidth: Platform.isTV ? '25%' : '50%',
+    padding: Platform.isTV ? 8 : 4,
     borderRadius: 16,
     borderWidth: 2,
     borderColor: 'transparent',
@@ -245,7 +247,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   playBadgeText: { color: '#fff', fontSize: 13 },
-  videoTitle: { color: theme.text, fontSize: 16, lineHeight: 21, fontWeight: '800', marginTop: 10 },
+  videoTitle: { color: theme.text, fontSize: Platform.isTV ? 16 : 14, lineHeight: Platform.isTV ? 21 : 19, fontWeight: '800', marginTop: 10 },
   channelTitle: { color: theme.muted, fontSize: 13, marginTop: 5 },
   emptyList: { color: theme.muted, fontSize: 17, paddingVertical: 40 },
 });
