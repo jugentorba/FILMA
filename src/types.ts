@@ -82,7 +82,7 @@ export type PlaylistSource = {
   countryCode?: string;
   countryName?: string;
   countryGroup?: string;
-  kind?: 'm3u' | 'xtream';
+  kind?: 'm3u' | 'xtream' | 'file';
   credentialsKey?: string;
 };
 
