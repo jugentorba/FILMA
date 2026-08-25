@@ -8,7 +8,7 @@ import { SettingsScreen } from './src/screens/SettingsScreen';
 import { YouTubeScreen } from './src/screens/YouTubeScreen';
 import { resolveStreamsAcrossAddons, type StreamResolutionDiagnostics } from './src/services/streamResolver';
 import { fetchMeta, mediaItemForEpisode, type StremioVideo } from './src/services/stremio';
-import { type YouTubeVideo, youtubeWatchUrl } from './src/services/youtube';
+import { type YouTubeVideo, youtubeAndroidTvPlayerUrl, youtubeWatchUrl } from './src/services/youtube';
 import { DropboxSyncProvider } from './src/store/DropboxSyncContext';
 import { FilmaProvider, useFilma } from './src/store/FilmaContext';
 import type { MediaItem } from './src/types';
@@ -125,10 +125,10 @@ function FilmaApp() {
   const handleYouTubeVideo = async (video: YouTubeVideo) => {
     setPlaybackError(undefined);
     try {
-      // Apple does not expose a web view on tvOS, so the standards-compliant
-      // playback bridge uses YouTube's own watch URL. Android TV can later host
-      // the official IFrame Player without changing the browsing/data model.
-      await Linking.openURL(youtubeWatchUrl(video.id));
+      const url = Platform.isTV && Platform.OS === 'android'
+        ? youtubeAndroidTvPlayerUrl(video.id)
+        : youtubeWatchUrl(video.id);
+      await Linking.openURL(url);
     } catch (error) {
       setPlaybackError(error instanceof Error ? error.message : 'Could not open this YouTube video.');
     }
