@@ -26,6 +26,11 @@ jobs:
       FILMA_TEST_KEYSTORE: ${{ github.workspace }}/.ci-signing/filma-test.keystore
       FILMA_TEST_KEY_ALIAS: filma-test
       FILMA_TEST_KEY_PASSWORD: filma-test
+      FILMA_RELEASE_KEYSTORE: ${{ github.workspace }}/.ci-signing/filma-release.keystore
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -41,32 +46,53 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Restore persistent FILMA test signing key
+      - name: Restore persistent FILMA fallback signing key
         uses: actions/cache@v4
         with:
           path: .ci-signing/filma-test.keystore
           key: filma-android-test-signing-v1
 
-      - name: Ensure FILMA test signing key
+      - name: Prepare Android signing identity
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p "$(dirname "$FILMA_TEST_KEYSTORE")"
-          if [ ! -f "$FILMA_TEST_KEYSTORE" ]; then
-            keytool -genkeypair \
+          mkdir -p .ci-signing
+
+          if [ -n "${ANDROID_KEYSTORE_BASE64:-}" ]; then
+            if [ -z "${ANDROID_KEYSTORE_PASSWORD:-}" ] || [ -z "${ANDROID_KEY_ALIAS:-}" ] || [ -z "${ANDROID_KEY_PASSWORD:-}" ]; then
+              echo 'ANDROID_KEYSTORE_BASE64 is configured, but one or more Android signing secrets are missing.' >&2
+              exit 1
+            fi
+            printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$FILMA_RELEASE_KEYSTORE"
+            echo "FILMA_ACTIVE_KEYSTORE=$FILMA_RELEASE_KEYSTORE" >> "$GITHUB_ENV"
+            echo "FILMA_ACTIVE_KEY_ALIAS=$ANDROID_KEY_ALIAS" >> "$GITHUB_ENV"
+            echo "FILMA_ACTIVE_STORE_PASSWORD=$ANDROID_KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+            echo "FILMA_ACTIVE_KEY_PASSWORD=$ANDROID_KEY_PASSWORD" >> "$GITHUB_ENV"
+            keytool -list \
+              -keystore "$FILMA_RELEASE_KEYSTORE" \
+              -storepass "$ANDROID_KEYSTORE_PASSWORD" \
+              -alias "$ANDROID_KEY_ALIAS"
+          else
+            if [ ! -f "$FILMA_TEST_KEYSTORE" ]; then
+              keytool -genkeypair \
+                -keystore "$FILMA_TEST_KEYSTORE" \
+                -storepass "$FILMA_TEST_KEY_PASSWORD" \
+                -keypass "$FILMA_TEST_KEY_PASSWORD" \
+                -alias "$FILMA_TEST_KEY_ALIAS" \
+                -keyalg RSA \
+                -keysize 2048 \
+                -validity 36500 \
+                -dname 'CN=FILMA Test,O=FILMA,C=FR'
+            fi
+            echo "FILMA_ACTIVE_KEYSTORE=$FILMA_TEST_KEYSTORE" >> "$GITHUB_ENV"
+            echo "FILMA_ACTIVE_KEY_ALIAS=$FILMA_TEST_KEY_ALIAS" >> "$GITHUB_ENV"
+            echo "FILMA_ACTIVE_STORE_PASSWORD=$FILMA_TEST_KEY_PASSWORD" >> "$GITHUB_ENV"
+            echo "FILMA_ACTIVE_KEY_PASSWORD=$FILMA_TEST_KEY_PASSWORD" >> "$GITHUB_ENV"
+            keytool -list \
               -keystore "$FILMA_TEST_KEYSTORE" \
               -storepass "$FILMA_TEST_KEY_PASSWORD" \
-              -keypass "$FILMA_TEST_KEY_PASSWORD" \
-              -alias "$FILMA_TEST_KEY_ALIAS" \
-              -keyalg RSA \
-              -keysize 2048 \
-              -validity 36500 \
-              -dname 'CN=FILMA Test,O=FILMA,C=FR'
+              -alias "$FILMA_TEST_KEY_ALIAS"
           fi
-          keytool -list \
-            -keystore "$FILMA_TEST_KEYSTORE" \
-            -storepass "$FILMA_TEST_KEY_PASSWORD" \
-            -alias "$FILMA_TEST_KEY_ALIAS"
 
       - name: Install locked dependencies
         run: yarn install --frozen-lockfile --non-interactive
@@ -98,10 +124,10 @@ jobs:
           test -x "$build_tools/apksigner"
           "$build_tools/zipalign" -f -p 4 "$input" FILMA-mobile-aligned.apk
           "$build_tools/apksigner" sign \
-            --ks "$FILMA_TEST_KEYSTORE" \
-            --ks-key-alias "$FILMA_TEST_KEY_ALIAS" \
-            --ks-pass "pass:$FILMA_TEST_KEY_PASSWORD" \
-            --key-pass "pass:$FILMA_TEST_KEY_PASSWORD" \
+            --ks "$FILMA_ACTIVE_KEYSTORE" \
+            --ks-key-alias "$FILMA_ACTIVE_KEY_ALIAS" \
+            --ks-pass "pass:$FILMA_ACTIVE_STORE_PASSWORD" \
+            --key-pass "pass:$FILMA_ACTIVE_KEY_PASSWORD" \
             --out FILMA-mobile.apk \
             FILMA-mobile-aligned.apk
           rm FILMA-mobile-aligned.apk
@@ -142,10 +168,10 @@ jobs:
           test -x "$build_tools/apksigner"
           "$build_tools/zipalign" -f -p 4 "$input" FILMA-android-tv-aligned.apk
           "$build_tools/apksigner" sign \
-            --ks "$FILMA_TEST_KEYSTORE" \
-            --ks-key-alias "$FILMA_TEST_KEY_ALIAS" \
-            --ks-pass "pass:$FILMA_TEST_KEY_PASSWORD" \
-            --key-pass "pass:$FILMA_TEST_KEY_PASSWORD" \
+            --ks "$FILMA_ACTIVE_KEYSTORE" \
+            --ks-key-alias "$FILMA_ACTIVE_KEY_ALIAS" \
+            --ks-pass "pass:$FILMA_ACTIVE_STORE_PASSWORD" \
+            --key-pass "pass:$FILMA_ACTIVE_KEY_PASSWORD" \
             --out FILMA-android-tv.apk \
             FILMA-android-tv-aligned.apk
           rm FILMA-android-tv-aligned.apk
