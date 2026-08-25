@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, FlatList, Platform, StyleSheet, Text, TextInput, View } from 'react-native';
-import { fetchPlaylist } from '../services/m3u';
+import { channelIdentity, fetchPlaylist } from '../services/m3u';
 import { useFilma } from '../store/FilmaContext';
 import type { LiveChannel, MediaItem } from '../types';
 import { FocusButton } from '../ui/FocusButton';
@@ -11,54 +11,137 @@ type Props = {
   onOpenSettings(): void;
 };
 
+type SourceHealth = {
+  id: string;
+  name: string;
+  ok: boolean;
+  channelCount: number;
+  checkedAt: string;
+  error?: string;
+};
+
+const AUTO_REFRESH_MS = 5 * 60 * 1000;
+
 export function LiveTvScreen({ onSelect, onOpenSettings }: Props) {
   const { state } = useFilma();
   const [channels, setChannels] = useState<LiveChannel[]>([]);
   const [query, setQuery] = useState('');
+  const [selectedGroup, setSelectedGroup] = useState('all');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>();
+  const [sourceHealth, setSourceHealth] = useState<SourceHealth[]>([]);
 
   const activePlaylists = useMemo(
     () => state.playlists.filter(source => source.enabled && !source.deletedAt),
     [state.playlists],
   );
 
-  const refresh = async () => {
+  const refresh = useCallback(async () => {
     if (!activePlaylists.length) {
       setChannels([]);
+      setSourceHealth([]);
       setError(undefined);
       return;
     }
 
     setLoading(true);
     setError(undefined);
-    const results = await Promise.allSettled(activePlaylists.map(source => fetchPlaylist(source.url)));
+
+    const results = await Promise.all(activePlaylists.map(async source => {
+      try {
+        const loaded = await fetchPlaylist(source.url);
+        return {
+          source,
+          channels: loaded,
+          health: {
+            id: source.id,
+            name: source.name,
+            ok: true,
+            channelCount: loaded.length,
+            checkedAt: new Date().toISOString(),
+          } satisfies SourceHealth,
+        };
+      } catch (reason) {
+        return {
+          source,
+          channels: [] as LiveChannel[],
+          health: {
+            id: source.id,
+            name: source.name,
+            ok: false,
+            channelCount: 0,
+            checkedAt: new Date().toISOString(),
+            error: reason instanceof Error ? reason.message : 'Could not load playlist.',
+          } satisfies SourceHealth,
+        };
+      }
+    }));
+
     const merged = new Map<string, LiveChannel>();
     for (const result of results) {
-      if (result.status === 'fulfilled') {
-        for (const channel of result.value) merged.set(channel.id, channel);
+      for (const channel of result.channels) {
+        const identity = channelIdentity(channel);
+        const existing = merged.get(identity);
+        if (!existing || (!existing.url.startsWith('https://') && channel.url.startsWith('https://'))) {
+          merged.set(identity, channel);
+        }
       }
     }
-    setChannels([...merged.values()]);
-    if (!merged.size && results.some(result => result.status === 'rejected')) {
+
+    const health = results.map(result => result.health);
+    const failed = health.filter(item => !item.ok);
+    const nextChannels = [...merged.values()].sort((a, b) => a.name.localeCompare(b.name));
+
+    setSourceHealth(health);
+    setChannels(nextChannels);
+    if (!nextChannels.length) {
       setError('No configured playlist could be loaded. Check the playlist URLs in Settings.');
+    } else if (failed.length) {
+      setError(`${failed.length} playlist${failed.length === 1 ? '' : 's'} unavailable. FILMA is showing channels from the working source${health.length - failed.length === 1 ? '' : 's'}.`);
     }
     setLoading(false);
-  };
+  }, [activePlaylists]);
 
   useEffect(() => {
     void refresh();
-    // Reload when configured playlist URLs change.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activePlaylists.map(item => `${item.id}:${item.url}:${item.enabled}:${item.updatedAt}`).join('|')]);
+  }, [refresh]);
+
+  useEffect(() => {
+    if (!activePlaylists.length) return;
+    const timer = setInterval(() => {
+      void refresh();
+    }, AUTO_REFRESH_MS);
+    return () => clearInterval(timer);
+  }, [activePlaylists.length, refresh]);
+
+  const groups = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const channel of channels) {
+      const group = channel.group?.trim();
+      if (group) counts.set(group, (counts.get(group) ?? 0) + 1);
+    }
+    return [...counts.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([name, count]) => ({ name, count }));
+  }, [channels]);
+
+  useEffect(() => {
+    if (selectedGroup !== 'all' && !groups.some(group => group.name === selectedGroup)) {
+      setSelectedGroup('all');
+    }
+  }, [groups, selectedGroup]);
 
   const visibleChannels = useMemo(() => {
-    const needle = query.trim().toLowerCase();
-    if (!needle) return channels;
-    return channels.filter(channel =>
-      channel.name.toLowerCase().includes(needle) || channel.group?.toLowerCase().includes(needle),
-    );
-  }, [channels, query]);
+    const needle = query.trim().toLocaleLowerCase();
+    return channels.filter(channel => {
+      if (selectedGroup !== 'all' && channel.group !== selectedGroup) return false;
+      if (!needle) return true;
+      return channel.name.toLocaleLowerCase().includes(needle)
+        || channel.group?.toLocaleLowerCase().includes(needle);
+    });
+  }, [channels, query, selectedGroup]);
+
+  const healthySources = sourceHealth.filter(item => item.ok).length;
 
   if (!activePlaylists.length) {
     return (
@@ -75,11 +158,13 @@ export function LiveTvScreen({ onSelect, onOpenSettings }: Props) {
   return (
     <View style={styles.root}>
       <View style={styles.header}>
-        <View>
+        <View style={styles.headerText}>
           <Text style={styles.title}>Live TV</Text>
-          <Text style={styles.subtitle}>{channels.length} channels from {activePlaylists.length} playlist(s)</Text>
+          <Text style={styles.subtitle}>
+            {channels.length} channels · {healthySources}/{activePlaylists.length} sources online
+          </Text>
         </View>
-        <FocusButton compact label="Refresh" onPress={() => void refresh()} />
+        <FocusButton compact label={loading ? 'Refreshing…' : 'Refresh'} onPress={() => void refresh()} />
       </View>
 
       <TextInput
@@ -89,15 +174,34 @@ export function LiveTvScreen({ onSelect, onOpenSettings }: Props) {
         placeholderTextColor={theme.muted}
         style={styles.search}
         autoCorrect={false}
+        autoCapitalize="none"
       />
 
-      {loading ? <ActivityIndicator size="large" /> : null}
+      <FlatList
+        horizontal
+        data={[{ name: 'all', count: channels.length }, ...groups]}
+        keyExtractor={item => item.name}
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.groupRow}
+        renderItem={({ item }) => (
+          <FocusButton
+            compact
+            label={`${item.name === 'all' ? 'All' : item.name} (${item.count})`}
+            active={selectedGroup === item.name}
+            onPress={() => setSelectedGroup(item.name)}
+          />
+        )}
+      />
+
+      {loading && !channels.length ? <ActivityIndicator size="large" /> : null}
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
       <FlatList
         data={visibleChannels}
         keyExtractor={item => item.id}
         contentContainerStyle={styles.list}
+        initialNumToRender={Platform.isTV ? 24 : 14}
+        windowSize={Platform.isTV ? 11 : 7}
         renderItem={({ item }) => (
           <FocusButton
             label={`${item.name}${item.group ? `  ·  ${item.group}` : ''}`}
@@ -106,9 +210,15 @@ export function LiveTvScreen({ onSelect, onOpenSettings }: Props) {
               id: `live:${item.id}`,
               title: item.name,
               subtitle: item.group ?? 'Live TV',
+              poster: item.logo,
               streamUrl: item.url,
             })}
           />
+        )}
+        ListEmptyComponent={(
+          <Text style={styles.emptyList}>
+            No channels match this filter.
+          </Text>
         )}
       />
     </View>
@@ -120,7 +230,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: theme.background,
     paddingHorizontal: Platform.isTV ? 64 : 20,
-    paddingTop: Platform.isTV ? 44 : 24,
+    paddingTop: Platform.isTV ? 36 : 20,
   },
   empty: {
     flex: 1,
@@ -135,6 +245,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 20,
+  },
+  headerText: {
+    flex: 1,
   },
   title: {
     color: theme.text,
@@ -153,8 +266,8 @@ const styles = StyleSheet.create({
     lineHeight: Platform.isTV ? 28 : 24,
   },
   search: {
-    marginTop: 24,
-    marginBottom: 20,
+    marginTop: 20,
+    marginBottom: 12,
     minHeight: 52,
     borderWidth: 1,
     borderColor: theme.border,
@@ -164,7 +277,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     fontSize: 16,
   },
+  groupRow: {
+    gap: 10,
+    paddingVertical: 10,
+    paddingRight: 20,
+  },
   list: {
+    paddingTop: 10,
     paddingBottom: 80,
     gap: 10,
   },
@@ -174,6 +293,11 @@ const styles = StyleSheet.create({
   },
   error: {
     color: '#fda4af',
-    marginBottom: 14,
+    marginVertical: 10,
+  },
+  emptyList: {
+    color: theme.muted,
+    paddingVertical: 28,
+    textAlign: 'center',
   },
 });
