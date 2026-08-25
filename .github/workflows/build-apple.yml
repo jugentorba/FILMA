@@ -6,6 +6,12 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/build-apple.yml'
+      - 'App.tsx'
+      - 'app.json'
+      - 'package.json'
+      - 'yarn.lock'
+      - 'src/**'
+      - 'modules/**'
 
 concurrency:
   group: filma-apple-build
