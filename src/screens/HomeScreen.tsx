@@ -28,7 +28,7 @@ export function HomeScreen({ onSelect }: Props) {
     let cancelled = false;
 
     const load = async () => {
-      const addons = state.addons.filter(item => item.enabled);
+      const addons = state.addons.filter(item => item.enabled && !item.deletedAt);
       if (!addons.length) {
         setAddonRows([]);
         setAddonError(undefined);
@@ -101,14 +101,17 @@ export function HomeScreen({ onSelect }: Props) {
         keyExtractor={item => item.id}
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.rowContent}
-        renderItem={({ item }) => (
-          <MediaCard
-            item={item}
-            progress={state.progress[item.id]}
-            favorite={Boolean(state.favorites[item.id])}
-            onPress={() => onSelect(item)}
-          />
-        )}
+        renderItem={({ item }) => {
+          const favorite = state.favorites[item.id];
+          return (
+            <MediaCard
+              item={item}
+              progress={state.progress[item.id]}
+              favorite={Boolean(favorite && !favorite.deletedAt)}
+              onPress={() => onSelect(item)}
+            />
+          );
+        }}
       />
     </View>
   );
