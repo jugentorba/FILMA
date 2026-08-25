@@ -17,6 +17,7 @@ import { EpisodePickerModal } from './src/ui/EpisodePickerModal';
 import { FocusButton } from './src/ui/FocusButton';
 import { NavTab } from './src/ui/NavTab';
 import { PlayerModal } from './src/ui/PlayerModal';
+import { ProfileSwitcher } from './src/ui/ProfileSwitcher';
 import { YouTubePlayerModal } from './src/ui/YouTubePlayerModal';
 import { theme } from './src/ui/theme';
 
@@ -255,6 +256,7 @@ function FilmaApp() {
             <FocusButton compact label={text.movies} active={screen === 'home'} onPress={goMovies} />
             <FocusButton compact label={text.liveTv} active={screen === 'live'} onPress={goLive} />
             <FocusButton compact label={text.youtube} active={screen === 'youtube'} onPress={goYouTube} />
+            <ProfileSwitcher />
             <FocusButton compact label={text.settings} active={screen === 'settings'} onPress={goSettings} />
           </View>
         </View>
@@ -264,7 +266,10 @@ function FilmaApp() {
             <View style={styles.brandMark}><Text style={styles.brandMarkText}>F</Text></View>
             <Text style={styles.brand}>FILMA</Text>
           </View>
-          <Text style={styles.screenLabel}>{screen === 'home' ? text.movies : screen === 'live' ? text.liveTv : screen === 'youtube' ? text.youtube : text.settings}</Text>
+          <View style={styles.mobileHeaderActions}>
+            <Text style={styles.screenLabel}>{screen === 'home' ? text.movies : screen === 'live' ? text.liveTv : screen === 'youtube' ? text.youtube : text.settings}</Text>
+            <ProfileSwitcher />
+          </View>
         </View>
       )}
 
@@ -361,9 +366,10 @@ const styles = StyleSheet.create({
   },
   mobileHeader: {
     minHeight: 58, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    backgroundColor: '#090c14', borderBottomWidth: 1, borderBottomColor: '#1d2432',
+    backgroundColor: '#090c14', borderBottomWidth: 1, borderBottomColor: '#1d2432', gap: 10,
   },
-  brandRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  mobileHeaderActions: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 8, flexShrink: 1 },
+  brandRow: { flexDirection: 'row', alignItems: 'center', gap: 10, flexShrink: 0 },
   brandMark: { width: Platform.isTV ? 38 : 30, height: Platform.isTV ? 38 : 30, borderRadius: 10, backgroundColor: theme.accent, alignItems: 'center', justifyContent: 'center' },
   brandMarkText: { color: '#fff', fontWeight: '900', fontSize: Platform.isTV ? 20 : 16 },
   brand: { color: theme.text, fontWeight: '900', fontSize: Platform.isTV ? 29 : 20, letterSpacing: 2 },
