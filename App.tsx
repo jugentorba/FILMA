@@ -5,6 +5,7 @@ import { HomeScreen } from './src/screens/HomeScreen';
 import { LiveTvScreen } from './src/screens/LiveTvScreen';
 import { SettingsScreen } from './src/screens/SettingsScreen';
 import { fetchStreams } from './src/services/stremio';
+import { DropboxSyncProvider } from './src/store/DropboxSyncContext';
 import { FilmaProvider, useFilma } from './src/store/FilmaContext';
 import type { MediaItem } from './src/types';
 import { FocusButton } from './src/ui/FocusButton';
@@ -153,7 +154,9 @@ function FilmaApp() {
 export default function App() {
   return (
     <FilmaProvider>
-      <FilmaApp />
+      <DropboxSyncProvider>
+        <FilmaApp />
+      </DropboxSyncProvider>
     </FilmaProvider>
   );
 }
