@@ -90,7 +90,16 @@ EXPO_TV=1 yarn prebuild:tv
 - `FILMA-mobile-APK`
 - `FILMA-Android-TV-APK`
 
-Both release APKs are zip-aligned, signed with FILMA's persistent test-build key, verified with Android `apksigner`, and uploaded with SHA-256 checksum files. A permanent distribution keystore should replace the test-build key before store/public release signing.
+Both release APKs are zip-aligned, signed, verified with Android `apksigner`, and uploaded with SHA-256 checksum files. With no Android signing secrets configured, the workflow uses FILMA's persisted test-build key so the APKs remain installable at no extra cost.
+
+For a permanent distribution identity, add these repository secrets; the workflow automatically prefers them over the fallback key:
+
+- `ANDROID_KEYSTORE_BASE64`
+- `ANDROID_KEYSTORE_PASSWORD`
+- `ANDROID_KEY_ALIAS`
+- `ANDROID_KEY_PASSWORD`
+
+The same permanent keystore must be retained for future Android updates distributed under the same package id.
 
 ### Apple unsigned/simulator
 
