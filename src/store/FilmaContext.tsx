@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { CloudSyncAdapter } from '../services/sync';
-import { syncNow } from '../services/sync';
+import { makeSyncEnvelope, mergeStates } from '../services/sync';
 import { loadState, saveState } from '../services/storage';
 import type { AddonSource, AppMode, FilmaState, PlaylistSource } from '../types';
 
@@ -27,6 +27,10 @@ function makeId(prefix: string): string {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
+function now(): string {
+  return new Date().toISOString();
+}
+
 async function loadDeviceId(): Promise<string> {
   const existing = await AsyncStorage.getItem(DEVICE_KEY);
   if (existing) return existing;
@@ -45,9 +49,19 @@ export function FilmaProvider({ children }: { children: React.ReactNode }) {
     playlists: [],
     addons: [],
   });
+  const stateRef = useRef(state);
+
+  const commitState = useCallback((updater: (current: FilmaState) => FilmaState) => {
+    setState(current => {
+      const next = updater(current);
+      stateRef.current = next;
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
     Promise.all([loadState(), loadDeviceId()]).then(([storedState, storedDeviceId]) => {
+      stateRef.current = storedState;
       setState(storedState);
       setDeviceId(storedDeviceId);
       setReady(true);
@@ -59,20 +73,31 @@ export function FilmaProvider({ children }: { children: React.ReactNode }) {
   }, [ready, state]);
 
   const setMode = useCallback((mode: AppMode) => {
-    setState(current => ({ ...current, mode }));
-  }, []);
+    commitState(current => ({ ...current, mode }));
+  }, [commitState]);
 
   const toggleFavorite = useCallback((mediaId: string) => {
-    setState(current => {
-      const favorites = { ...current.favorites };
-      if (favorites[mediaId]) delete favorites[mediaId];
-      else favorites[mediaId] = { mediaId, createdAt: new Date().toISOString() };
-      return { ...current, favorites };
+    commitState(current => {
+      const at = now();
+      const existing = current.favorites[mediaId];
+      return {
+        ...current,
+        favorites: {
+          ...current.favorites,
+          [mediaId]: existing && !existing.deletedAt
+            ? { ...existing, updatedAt: at, deletedAt: at }
+            : {
+                mediaId,
+                createdAt: existing?.createdAt ?? at,
+                updatedAt: at,
+              },
+        },
+      };
     });
-  }, []);
+  }, [commitState]);
 
   const updateProgress = useCallback((mediaId: string, positionSeconds: number, durationSeconds: number) => {
-    setState(current => ({
+    commitState(current => ({
       ...current,
       progress: {
         ...current.progress,
@@ -80,35 +105,76 @@ export function FilmaProvider({ children }: { children: React.ReactNode }) {
           mediaId,
           positionSeconds: Math.max(0, positionSeconds),
           durationSeconds: Math.max(0, durationSeconds),
-          updatedAt: new Date().toISOString(),
+          updatedAt: now(),
           deviceId,
         },
       },
     }));
-  }, [deviceId]);
+  }, [commitState, deviceId]);
 
   const addPlaylist = useCallback((name: string, url: string) => {
-    const playlist: PlaylistSource = { id: makeId('playlist'), name, url, enabled: true };
-    setState(current => ({ ...current, playlists: [...current.playlists, playlist] }));
-  }, []);
+    const at = now();
+    const playlist: PlaylistSource = {
+      id: makeId('playlist'),
+      name,
+      url,
+      enabled: true,
+      createdAt: at,
+      updatedAt: at,
+    };
+    commitState(current => ({ ...current, playlists: [...current.playlists, playlist] }));
+  }, [commitState]);
 
   const removePlaylist = useCallback((id: string) => {
-    setState(current => ({ ...current, playlists: current.playlists.filter(item => item.id !== id) }));
-  }, []);
+    const at = now();
+    commitState(current => ({
+      ...current,
+      playlists: current.playlists.map(item => item.id === id && !item.deletedAt
+        ? { ...item, updatedAt: at, deletedAt: at }
+        : item),
+    }));
+  }, [commitState]);
 
   const addAddon = useCallback((name: string, manifestUrl: string) => {
-    const addon: AddonSource = { id: makeId('addon'), name, manifestUrl, enabled: true };
-    setState(current => ({ ...current, addons: [...current.addons, addon] }));
-  }, []);
+    const at = now();
+    const addon: AddonSource = {
+      id: makeId('addon'),
+      name,
+      manifestUrl,
+      enabled: true,
+      createdAt: at,
+      updatedAt: at,
+    };
+    commitState(current => ({ ...current, addons: [...current.addons, addon] }));
+  }, [commitState]);
 
   const removeAddon = useCallback((id: string) => {
-    setState(current => ({ ...current, addons: current.addons.filter(item => item.id !== id) }));
-  }, []);
+    const at = now();
+    commitState(current => ({
+      ...current,
+      addons: current.addons.map(item => item.id === id && !item.deletedAt
+        ? { ...item, updatedAt: at, deletedAt: at }
+        : item),
+    }));
+  }, [commitState]);
 
   const syncWith = useCallback(async (adapter: CloudSyncAdapter) => {
-    const merged = await syncNow(adapter, state);
-    setState(merged);
-  }, [state]);
+    const remote = await adapter.pull();
+    const localAtStart = stateRef.current;
+    const merged = remote ? mergeStates(localAtStart, remote.state) : localAtStart;
+    await adapter.push(makeSyncEnvelope(merged));
+
+    // A local action may have happened while the network write was running.
+    // Preserve it locally and immediately publish one follow-up envelope.
+    const latestLocal = stateRef.current;
+    const finalState = latestLocal === localAtStart ? merged : mergeStates(latestLocal, merged);
+    if (latestLocal !== localAtStart) {
+      await adapter.push(makeSyncEnvelope(finalState));
+    }
+
+    stateRef.current = finalState;
+    setState(finalState);
+  }, []);
 
   const value = useMemo<FilmaContextValue>(() => ({
     ready,
