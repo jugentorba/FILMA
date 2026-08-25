@@ -150,7 +150,17 @@ export async function discoverOfficialMovieProviders(): Promise<DiscoveredMovieP
         .filter((provider): provider is DiscoveredMovieProvider => provider !== null),
     );
 
-    if (!providers.some(provider => provider.providesCatalog)) providers.unshift(fallbackCinemeta());
+    // Cinemeta is FILMA's permanent catalog/metadata anchor. Keep it available
+    // even when other providers are configured, and keep it first so the home
+    // screen always has one predictable movie/series catalog.
+    const cinemetaIndex = providers.findIndex(provider => provider.id === 'auto-stremio:com.linvo.cinemeta');
+    if (cinemetaIndex === -1) {
+      providers.unshift(fallbackCinemeta());
+    } else if (cinemetaIndex > 0) {
+      const [cinemeta] = providers.splice(cinemetaIndex, 1);
+      providers.unshift(cinemeta);
+    }
+
     officialProviderCache = { fetchedAt: Date.now(), providers };
     return providers;
   } catch {
