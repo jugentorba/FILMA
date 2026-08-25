@@ -649,7 +649,7 @@ export function SettingsScreen() {
 
       <View style={styles.deviceCard}>
         <Text style={styles.deviceTitle}>{text.advanced}</Text>
-        <Text style={styles.device}>FILMA 0.1.4 · build 5</Text>
+        <Text style={styles.device}>FILMA 0.1.5 · build 6</Text>
         <Text style={styles.device}>{text.device}: {deviceId}</Text>
       </View>
     </ScrollView>

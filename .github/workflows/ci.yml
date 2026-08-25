@@ -58,6 +58,7 @@ jobs:
           node tests/m3u.test.cjs
           node tests/local-playlist.test.cjs
           node tests/youtube.test.cjs
+          node tests/release-version.test.cjs
           rm -rf .sync-test-build
 
       - name: Expo config
