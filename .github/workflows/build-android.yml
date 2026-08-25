@@ -3,7 +3,7 @@ name: FILMA Android APKs
 on:
   workflow_dispatch:
   push:
-    branches: [main, filma-next-cleanup]
+    branches: [main]
     paths:
       - 'App.tsx'
       - 'src/**'
