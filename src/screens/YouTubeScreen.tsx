@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, FlatList, Image, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, FlatList, Image, Linking, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { stringsFor } from '../i18n';
 import {
   fetchPopularYouTubeVideos,
@@ -63,6 +63,10 @@ export function YouTubeScreen({ onOpenVideo }: Props) {
         popularMusic: 'Musique populaire',
         videoResults: 'Résultats YouTube',
         musicResults: 'Résultats musique',
+        fallbackTitle: 'YouTube reste disponible',
+        fallbackText: 'La recherche intégrée FILMA nécessite la clé YouTube Data API, mais vous pouvez déjà ouvrir YouTube, YouTube Music ou rechercher directement.',
+        searchExternal: 'Rechercher sur YouTube',
+        officialAlbanian: 'Chaînes albanaises',
       };
     }
     if (state.preferences.appLanguage === 'sq') {
@@ -73,6 +77,10 @@ export function YouTubeScreen({ onOpenVideo }: Props) {
         popularMusic: 'Muzikë popullore',
         videoResults: 'Rezultatet e YouTube',
         musicResults: 'Rezultatet e muzikës',
+        fallbackTitle: 'YouTube është ende i disponueshëm',
+        fallbackText: 'Kërkimi brenda FILMA kërkon çelësin YouTube Data API, por mund të hapësh tani YouTube, YouTube Music ose të kërkosh direkt.',
+        searchExternal: 'Kërko në YouTube',
+        officialAlbanian: 'Kanale shqiptare',
       };
     }
     return {
@@ -82,8 +90,28 @@ export function YouTubeScreen({ onOpenVideo }: Props) {
       popularMusic: 'Popular music',
       videoResults: 'YouTube search results',
       musicResults: 'Music search results',
+      fallbackTitle: 'YouTube is still available',
+      fallbackText: 'FILMA’s built-in catalog search needs the YouTube Data API key, but you can already open YouTube, YouTube Music, or search directly.',
+      searchExternal: 'Search YouTube',
+      officialAlbanian: 'Albanian channels',
     };
   }, [state.preferences.appLanguage]);
+
+  const openUrl = useCallback(async (url: string) => {
+    try {
+      await Linking.openURL(url);
+    } catch {
+      setError(text.youtubeLoadError);
+    }
+  }, [text.youtubeLoadError]);
+
+  const openExternalSearch = useCallback(() => {
+    const needle = query.trim();
+    const target = needle
+      ? `https://www.youtube.com/results?search_query=${encodeURIComponent(needle)}`
+      : 'https://www.youtube.com/';
+    void openUrl(target);
+  }, [openUrl, query]);
 
   const loadPopular = useCallback(async () => {
     if (!configured) return;
@@ -145,10 +173,43 @@ export function YouTubeScreen({ onOpenVideo }: Props) {
 
   if (!configured) {
     return (
-      <View style={styles.empty}>
-        <View style={styles.youtubeMark}><Text style={styles.youtubeMarkText}>▶</Text></View>
-        <Text style={styles.title}>YouTube</Text>
-        <Text style={styles.emptyText}>{text.youtubeNeedsKey}</Text>
+      <View style={styles.root}>
+        <View style={styles.heroRow}>
+          <View style={styles.youtubeMark}><Text style={styles.youtubeMarkText}>▶</Text></View>
+          <View style={styles.heroText}>
+            <Text style={styles.title}>YouTube</Text>
+            <Text style={styles.subtitle}>{modeCopy.fallbackTitle}</Text>
+          </View>
+        </View>
+
+        <Text style={styles.fallbackText}>{modeCopy.fallbackText}</Text>
+
+        <View style={styles.modeRow}>
+          <FocusButton label="YouTube" active preferredFocus onPress={() => void openUrl('https://www.youtube.com/')} />
+          <FocusButton label="YouTube Music" onPress={() => void openUrl('https://music.youtube.com/')} />
+        </View>
+
+        <View style={styles.searchRow}>
+          <TextInput
+            value={query}
+            onChangeText={setQuery}
+            placeholder={text.youtubeSearchPlaceholder}
+            placeholderTextColor={theme.muted}
+            style={styles.search}
+            autoCorrect={false}
+            returnKeyType="search"
+            onSubmitEditing={openExternalSearch}
+          />
+          <FocusButton compact label={modeCopy.searchExternal} onPress={openExternalSearch} />
+        </View>
+
+        <Text style={styles.fallbackSectionTitle}>{modeCopy.officialAlbanian}</Text>
+        <View style={styles.quickLinks}>
+          <FocusButton compact label="RTSH" onPress={() => void openUrl('https://www.youtube.com/results?search_query=RTSH')} />
+          <FocusButton compact label="Top Channel" onPress={() => void openUrl('https://www.youtube.com/results?search_query=Top+Channel+Albania')} />
+          <FocusButton compact label="Klan Kosova" onPress={() => void openUrl('https://www.youtube.com/results?search_query=Klan+Kosova')} />
+        </View>
+        {error ? <Text style={styles.error}>{error}</Text> : null}
       </View>
     );
   }
@@ -164,18 +225,8 @@ export function YouTubeScreen({ onOpenVideo }: Props) {
       </View>
 
       <View style={styles.modeRow}>
-        <FocusButton
-          compact
-          label={modeCopy.videos}
-          active={browseMode === 'videos'}
-          onPress={() => changeMode('videos')}
-        />
-        <FocusButton
-          compact
-          label={modeCopy.music}
-          active={browseMode === 'music'}
-          onPress={() => changeMode('music')}
-        />
+        <FocusButton compact label={modeCopy.videos} active={browseMode === 'videos'} onPress={() => changeMode('videos')} />
+        <FocusButton compact label={modeCopy.music} active={browseMode === 'music'} onPress={() => changeMode('music')} />
       </View>
 
       <View style={styles.searchRow}>
@@ -216,9 +267,7 @@ export function YouTubeScreen({ onOpenVideo }: Props) {
             video={item}
             index={index}
             onFocus={focusedIndex => {
-              if (Platform.isTV) {
-                listRef.current?.scrollToIndex({ index: focusedIndex, viewPosition: 0.55, animated: true });
-              }
+              if (Platform.isTV) listRef.current?.scrollToIndex({ index: focusedIndex, viewPosition: 0.55, animated: true });
             }}
             onPress={() => onOpenVideo(item)}
           />
@@ -236,13 +285,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: Platform.isTV ? 52 : 16,
     paddingTop: Platform.isTV ? 30 : 20,
   },
-  empty: {
-    flex: 1,
-    backgroundColor: theme.background,
-    paddingHorizontal: Platform.isTV ? 72 : 22,
-    justifyContent: 'center',
-    alignItems: 'flex-start',
-  },
   heroRow: { flexDirection: 'row', alignItems: 'center', gap: 16 },
   heroText: { flex: 1 },
   youtubeMark: {
@@ -256,8 +298,10 @@ const styles = StyleSheet.create({
   youtubeMarkText: { color: '#fff', fontSize: Platform.isTV ? 20 : 16, fontWeight: '900' },
   title: { color: theme.text, fontSize: Platform.isTV ? 40 : 30, fontWeight: '900' },
   subtitle: { color: theme.muted, marginTop: 4, fontSize: Platform.isTV ? 15 : 13 },
-  emptyText: { color: theme.muted, fontSize: Platform.isTV ? 18 : 16, lineHeight: 27, maxWidth: 760, marginTop: 14 },
-  modeRow: { flexDirection: 'row', gap: 10, marginTop: Platform.isTV ? 24 : 18 },
+  fallbackText: { color: theme.muted, fontSize: Platform.isTV ? 18 : 16, lineHeight: 26, maxWidth: 780, marginTop: 28 },
+  fallbackSectionTitle: { color: theme.text, fontSize: 18, fontWeight: '900', marginTop: 28, marginBottom: 10 },
+  quickLinks: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  modeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: Platform.isTV ? 24 : 18 },
   searchRow: { flexDirection: 'row', gap: 10, marginTop: 12, alignItems: 'center' },
   search: {
     flex: 1,
@@ -272,7 +316,7 @@ const styles = StyleSheet.create({
   },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 14, marginTop: 26, marginBottom: 12 },
   sectionTitle: { color: theme.text, fontSize: Platform.isTV ? 24 : 20, fontWeight: '900' },
-  error: { color: '#fda4af', marginBottom: 12 },
+  error: { color: '#fda4af', marginTop: 16, marginBottom: 12 },
   grid: { paddingBottom: Platform.isTV ? 80 : 110 },
   row: { gap: Platform.isTV ? 16 : 10, marginBottom: Platform.isTV ? 22 : 16 },
   card: {
@@ -284,18 +328,8 @@ const styles = StyleSheet.create({
     borderColor: 'transparent',
     transform: [{ scale: 1 }],
   },
-  cardFocused: {
-    borderColor: theme.accent,
-    backgroundColor: theme.surface,
-    transform: [{ scale: 1.035 }],
-  },
-  thumbnailWrap: {
-    width: '100%',
-    aspectRatio: 16 / 9,
-    borderRadius: 12,
-    overflow: 'hidden',
-    backgroundColor: '#151a25',
-  },
+  cardFocused: { borderColor: theme.accent, backgroundColor: theme.surface, transform: [{ scale: 1.035 }] },
+  thumbnailWrap: { width: '100%', aspectRatio: 16 / 9, borderRadius: 12, overflow: 'hidden', backgroundColor: '#151a25' },
   thumbnail: { width: '100%', height: '100%' },
   playBadge: {
     position: 'absolute',
