@@ -114,6 +114,7 @@ export function SettingsScreen() {
               <FocusButton
                 label="Finish pairing"
                 active
+                preferredFocus
                 onPress={() => void finishPairing()}
               />
               <FocusButton
@@ -137,6 +138,7 @@ export function SettingsScreen() {
               <FocusButton
                 label={dropbox.needsTvPairing ? 'Pair Dropbox' : 'Connect Dropbox'}
                 active
+                preferredFocus
                 onPress={() => void dropbox.connect()}
               />
             ) : (
@@ -144,6 +146,7 @@ export function SettingsScreen() {
                 <FocusButton
                   label={dropbox.status === 'syncing' ? 'Syncing…' : 'Sync now'}
                   active
+                  preferredFocus
                   onPress={() => void dropbox.syncNow().catch(() => undefined)}
                 />
                 <FocusButton
