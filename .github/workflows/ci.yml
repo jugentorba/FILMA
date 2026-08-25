@@ -31,6 +31,7 @@ jobs:
         run: |
           rm -rf .sync-test-build
           ./node_modules/.bin/tsc \
+            tests/test-globals.d.ts \
             src/types.ts \
             src/services/progress.ts \
             src/services/sync.ts \
