@@ -37,6 +37,7 @@ jobs:
             src/services/stateSchema.ts \
             src/services/stremio.ts \
             src/services/sourceDiscovery.ts \
+            src/services/addonValidation.ts \
             src/services/m3u.ts \
             --ignoreConfig \
             --outDir .sync-test-build \
