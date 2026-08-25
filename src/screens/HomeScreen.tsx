@@ -81,11 +81,16 @@ export function HomeScreen({ onSelect }: Props) {
 
   const allLoadedItems = useMemo(() => {
     const unique = new Map<string, MediaItem>();
-    for (const item of [...demoMovies, ...addonRows.flatMap(row => row.items)]) {
+    const resumeItems: MediaItem[] = Object.values(state.progress)
+      .flatMap(progress => progress.item ? [progress.item] : []);
+
+    // Prefer the newest resume snapshot for an episode that is not part of a
+    // catalog row, while allowing catalog metadata to fill normal movie/series items.
+    for (const item of [...resumeItems, ...demoMovies, ...addonRows.flatMap(row => row.items)]) {
       if (!unique.has(item.id)) unique.set(item.id, item);
     }
     return [...unique.values()];
-  }, [addonRows]);
+  }, [addonRows, state.progress]);
 
   const continueWatching = useMemo(
     () => allLoadedItems
