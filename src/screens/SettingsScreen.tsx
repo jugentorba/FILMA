@@ -23,7 +23,7 @@ export function SettingsScreen() {
     setAddonEnabled,
     removeAddon,
   } = useFilma();
-  const { isTvMode, setTvModeEnabled } = useDeviceMode();
+  const { isTvMode, isNativeTv, setTvModeEnabled } = useDeviceMode();
   const dropbox = useDropboxSync();
   const text = stringsFor(state.preferences.appLanguage);
   const [playlistName, setPlaylistName] = useState('');
@@ -221,11 +221,11 @@ export function SettingsScreen() {
           <View style={styles.iconBadge}><Text style={styles.iconText}>TV</Text></View>
           <View style={styles.cardHeaderText}>
             <Text style={styles.cardTitle}>{tvModeCopy.title}</Text>
-            <Text style={styles.help}>{tvModeCopy.help}</Text>
+            <Text style={styles.help}>{isNativeTv ? tvModeCopy.on : tvModeCopy.help}</Text>
           </View>
         </View>
         <View style={styles.optionRow}>
-          <FocusButton label={tvModeCopy.phone} active={!isTvMode} onPress={() => setTvModeEnabled(false)} />
+          {!isNativeTv ? <FocusButton label={tvModeCopy.phone} active={!isTvMode} onPress={() => setTvModeEnabled(false)} /> : null}
           <FocusButton label={tvModeCopy.tv} active={isTvMode} onPress={() => setTvModeEnabled(true)} />
         </View>
         <Text style={styles.lastSync}>{isTvMode ? tvModeCopy.on : tvModeCopy.off}</Text>
@@ -429,7 +429,7 @@ export function SettingsScreen() {
 
       <View style={styles.deviceCard}>
         <Text style={styles.deviceTitle}>{text.advanced}</Text>
-        <Text style={styles.device}>FILMA 0.1.2 · build 3</Text>
+        <Text style={styles.device}>FILMA 0.1.3 · build 4</Text>
         <Text style={styles.device}>{text.device}: {deviceId}</Text>
       </View>
     </ScrollView>
