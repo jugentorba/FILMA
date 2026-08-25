@@ -2,7 +2,13 @@ export type AppMode = 'movies' | 'live';
 
 export type MediaSource =
   | { kind: 'direct' }
-  | { kind: 'stremio'; manifestUrl: string; mediaType: string; mediaId: string };
+  | {
+      kind: 'stremio';
+      manifestUrl: string;
+      mediaType: string;
+      mediaId: string;
+      videoId?: string;
+    };
 
 export type MediaItem = {
   id: string;
@@ -17,12 +23,24 @@ export type MediaItem = {
   year?: number;
 };
 
+export type MediaResumeSnapshot = {
+  id: string;
+  title: string;
+  subtitle?: string;
+  poster?: string;
+  backdrop?: string;
+  source?: MediaSource;
+  genres?: string[];
+  year?: number;
+};
+
 export type WatchProgress = {
   mediaId: string;
   positionSeconds: number;
   durationSeconds: number;
   updatedAt: string;
   deviceId: string;
+  item?: MediaResumeSnapshot;
 };
 
 export type Favorite = {
