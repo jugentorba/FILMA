@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
 import { APP_LANGUAGE_OPTIONS, AUDIO_LANGUAGE_OPTIONS, stringsFor } from '../i18n';
+import { useDeviceMode } from '../store/DeviceModeContext';
 import { useDropboxSync } from '../store/DropboxSyncContext';
 import { useFilma } from '../store/FilmaContext';
 import { FocusButton } from '../ui/FocusButton';
@@ -21,6 +22,7 @@ export function SettingsScreen() {
     setAddonEnabled,
     removeAddon,
   } = useFilma();
+  const { tvModeEnabled, setTvModeEnabled } = useDeviceMode();
   const dropbox = useDropboxSync();
   const text = stringsFor(state.preferences.appLanguage);
   const [playlistName, setPlaylistName] = useState('');
@@ -32,6 +34,27 @@ export function SettingsScreen() {
 
   const playlists = useMemo(() => state.playlists.filter(item => !item.deletedAt), [state.playlists]);
   const addons = useMemo(() => state.addons.filter(item => !item.deletedAt), [state.addons]);
+
+  const tvModeCopy = state.preferences.appLanguage === 'fr'
+    ? {
+        title: 'Mode TV',
+        help: 'Active les fonctions réservées à la TV sur ce téléphone pour tester YouTube sans Android TV ni Apple TV. L’interface reste adaptée au tactile.',
+        on: 'Mode TV activé',
+        off: 'Activer le mode TV',
+      }
+    : state.preferences.appLanguage === 'sq'
+      ? {
+          title: 'Modaliteti TV',
+          help: 'Aktivizon funksionet e TV-së në këtë telefon që të testosh YouTube pa Android TV ose Apple TV. Ndërfaqja mbetet e përshtatur për prekje.',
+          on: 'Modaliteti TV aktiv',
+          off: 'Aktivizo modalitetin TV',
+        }
+      : {
+          title: 'TV mode',
+          help: 'Enables TV-only features on this phone so you can test YouTube without Android TV or Apple TV. The interface stays touch-friendly.',
+          on: 'TV mode enabled',
+          off: 'Enable TV mode',
+        };
 
   const addPlaylistNow = () => {
     const url = playlistUrl.trim();
@@ -124,6 +147,25 @@ export function SettingsScreen() {
           ))}
         </View>
       </View>
+
+      {!Platform.isTV ? (
+        <View style={styles.card}>
+          <View style={styles.cardHeader}>
+            <View style={styles.iconBadge}><Text style={styles.iconText}>TV</Text></View>
+            <View style={styles.cardHeaderText}>
+              <Text style={styles.cardTitle}>{tvModeCopy.title}</Text>
+              <Text style={styles.help}>{tvModeCopy.help}</Text>
+            </View>
+          </View>
+          <View style={styles.optionRow}>
+            <FocusButton
+              label={tvModeEnabled ? tvModeCopy.on : tvModeCopy.off}
+              active={tvModeEnabled}
+              onPress={() => setTvModeEnabled(!tvModeEnabled)}
+            />
+          </View>
+        </View>
+      ) : null}
 
       <View style={styles.card}>
         <View style={styles.cardHeader}>
