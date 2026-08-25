@@ -4,25 +4,26 @@ FILMA is a cross-platform movie, series, YouTube and Live TV app built with Expo
 
 ## Current release
 
-- App version: **0.1.2**
-- iOS build: **3**
-- Android versionCode: **3**
+- App version: **0.1.3**
+- iOS build: **4**
+- Android versionCode: **4**
 - Bundle/package id: `com.jugentorba.filma`
 
 ## Core features
 
 - Movies-first home experience with TV-aware navigation.
-- Phone / TV Mode switch for testing TV features on an Android phone.
+- Phone / TV Mode switch for testing TV features on an Android phone; native TV devices always stay in TV mode.
 - Permanent **Cinemeta** movie/series catalog and metadata anchor.
 - Stremio-compatible user sources plus official automatic source discovery.
-- Automatic stream ranking and player-level failover when a direct stream fails.
+- Custom movie sources are validated before saving and must expose a movie/series `stream` resource.
+- Automatic stream ranking and player-level failover when a direct stream fails, plus manual **Next source** switching.
 - Default playback language priority: **French → Albanian → English**. Manual audio preferences override that order.
-- Series/episode selection.
+- Series/episode selection with artwork, progress and resume-aware continuation.
 - Continue Watching and favorites.
 - Dropbox synchronization of progress, favorites, preferences and configured sources across devices.
-- Live TV via legal/public or user-authorized M3U/M3U8 playlists.
+- Live TV via legal/public or user-authorized M3U/M3U8 playlists, with channel logos, search, groups and backup-source failover.
 - Automatic public IPTV-org language playlists, with independent source health/fallback.
-- YouTube catalog/search and native in-FILMA Android TV playback.
+- YouTube catalog/search and native in-FILMA Android phone/Android TV playback.
 - RTSH Albanian archive movies surfaced through the official YouTube path.
 - English, French and Albanian UI.
 
@@ -71,7 +72,8 @@ EXPO_TV=1 yarn prebuild:tv
 
 - TypeScript
 - state migration/conflict tests
-- source/language-priority tests
+- source/language-priority and custom-source validation tests
+- M3U parsing/merge tests
 - Expo config
 - Expo Doctor
 - Android mobile prebuild
@@ -88,6 +90,8 @@ EXPO_TV=1 yarn prebuild:tv
 - `FILMA-mobile-APK`
 - `FILMA-Android-TV-APK`
 
+Both release APKs are zip-aligned, signed with FILMA's persistent test-build key, verified with Android `apksigner`, and uploaded with SHA-256 checksum files. A permanent distribution keystore should replace the test-build key before store/public release signing.
+
 ### Apple unsigned/simulator
 
 `.github/workflows/build-apple.yml` produces:
@@ -95,8 +99,9 @@ EXPO_TV=1 yarn prebuild:tv
 - `FILMA-iOS-Simulator`
 - `FILMA-iOS-Unsigned-IPA`
 - `FILMA-Apple-TV-Simulator`
+- `FILMA-Apple-TV-Unsigned-IPA`
 
-The unsigned iPhone/iPad IPA is compiled for a real iOS device but still requires Apple signing before installation.
+The unsigned iPhone/iPad and Apple TV IPAs are compiled for real devices but still require Apple signing before installation.
 
 ### Apple signed device builds
 
@@ -119,9 +124,9 @@ Other build credential:
 
 | Platform | Native generation | Build workflow | Device artifact |
 | --- | --- | --- | --- |
-| Android phone/tablet | Yes | Yes | APK |
-| Android TV | Yes | Yes | APK |
+| Android phone/tablet | Yes | Yes | Signed test APK |
+| Android TV | Yes | Yes | Signed test APK |
 | iPhone/iPad | Yes | Yes | Unsigned IPA; signed IPA when Apple secrets are configured |
-| Apple TV | Yes | Yes | Simulator app; signed device artifact when Apple secrets are configured |
+| Apple TV | Yes | Yes | Unsigned device IPA + simulator; signed IPA when Apple secrets are configured |
 
 `main` is the authoritative branch. Older experimental feature branches may remain for history but should not be merged blindly into current `main`.
