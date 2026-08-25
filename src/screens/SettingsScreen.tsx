@@ -315,8 +315,8 @@ export function SettingsScreen() {
               <View style={styles.sourceText}>
                 <View style={styles.sourceTitleRow}>
                   <Text style={styles.sourceName}>{item.name}</Text>
-                  <View style={[styles.sourceStatus, styles.sourceStatusOn]}>
-                    <Text style={[styles.sourceStatusText, styles.sourceStatusTextOn]}>
+                  <View style={[styles.sourceStatus, item.enabled ? styles.sourceStatusOn : styles.sourceStatusOff]}>
+                    <Text style={[styles.sourceStatusText, item.enabled ? styles.sourceStatusTextOn : undefined]}>
                       {automatic ? copy.automatic : item.enabled ? text.enabled : text.disabled}
                     </Text>
                   </View>
@@ -382,7 +382,7 @@ export function SettingsScreen() {
 
       <View style={styles.deviceCard}>
         <Text style={styles.deviceTitle}>{text.advanced}</Text>
-        <Text style={styles.device}>FILMA 0.1.1 · build 2</Text>
+        <Text style={styles.device}>FILMA 0.1.2 · build 3</Text>
         <Text style={styles.device}>{text.device}: {deviceId}</Text>
       </View>
     </ScrollView>
