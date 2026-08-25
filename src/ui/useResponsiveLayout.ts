@@ -1,4 +1,5 @@
 import { Platform, useWindowDimensions } from 'react-native';
+import { useFilma } from '../store/FilmaContext';
 
 export type ResponsiveLayout = {
   width: number;
@@ -15,46 +16,46 @@ export type ResponsiveLayout = {
 
 export function useResponsiveLayout(): ResponsiveLayout {
   const { width, height } = useWindowDimensions();
+  const { state } = useFilma();
   const shortSide = Math.min(width, height);
   const longSide = Math.max(width, height);
   const isTv = Platform.isTV;
   const isTablet = !isTv && shortSide >= 600;
   const isCompactPhone = !isTv && !isTablet && shortSide < 390;
   const isLargePhone = !isTv && !isTablet && (shortSide >= 430 || longSide >= 900);
+  const densityScale = state.preferences.interfaceDensity === 'comfortable' ? 1.12 : 0.94;
 
-  const controlScale = isTv
-    ? Math.min(1.08, Math.max(0.92, width / 1920))
+  const automaticScale = isTv
+    ? Math.min(1.06, Math.max(0.9, width / 1920))
     : isTablet
-      ? 1.06
+      ? 1.04
       : isCompactPhone
-        ? 0.86
+        ? 0.84
         : isLargePhone
-          ? 0.96
-          : 0.92;
+          ? 0.94
+          : 0.9;
+  const controlScale = automaticScale * densityScale;
 
-  const horizontalPadding = isTv
-    ? Math.round(Math.min(56, Math.max(38, width * 0.028)))
+  const horizontalPaddingBase = isTv
+    ? Math.round(Math.min(52, Math.max(34, width * 0.026)))
     : isTablet
-      ? 24
+      ? 22
       : isCompactPhone
-        ? 12
-        : 14;
+        ? 10
+        : 12;
+  const horizontalPadding = Math.max(8, Math.round(horizontalPaddingBase * (state.preferences.interfaceDensity === 'comfortable' ? 1.08 : 0.94)));
 
-  const iconSize = isTv
-    ? Math.round(22 * controlScale)
-    : isTablet
-      ? 21
-      : isCompactPhone
-        ? 17
-        : 19;
+  const iconBase = isTv ? 20 : isTablet ? 20 : isCompactPhone ? 16 : 18;
+  const iconSize = Math.max(15, Math.round(iconBase * densityScale));
 
-  const mediaCardWidth = isTv
-    ? Math.round(Math.min(190, Math.max(168, width * 0.095)))
+  const mediaBase = isTv
+    ? Math.min(184, Math.max(160, width * 0.09))
     : isTablet
-      ? Math.round(Math.min(176, width * 0.22))
+      ? Math.min(168, width * 0.21)
       : isCompactPhone
-        ? Math.round(Math.min(124, width * 0.32))
-        : Math.round(Math.min(138, width * 0.34));
+        ? Math.min(120, width * 0.31)
+        : Math.min(134, width * 0.33);
+  const mediaCardWidth = Math.round(mediaBase * densityScale);
 
   return {
     width,
