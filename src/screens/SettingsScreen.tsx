@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
 import { APP_LANGUAGE_OPTIONS, AUDIO_LANGUAGE_OPTIONS, stringsFor } from '../i18n';
+import { validatePlaybackAddon } from '../services/addonValidation';
 import { useDeviceMode } from '../store/DeviceModeContext';
 import { useDropboxSync } from '../store/DropboxSyncContext';
 import { useFilma } from '../store/FilmaContext';
@@ -31,9 +32,16 @@ export function SettingsScreen() {
   const [manifestUrl, setManifestUrl] = useState('');
   const [pairingCode, setPairingCode] = useState('');
   const [message, setMessage] = useState<string>();
+  const [messageIsError, setMessageIsError] = useState(false);
+  const [validatingAddon, setValidatingAddon] = useState(false);
 
   const playlists = useMemo(() => state.playlists.filter(item => !item.deletedAt), [state.playlists]);
   const addons = useMemo(() => state.addons.filter(item => !item.deletedAt), [state.addons]);
+
+  const showMessage = (value: string, isError = false) => {
+    setMessage(value);
+    setMessageIsError(isError);
+  };
 
   const tvModeCopy = state.preferences.appLanguage === 'fr'
     ? {
@@ -68,7 +76,12 @@ export function SettingsScreen() {
         playlistUrlError: 'L’URL de la playlist doit commencer par http:// ou https://',
         playlistAdded: 'Playlist ajoutée.',
         addonUrlError: 'Utilisez une URL manifest.json complète et compatible Stremio.',
-        addonAdded: 'Source de films ajoutée.',
+        addonChecking: 'Vérification de la source…',
+        addonInvalidManifest: 'Ce fichier n’est pas un manifeste Stremio valide.',
+        addonNoStream: 'Cette source ne fournit pas de ressource de lecture « stream ». FILMA ne l’ajoutera pas comme source de films.',
+        addonUnsupportedType: 'Cette source ne prend pas en charge les films ou les séries.',
+        addonLoadError: 'FILMA n’a pas pu charger ou vérifier cette source.',
+        addonAdded: 'Source de films vérifiée et ajoutée.',
         myPlaylist: 'Ma playlist',
         mySource: 'Ma source',
         missingDropboxKey: 'La clé d’application Dropbox est absente de cette version.',
@@ -88,7 +101,12 @@ export function SettingsScreen() {
           playlistUrlError: 'URL-ja e playlistës duhet të fillojë me http:// ose https://',
           playlistAdded: 'Playlista u shtua.',
           addonUrlError: 'Përdor një URL të plotë manifest.json të përputhshme me Stremio.',
-          addonAdded: 'Burimi i filmave u shtua.',
+          addonChecking: 'Po kontrollohet burimi…',
+          addonInvalidManifest: 'Ky skedar nuk është një manifest i vlefshëm Stremio.',
+          addonNoStream: 'Ky burim nuk ofron resursin « stream ». FILMA nuk do ta shtojë si burim filmash.',
+          addonUnsupportedType: 'Ky burim nuk mbështet filma ose seriale.',
+          addonLoadError: 'FILMA nuk arriti ta ngarkojë ose verifikojë këtë burim.',
+          addonAdded: 'Burimi i filmave u verifikua dhe u shtua.',
           myPlaylist: 'Playlista ime',
           mySource: 'Burimi im',
           missingDropboxKey: 'Ky version nuk ka Dropbox App Key.',
@@ -107,7 +125,12 @@ export function SettingsScreen() {
           playlistUrlError: 'Playlist URL must start with http:// or https://',
           playlistAdded: 'Playlist added.',
           addonUrlError: 'Use a full Stremio-compatible manifest.json URL.',
-          addonAdded: 'Movie source added.',
+          addonChecking: 'Checking source…',
+          addonInvalidManifest: 'This file is not a valid Stremio manifest.',
+          addonNoStream: 'This source does not provide a stream resource, so FILMA will not save it as a movie playback source.',
+          addonUnsupportedType: 'This source does not support movies or series.',
+          addonLoadError: 'FILMA could not load or verify this source.',
+          addonAdded: 'Movie source verified and added.',
           myPlaylist: 'My playlist',
           mySource: 'My source',
           missingDropboxKey: 'Dropbox App Key is missing from this build.',
@@ -125,25 +148,47 @@ export function SettingsScreen() {
   const addPlaylistNow = () => {
     const url = playlistUrl.trim();
     if (!/^https?:\/\//i.test(url)) {
-      setMessage(copy.playlistUrlError);
+      showMessage(copy.playlistUrlError, true);
       return;
     }
     addPlaylist(playlistName.trim() || copy.myPlaylist, url);
     setPlaylistName('');
     setPlaylistUrl('');
-    setMessage(copy.playlistAdded);
+    showMessage(copy.playlistAdded);
   };
 
-  const addAddonNow = () => {
+  const addAddonNow = async () => {
+    if (validatingAddon) return;
     const url = manifestUrl.trim();
     if (!/^https?:\/\//i.test(url) || !/manifest\.json(?:\?.*)?$/i.test(url)) {
-      setMessage(copy.addonUrlError);
+      showMessage(copy.addonUrlError, true);
       return;
     }
-    addAddon(addonName.trim() || copy.mySource, url);
-    setAddonName('');
-    setManifestUrl('');
-    setMessage(copy.addonAdded);
+
+    setValidatingAddon(true);
+    showMessage(copy.addonChecking);
+    try {
+      const validation = await validatePlaybackAddon(url);
+      if (!validation.valid) {
+        const reason = validation.reason === 'invalid-manifest'
+          ? copy.addonInvalidManifest
+          : validation.reason === 'no-stream-resource'
+            ? copy.addonNoStream
+            : copy.addonUnsupportedType;
+        showMessage(reason, true);
+        return;
+      }
+
+      addAddon(addonName.trim() || validation.name || copy.mySource, url);
+      setAddonName('');
+      setManifestUrl('');
+      showMessage(copy.addonAdded);
+    } catch (reason) {
+      const detail = reason instanceof Error && reason.message ? ` ${reason.message}` : '';
+      showMessage(`${copy.addonLoadError}${detail}`, true);
+    } finally {
+      setValidatingAddon(false);
+    }
   };
 
   const syncStatus = dropbox.status === 'syncing'
@@ -169,7 +214,7 @@ export function SettingsScreen() {
         <Text style={styles.intro}>{text.settingsIntro}</Text>
       </View>
 
-      {message ? <Text style={styles.message}>{message}</Text> : null}
+      {message ? <Text style={[styles.message, messageIsError && styles.messageError]}>{message}</Text> : null}
 
       <View style={styles.card}>
         <View style={styles.cardHeader}>
@@ -307,7 +352,9 @@ export function SettingsScreen() {
           keyboardType="url"
           style={styles.input}
         />
-        <View style={styles.actionRow}><FocusButton label={text.addAddon} active onPress={addAddonNow} /></View>
+        <View style={styles.actionRow}>
+          <FocusButton label={validatingAddon ? copy.addonChecking : text.addAddon} active onPress={() => void addAddonNow()} />
+        </View>
         {addons.map(item => {
           const automatic = item.id.startsWith('auto-stremio:');
           return (
@@ -402,6 +449,7 @@ const styles = StyleSheet.create({
   title: { color: theme.text, fontSize: Platform.isTV ? 46 : 34, fontWeight: '900', marginTop: 7 },
   intro: { color: theme.muted, maxWidth: 760, marginTop: 8, fontSize: Platform.isTV ? 17 : 15, lineHeight: 23 },
   message: { color: theme.success, marginBottom: 16, fontWeight: '800' },
+  messageError: { color: '#fda4af' },
   card: {
     width: '100%',
     maxWidth: 980,
