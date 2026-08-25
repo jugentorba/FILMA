@@ -104,4 +104,52 @@ function empty(mode = 'movies') {
   assert.equal(afterReadd.favorites.film.deletedAt, undefined, 'newer re-add beats an older tombstone');
 }
 
+{
+  const local = empty();
+  local.progress.episode = {
+    mediaId: 'episode',
+    positionSeconds: 60,
+    durationSeconds: 1800,
+    updatedAt: at(10),
+    deviceId: 'phone',
+    item: {
+      id: 'episode',
+      title: 'Series · Old episode title',
+      source: {
+        kind: 'stremio',
+        manifestUrl: 'https://example.test/manifest.json',
+        mediaType: 'series',
+        mediaId: 'tt123',
+        videoId: 'tt123:1:1',
+      },
+    },
+  };
+
+  const remote = empty();
+  remote.progress.episode = {
+    mediaId: 'episode',
+    positionSeconds: 420,
+    durationSeconds: 1800,
+    updatedAt: at(20),
+    deviceId: 'tv',
+    item: {
+      id: 'episode',
+      title: 'Series · Pilot',
+      subtitle: 'S1 E1',
+      source: {
+        kind: 'stremio',
+        manifestUrl: 'https://example.test/manifest.json',
+        mediaType: 'series',
+        mediaId: 'tt123',
+        videoId: 'tt123:1:1',
+      },
+    },
+  };
+
+  const merged = mergeStates(local, remote);
+  assert.equal(merged.progress.episode.positionSeconds, 420, 'newest episode progress wins');
+  assert.equal(merged.progress.episode.item.title, 'Series · Pilot', 'resume snapshot follows newest progress');
+  assert.equal(merged.progress.episode.item.source.videoId, 'tt123:1:1', 'episode stream identity is preserved');
+}
+
 console.log('FILMA sync tests passed.');
