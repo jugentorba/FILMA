@@ -1,0 +1,74 @@
+name: FILMA Android APKs
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/build-android.yml'
+
+concurrency:
+  group: filma-android-build
+  cancel-in-progress: true
+
+jobs:
+  build-apks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.13.1'
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Generate mobile Android project
+        run: npx expo prebuild --platform android --clean --no-install
+
+      - name: Build mobile release APK
+        run: |
+          chmod +x android/gradlew
+          cd android
+          ./gradlew assembleRelease --no-daemon
+
+      - name: Stage mobile APK
+        run: cp android/app/build/outputs/apk/release/app-release.apk FILMA-mobile.apk
+
+      - name: Upload mobile APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: FILMA-mobile-APK
+          path: FILMA-mobile.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Generate Android TV project
+        run: EXPO_TV=1 npx expo prebuild --platform android --clean --no-install
+
+      - name: Build Android TV release APK
+        run: |
+          chmod +x android/gradlew
+          cd android
+          ./gradlew assembleRelease --no-daemon
+
+      - name: Stage Android TV APK
+        run: cp android/app/build/outputs/apk/release/app-release.apk FILMA-android-tv.apk
+
+      - name: Upload Android TV APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: FILMA-Android-TV-APK
+          path: FILMA-android-tv.apk
+          if-no-files-found: error
+          retention-days: 30
