@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, FlatList, Platform, StyleSheet, Text, TextInput, View } from 'react-native';
 import { channelIdentity, fetchPlaylist } from '../services/m3u';
 import { useFilma } from '../store/FilmaContext';
@@ -30,6 +30,8 @@ export function LiveTvScreen({ onSelect, onOpenSettings }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>();
   const [sourceHealth, setSourceHealth] = useState<SourceHealth[]>([]);
+  const groupListRef = useRef<FlatList<{ name: string; count: number }>>(null);
+  const channelListRef = useRef<FlatList<LiveChannel>>(null);
 
   const activePlaylists = useMemo(
     () => state.playlists.filter(source => source.enabled && !source.deletedAt),
@@ -141,6 +143,10 @@ export function LiveTvScreen({ onSelect, onOpenSettings }: Props) {
     });
   }, [channels, query, selectedGroup]);
 
+  const groupItems = useMemo(
+    () => [{ name: 'all', count: channels.length }, ...groups],
+    [channels.length, groups],
+  );
   const healthySources = sourceHealth.filter(item => item.ok).length;
 
   if (!activePlaylists.length) {
@@ -150,7 +156,7 @@ export function LiveTvScreen({ onSelect, onOpenSettings }: Props) {
         <Text style={styles.emptyText}>
           Add your own legal/public M3U or M3U8 playlist. FILMA will parse it and refresh the channel list automatically.
         </Text>
-        <FocusButton label="Open Settings" active onPress={onOpenSettings} />
+        <FocusButton label="Open Settings" active preferredFocus onPress={onOpenSettings} />
       </View>
     );
   }
@@ -178,16 +184,26 @@ export function LiveTvScreen({ onSelect, onOpenSettings }: Props) {
       />
 
       <FlatList
+        ref={groupListRef}
         horizontal
-        data={[{ name: 'all', count: channels.length }, ...groups]}
+        data={groupItems}
         keyExtractor={item => item.name}
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.groupRow}
-        renderItem={({ item }) => (
+        onScrollToIndexFailed={({ index, averageItemLength }) => {
+          groupListRef.current?.scrollToOffset({ offset: Math.max(0, index * averageItemLength), animated: true });
+        }}
+        renderItem={({ item, index }) => (
           <FocusButton
             compact
             label={`${item.name === 'all' ? 'All' : item.name} (${item.count})`}
             active={selectedGroup === item.name}
+            preferredFocus={item.name === 'all'}
+            onFocus={() => {
+              if (Platform.isTV) {
+                groupListRef.current?.scrollToIndex({ index, viewPosition: 0.3, animated: true });
+              }
+            }}
             onPress={() => setSelectedGroup(item.name)}
           />
         )}
@@ -197,15 +213,24 @@ export function LiveTvScreen({ onSelect, onOpenSettings }: Props) {
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
       <FlatList
+        ref={channelListRef}
         data={visibleChannels}
         keyExtractor={item => item.id}
         contentContainerStyle={styles.list}
         initialNumToRender={Platform.isTV ? 24 : 14}
         windowSize={Platform.isTV ? 11 : 7}
-        renderItem={({ item }) => (
+        onScrollToIndexFailed={({ index, averageItemLength }) => {
+          channelListRef.current?.scrollToOffset({ offset: Math.max(0, index * averageItemLength), animated: true });
+        }}
+        renderItem={({ item, index }) => (
           <FocusButton
             label={`${item.name}${item.group ? `  ·  ${item.group}` : ''}`}
             style={styles.channel}
+            onFocus={() => {
+              if (Platform.isTV) {
+                channelListRef.current?.scrollToIndex({ index, viewPosition: 0.46, animated: true });
+              }
+            }}
             onPress={() => onSelect({
               id: `live:${item.id}`,
               title: item.name,
