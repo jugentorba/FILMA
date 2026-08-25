@@ -157,7 +157,7 @@ function FilmaApp() {
   const handleYouTubeVideo = async (video: YouTubeVideo) => {
     setPlaybackError(undefined);
 
-    if (isTvMode && Platform.OS === 'android') {
+    if (Platform.OS === 'android') {
       setSelectedYouTube(video);
       return;
     }
