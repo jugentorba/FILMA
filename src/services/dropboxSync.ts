@@ -1,5 +1,6 @@
 import type { SyncEnvelope } from '../types';
 import type { CloudSyncAdapter } from './sync';
+import { normalizeSyncEnvelope } from './stateSchema';
 
 const DROPBOX_CONTENT_API = 'https://content.dropboxapi.com/2/files';
 
@@ -9,15 +10,6 @@ export type DropboxSyncOptions = {
   getAccessToken: DropboxAccessTokenProvider;
   path?: string;
 };
-
-function isSyncEnvelope(value: unknown): value is SyncEnvelope {
-  if (!value || typeof value !== 'object') return false;
-  const candidate = value as Partial<SyncEnvelope>;
-  return candidate.schemaVersion === 1
-    && typeof candidate.updatedAt === 'string'
-    && Boolean(candidate.state)
-    && typeof candidate.state === 'object';
-}
 
 async function readDropboxError(response: Response): Promise<string> {
   try {
@@ -59,10 +51,6 @@ export class DropboxSyncAdapter implements CloudSyncAdapter {
       },
     });
 
-    // files/download returns 409 for path/not_found as well as other Dropbox
-    // route errors. Only treat a response that clearly says not_found as an
-    // empty first sync; surface every other 409 to avoid hiding permissions or
-    // path errors.
     if (response.status === 409) {
       const error = await readDropboxError(response);
       if (error.includes('not_found')) return null;
@@ -81,11 +69,12 @@ export class DropboxSyncAdapter implements CloudSyncAdapter {
       throw new Error('Dropbox sync file contains invalid JSON.');
     }
 
-    if (!isSyncEnvelope(parsed)) {
+    const envelope = normalizeSyncEnvelope(parsed);
+    if (!envelope) {
       throw new Error('Dropbox sync file has an unsupported FILMA format.');
     }
 
-    return parsed;
+    return envelope;
   }
 
   async push(envelope: SyncEnvelope): Promise<void> {
