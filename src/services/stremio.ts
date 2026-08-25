@@ -64,6 +64,8 @@ const LANGUAGE_ALIASES: Record<AudioLanguage, string[]> = {
   tr: ['tr', 'tur', 'turkish', 'türkçe', 'turkce', 'turc', 'turqisht'],
 };
 
+const BASE_AUDIO_LANGUAGES: AudioLanguage[] = ['fr', 'sq', 'en'];
+
 function addonBase(manifestUrl: string): string {
   return manifestUrl.replace(/\/manifest\.json(?:\?.*)?$/i, '').replace(/\/$/, '');
 }
@@ -237,13 +239,15 @@ export function rankStreamsByPreferredAudio<T extends { title: string }>(
   streams: T[],
   preferredAudioLanguages: AudioLanguage[],
 ): T[] {
-  if (!preferredAudioLanguages.length) return streams;
+  const languages = preferredAudioLanguages.length
+    ? preferredAudioLanguages
+    : BASE_AUDIO_LANGUAGES;
 
   return streams
     .map((stream, originalIndex) => {
       const normalized = normalizeText(stream.title);
       let score = 0;
-      preferredAudioLanguages.forEach((language, index) => {
+      languages.forEach((language, index) => {
         if (LANGUAGE_ALIASES[language].some(alias => aliasAppears(normalized, alias))) {
           score = Math.max(score, 1000 - index * 100);
         }
