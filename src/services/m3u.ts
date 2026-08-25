@@ -1,3 +1,4 @@
+import * as FileSystem from 'expo-file-system/legacy';
 import type { LiveChannel } from '../types';
 
 function escapeRegExp(value: string): string {
@@ -110,6 +111,12 @@ async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: numbe
 }
 
 export async function fetchPlaylist(url: string, timeoutMs = 15_000): Promise<LiveChannel[]> {
+  if (url.startsWith('file://')) {
+    const channels = parseM3U(await FileSystem.readAsStringAsync(url));
+    if (!channels.length) throw new Error('Playlist contains no playable HTTP/HLS channels.');
+    return channels;
+  }
+
   const response = await fetchWithTimeout(url, {
     headers: { Accept: 'application/x-mpegURL,application/vnd.apple.mpegurl,text/plain,*/*' },
   }, timeoutMs);
