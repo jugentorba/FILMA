@@ -30,6 +30,9 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      - name: Verify resolved native versions
+        run: npm ls expo react-native @react-native/gradle-plugin expo-modules-autolinking expo-modules-core --depth=2
+
       - name: Generate iPhone/iPad project
         run: npx expo prebuild --platform ios --clean --no-install
 
