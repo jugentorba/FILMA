@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { MediaItem, WatchProgress } from '../types';
 import { theme } from './theme';
 
@@ -12,19 +12,32 @@ type Props = {
 
 export function MediaCard({ item, progress, favorite = false, onPress }: Props) {
   const [focused, setFocused] = useState(false);
+  const [posterFailed, setPosterFailed] = useState(false);
   const ratio = progress?.durationSeconds
     ? Math.min(1, Math.max(0, progress.positionSeconds / progress.durationSeconds))
     : 0;
+  const showPoster = Boolean(item.poster && !posterFailed);
 
   return (
     <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={item.title}
       onPress={onPress}
       onFocus={() => setFocused(true)}
       onBlur={() => setFocused(false)}
       style={[styles.card, Platform.isTV && focused && styles.focused]}
     >
       <View style={[styles.art, focused && styles.artFocused]}>
-        <Text style={styles.monogram}>{item.title.slice(0, 1).toUpperCase()}</Text>
+        {showPoster ? (
+          <Image
+            source={{ uri: item.poster }}
+            resizeMode="cover"
+            style={styles.poster}
+            onError={() => setPosterFailed(true)}
+          />
+        ) : (
+          <Text style={styles.monogram}>{item.title.slice(0, 1).toUpperCase()}</Text>
+        )}
         {favorite ? <Text style={styles.favorite}>♥</Text> : null}
         {ratio > 0 ? (
           <View style={styles.progressTrack}>
@@ -34,7 +47,7 @@ export function MediaCard({ item, progress, favorite = false, onPress }: Props) 
       </View>
       <Text numberOfLines={1} style={styles.title}>{item.title}</Text>
       <Text numberOfLines={1} style={styles.meta}>
-        {[item.year, item.genres?.slice(0, 2).join(' • ')].filter(Boolean).join('  ')}
+        {[item.year, item.genres?.slice(0, 2).join(' • ')].filter(Boolean).join('  ') || item.subtitle || 'FILMA'}
       </Text>
     </Pressable>
   );
@@ -42,15 +55,16 @@ export function MediaCard({ item, progress, favorite = false, onPress }: Props) 
 
 const styles = StyleSheet.create({
   card: {
-    width: Platform.isTV ? 250 : 154,
+    width: Platform.isTV ? 190 : 154,
     marginRight: Platform.isTV ? 24 : 14,
-    paddingBottom: 10,
+    paddingBottom: 12,
   },
   focused: {
     transform: [{ scale: 1.06 }],
   },
   art: {
-    height: Platform.isTV ? 142 : 218,
+    width: '100%',
+    height: Platform.isTV ? 276 : 224,
     borderRadius: 16,
     backgroundColor: theme.surfaceRaised,
     borderWidth: 1,
@@ -63,6 +77,10 @@ const styles = StyleSheet.create({
     borderColor: theme.accent,
     borderWidth: 3,
   },
+  poster: {
+    width: '100%',
+    height: '100%',
+  },
   monogram: {
     color: theme.text,
     fontSize: Platform.isTV ? 58 : 48,
@@ -74,7 +92,10 @@ const styles = StyleSheet.create({
     top: 10,
     right: 12,
     color: theme.accent,
-    fontSize: 22,
+    fontSize: 24,
+    textShadowColor: '#000',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
   },
   progressTrack: {
     position: 'absolute',
