@@ -22,6 +22,10 @@ function addonBase(manifestUrl: string): string {
   return manifestUrl.replace(/\/manifest\.json(?:\?.*)?$/i, '').replace(/\/$/, '');
 }
 
+function localMediaId(manifestUrl: string, type: string, mediaId: string): string {
+  return `addon:${encodeURIComponent(manifestUrl)}:${type}:${encodeURIComponent(mediaId)}`;
+}
+
 export async function fetchManifest(manifestUrl: string): Promise<StremioManifest> {
   const response = await fetch(manifestUrl);
   if (!response.ok) throw new Error(`Add-on manifest HTTP ${response.status}`);
@@ -39,7 +43,7 @@ export async function fetchCatalog(
   const payload = (await response.json()) as { metas?: StremioMeta[] };
 
   return (payload.metas ?? []).map(meta => ({
-    id: meta.id,
+    id: localMediaId(manifestUrl, type, meta.id),
     title: meta.name,
     poster: meta.poster,
     backdrop: meta.background,
