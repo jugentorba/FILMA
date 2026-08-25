@@ -2,8 +2,9 @@ name: Lock FILMA Dependencies
 
 on:
   push:
-    branches: [main]
+    branches: [main, dropbox-auto-sync]
     paths:
+      - 'package.json'
       - '.github/workflows/lock-dependencies.yml'
   workflow_dispatch:
 
@@ -39,5 +40,5 @@ jobs:
             echo 'yarn.lock already matches the dependency graph.'
             exit 0
           fi
-          git commit -m 'Commit Yarn dependency lockfile'
+          git commit -m 'Update Yarn dependency lockfile'
           git push
