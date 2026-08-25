@@ -3,7 +3,7 @@ import type { StremioManifest } from './stremio';
 
 const OFFICIAL_STREMIO_INDEX_URL = 'https://raw.githubusercontent.com/Stremio/stremio-official-addons/master/index.json';
 const CINEMETA_MANIFEST_URL = 'https://v3-cinemeta.strem.io/manifest.json';
-const IPTV_ORG_LANGUAGE_BASE = 'https://iptv-org.github.io/iptv/languages';
+const IPTV_ORG_COUNTRY_BASE = 'https://iptv-org.github.io/iptv/countries';
 const DISCOVERY_TIMESTAMP = '1970-01-01T00:00:00.000Z';
 const OFFICIAL_INDEX_CACHE_MS = 30 * 60 * 1000;
 const OFFICIAL_INDEX_TIMEOUT_MS = 10_000;
@@ -29,25 +29,28 @@ export type DiscoveredMovieProvider = AddonSource & {
   providesStream: boolean;
 };
 
-const IPTV_LANGUAGE_CODES: Record<AudioLanguage, string> = {
-  en: 'eng',
-  fr: 'fra',
-  sq: 'sqi',
-  it: 'ita',
-  es: 'spa',
-  de: 'deu',
-  tr: 'tur',
+type CountrySource = {
+  code: string;
+  countryName: string;
+  countryGroup: string;
 };
 
-const LANGUAGE_NAMES: Record<AudioLanguage, string> = {
-  en: 'English',
-  fr: 'French',
-  sq: 'Albanian',
-  it: 'Italian',
-  es: 'Spanish',
-  de: 'German',
-  tr: 'Turkish',
+const COUNTRY_SOURCES_BY_LANGUAGE: Partial<Record<AudioLanguage, CountrySource[]>> = {
+  fr: [{ code: 'fr', countryName: 'France', countryGroup: 'France' }],
+  en: [
+    { code: 'uk', countryName: 'United Kingdom', countryGroup: 'United Kingdom' },
+    { code: 'us', countryName: 'United States', countryGroup: 'United States' },
+  ],
+  it: [{ code: 'it', countryName: 'Italy', countryGroup: 'Italy' }],
+  es: [{ code: 'es', countryName: 'Spain', countryGroup: 'Spain' }],
+  de: [{ code: 'de', countryName: 'Germany', countryGroup: 'Germany' }],
+  tr: [{ code: 'tr', countryName: 'Turkey', countryGroup: 'Turkey' }],
 };
+
+const ALBANIA_GROUP_SOURCES: CountrySource[] = [
+  { code: 'al', countryName: 'Albania', countryGroup: 'Albania' },
+  { code: 'xk', countryName: 'Kosovo', countryGroup: 'Albania' },
+];
 
 const BASE_AUDIO_LANGUAGES: AudioLanguage[] = ['fr', 'sq', 'en'];
 
@@ -183,6 +186,20 @@ export async function discoverAutomaticStreamProviders(): Promise<AddonSource[]>
     .filter(provider => provider.providesStream);
 }
 
+function playlistForCountry(source: CountrySource): PlaylistSource {
+  return {
+    id: `auto-tv:country:${source.code}`,
+    name: `${source.countryName} TV`,
+    url: `${IPTV_ORG_COUNTRY_BASE}/${source.code}.m3u`,
+    enabled: true,
+    createdAt: DISCOVERY_TIMESTAMP,
+    updatedAt: DISCOVERY_TIMESTAMP,
+    countryCode: source.code,
+    countryName: source.countryName,
+    countryGroup: source.countryGroup,
+  };
+}
+
 export function automaticTvPlaylists(
   preferredAudioLanguages: AudioLanguage[],
   _appLanguage: AppLanguage,
@@ -191,18 +208,26 @@ export function automaticTvPlaylists(
     ? preferredAudioLanguages
     : BASE_AUDIO_LANGUAGES;
 
-  const languages = [...new Set(requested)].slice(0, 3);
-  return languages.map(language => {
-    const code = IPTV_LANGUAGE_CODES[language];
-    return {
-      id: `auto-tv:${code}`,
-      name: `Public ${LANGUAGE_NAMES[language]} TV`,
-      url: `${IPTV_ORG_LANGUAGE_BASE}/${code}.m3u`,
-      enabled: true,
-      createdAt: DISCOVERY_TIMESTAMP,
-      updatedAt: DISCOVERY_TIMESTAMP,
-    };
-  });
+  const countrySources: CountrySource[] = [...ALBANIA_GROUP_SOURCES];
+  for (const language of requested) {
+    if (language === 'sq') continue;
+    countrySources.push(...(COUNTRY_SOURCES_BY_LANGUAGE[language] ?? []));
+  }
+
+  // France should always remain available because it is one of FILMA's base
+  // language/country experiences, even when the user temporarily changes audio priorities.
+  if (!countrySources.some(source => source.code === 'fr')) {
+    countrySources.push({ code: 'fr', countryName: 'France', countryGroup: 'France' });
+  }
+
+  const seen = new Set<string>();
+  return countrySources
+    .filter(source => {
+      if (seen.has(source.code)) return false;
+      seen.add(source.code);
+      return true;
+    })
+    .map(playlistForCountry);
 }
 
 export function mergeTvPlaylists(
