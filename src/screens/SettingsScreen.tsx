@@ -66,8 +66,8 @@ export function SettingsScreen() {
           : text.notConnected;
 
   const finishPairing = async () => {
-    await dropbox.finishTvPairing(pairingCode);
-    setPairingCode('');
+    await dropbox.finishPairing(pairingCode);
+    if (!dropbox.error) setPairingCode('');
   };
 
   return (
@@ -145,13 +145,20 @@ export function SettingsScreen() {
         {!dropbox.configured ? <Text style={styles.warning}>Dropbox App Key is missing from this build.</Text> : null}
         {dropbox.error ? <Text style={styles.error}>{dropbox.error}</Text> : null}
 
-        {dropbox.needsTvPairing && dropbox.tvPairingUrl && !dropbox.connected ? (
+        {dropbox.pairingUrl && !dropbox.connected ? (
           <View style={styles.pairingPanel}>
-            <Text style={styles.pairingTitle}>Connect this TV to Dropbox</Text>
-            <Text style={styles.help}>Scan the QR code, approve FILMA in Dropbox, then enter the one-time authorization code.</Text>
-            <View style={styles.qrWrap}>
-              <QRCode value={dropbox.tvPairingUrl} size={Platform.isTV ? 260 : 190} backgroundColor="#ffffff" color="#000000" quietZone={12} />
-            </View>
+            <Text style={styles.pairingTitle}>Connect Dropbox</Text>
+            {dropbox.isTv ? (
+              <>
+                <Text style={styles.help}>Scan the QR code on your phone, approve FILMA in Dropbox, then enter the one-time code shown by Dropbox.</Text>
+                <View style={styles.qrWrap}>
+                  <QRCode value={dropbox.pairingUrl} size={260} backgroundColor="#ffffff" color="#000000" quietZone={12} />
+                </View>
+              </>
+            ) : (
+              <Text style={styles.help}>Dropbox opens in your browser. Approve FILMA, copy the one-time authorization code Dropbox shows, return to FILMA, and paste it below.</Text>
+            )}
+
             <TextInput
               value={pairingCode}
               onChangeText={setPairingCode}
@@ -162,22 +169,18 @@ export function SettingsScreen() {
               style={[styles.input, styles.pairingInput]}
             />
             <View style={styles.optionRow}>
-              <FocusButton label="Finish pairing" active preferredFocus onPress={() => void finishPairing()} />
-              <FocusButton label="New QR code" onPress={() => void dropbox.beginTvPairing()} />
-              <FocusButton label="Cancel" onPress={() => { setPairingCode(''); dropbox.cancelTvPairing(); }} />
+              <FocusButton label="Finish connection" active preferredFocus onPress={() => void finishPairing()} />
+              {!dropbox.isTv ? <FocusButton label="Open Dropbox" onPress={() => void dropbox.openPairing()} /> : null}
+              <FocusButton label={dropbox.isTv ? 'New QR code' : 'New code'} onPress={() => void dropbox.restartPairing()} />
+              <FocusButton label="Cancel" onPress={() => { setPairingCode(''); dropbox.cancelPairing(); }} />
             </View>
           </View>
         ) : null}
 
-        {!dropbox.tvPairingUrl || dropbox.connected ? (
+        {!dropbox.pairingUrl || dropbox.connected ? (
           <View style={styles.optionRow}>
             {!dropbox.connected ? (
-              <FocusButton
-                label={dropbox.needsTvPairing ? text.pairDropbox : text.connectDropbox}
-                active
-                preferredFocus
-                onPress={() => void dropbox.connect()}
-              />
+              <FocusButton label={text.connectDropbox} active preferredFocus onPress={() => void dropbox.connect()} />
             ) : (
               <>
                 <FocusButton label={dropbox.status === 'syncing' ? text.syncing : text.syncNow} active preferredFocus onPress={() => void dropbox.syncNow().catch(() => undefined)} />

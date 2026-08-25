@@ -2,13 +2,10 @@ import * as AuthSession from 'expo-auth-session';
 import * as Crypto from 'expo-crypto';
 import * as SecureStore from 'expo-secure-store';
 import * as WebBrowser from 'expo-web-browser';
-import { Platform } from 'react-native';
 
 WebBrowser.maybeCompleteAuthSession();
 
 const TOKEN_KEY = 'filma.dropbox.oauth.v1';
-// Dropbox App Keys are public OAuth client identifiers. Keep the environment
-// override for alternate builds, while FILMA's normal builds use this app key.
 const DROPBOX_CLIENT_ID = process.env.EXPO_PUBLIC_DROPBOX_APP_KEY?.trim() || '4xn65kgja3fsiui';
 
 const discovery: AuthSession.DiscoveryDocument = {
@@ -24,24 +21,15 @@ type StoredToken = {
   scope?: string;
 };
 
-export type DropboxTvPairing = {
+export type DropboxPairing = {
   authorizeUrl: string;
   codeVerifier: string;
   createdAt: number;
 };
 
 function assertConfigured(): string {
-  if (!DROPBOX_CLIENT_ID) {
-    throw new Error('Dropbox is not configured in this FILMA build.');
-  }
+  if (!DROPBOX_CLIENT_ID) throw new Error('Dropbox is not configured in this FILMA build.');
   return DROPBOX_CLIENT_ID;
-}
-
-// Dropbox's native SDKs use the app-key-specific db-<APP_KEY> URL scheme.
-// Using the same native callback convention avoids relying on a web callback
-// server and keeps the OAuth code + PKCE flow inside the installed app.
-function redirectUri(clientId: string): string {
-  return `db-${clientId}://1/connect`;
 }
 
 function randomVerifier(): string {
@@ -65,14 +53,13 @@ async function loadStoredToken(): Promise<StoredToken | null> {
 }
 
 async function saveToken(token: AuthSession.TokenResponse): Promise<void> {
-  const stored: StoredToken = {
+  await SecureStore.setItemAsync(TOKEN_KEY, JSON.stringify({
     accessToken: token.accessToken,
     refreshToken: token.refreshToken,
     expiresIn: token.expiresIn,
     issuedAt: token.issuedAt,
     scope: token.scope,
-  };
-  await SecureStore.setItemAsync(TOKEN_KEY, JSON.stringify(stored));
+  } satisfies StoredToken));
 }
 
 function asTokenResponse(token: StoredToken): AuthSession.TokenResponse {
@@ -93,50 +80,10 @@ export async function hasDropboxSession(): Promise<boolean> {
   return Boolean(await loadStoredToken());
 }
 
-export async function connectDropbox(): Promise<void> {
-  const clientId = assertConfigured();
-
-  if (Platform.isTV) {
-    throw new Error('Use FILMA TV pairing to connect Dropbox on a television.');
-  }
-
-  const callback = redirectUri(clientId);
-  const request = new AuthSession.AuthRequest({
-    clientId,
-    redirectUri: callback,
-    responseType: AuthSession.ResponseType.Code,
-    usePKCE: true,
-    scopes: ['files.content.read', 'files.content.write'],
-    extraParams: {
-      token_access_type: 'offline',
-    },
-  });
-
-  const result = await request.promptAsync(discovery);
-  if (result.type !== 'success') {
-    if (result.type === 'cancel' || result.type === 'dismiss') return;
-    if (result.type === 'error') {
-      throw new Error(result.error?.message ?? 'Dropbox sign-in failed.');
-    }
-    throw new Error(`Dropbox sign-in ended with ${result.type}.`);
-  }
-
-  const code = result.params.code;
-  if (!code || !request.codeVerifier) {
-    throw new Error('Dropbox did not return a valid authorization code.');
-  }
-
-  const token = await AuthSession.exchangeCodeAsync({
-    clientId,
-    code,
-    redirectUri: callback,
-    extraParams: { code_verifier: request.codeVerifier },
-  }, discovery);
-
-  await saveToken(token);
-}
-
-export async function beginDropboxTvPairing(): Promise<DropboxTvPairing> {
+// FILMA deliberately uses Dropbox's redirect-less authorization-code + PKCE
+// flow. Dropbox displays a one-time code after approval, so mobile and TV can
+// authenticate without a backend server and without a redirect URI whitelist.
+export async function beginDropboxPairing(): Promise<DropboxPairing> {
   const clientId = assertConfigured();
   const codeVerifier = randomVerifier();
   const challenge = base64Url(await Crypto.digestStringAsync(
@@ -155,19 +102,21 @@ export async function beginDropboxTvPairing(): Promise<DropboxTvPairing> {
     '&scope=files.content.read%20files.content.write',
   ].join('');
 
-  return {
-    authorizeUrl,
-    codeVerifier,
-    createdAt: Date.now(),
-  };
+  return { authorizeUrl, codeVerifier, createdAt: Date.now() };
 }
 
-export async function completeDropboxTvPairing(code: string, pairing: DropboxTvPairing): Promise<void> {
+export async function openDropboxPairing(pairing: DropboxPairing): Promise<void> {
+  await WebBrowser.openBrowserAsync(pairing.authorizeUrl, {
+    presentationStyle: WebBrowser.WebBrowserPresentationStyle.FORM_SHEET,
+  });
+}
+
+export async function completeDropboxPairing(code: string, pairing: DropboxPairing): Promise<void> {
   const clientId = assertConfigured();
   const trimmedCode = code.trim();
   if (!trimmedCode) throw new Error('Enter the Dropbox authorization code.');
   if (Date.now() - pairing.createdAt > 10 * 60 * 1000) {
-    throw new Error('This pairing request is too old. Start Dropbox pairing again.');
+    throw new Error('This authorization request has expired. Start Dropbox connection again.');
   }
 
   const response = await fetch(discovery.tokenEndpoint!, {
@@ -191,7 +140,7 @@ export async function completeDropboxTvPairing(code: string, pairing: DropboxTvP
   };
 
   if (!response.ok || !payload.access_token) {
-    throw new Error(payload.error_description || payload.error || `Dropbox pairing failed (HTTP ${response.status}).`);
+    throw new Error(payload.error_description || payload.error || `Dropbox authorization failed (HTTP ${response.status}).`);
   }
 
   await saveToken(new AuthSession.TokenResponse({
