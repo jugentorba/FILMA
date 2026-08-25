@@ -6,6 +6,7 @@ import type { LiveChannel, MediaItem } from '../types';
 import { FocusButton } from '../ui/FocusButton';
 import { PlayerModal } from '../ui/PlayerModal';
 import { theme } from '../ui/theme';
+import { useResponsiveLayout } from '../ui/useResponsiveLayout';
 
 type Props = {
   onSelect(item: MediaItem): void;
@@ -45,6 +46,33 @@ function ChannelRow({ channel, index, onFocus, onPress }: ChannelRowProps) {
   const [focused, setFocused] = useState(false);
   const [logoFailed, setLogoFailed] = useState(false);
   const backupCount = channel.alternateUrls?.length ?? 0;
+  const layout = useResponsiveLayout();
+
+  const rowSize = useMemo(() => {
+    const logo = layout.isTv ? 52 : layout.isCompactPhone ? 38 : layout.isTablet ? 48 : 42;
+    return {
+      row: {
+        minHeight: layout.isTv ? 68 : layout.isCompactPhone ? 52 : layout.isTablet ? 64 : 56,
+        paddingHorizontal: layout.isTv ? 12 : 8,
+        paddingVertical: layout.isCompactPhone ? 5 : 6,
+        borderRadius: layout.isTv ? 14 : 12,
+      },
+      logo: {
+        width: logo,
+        height: logo,
+        borderRadius: layout.isTv ? 11 : 9,
+        marginRight: layout.isCompactPhone ? 8 : 10,
+      },
+      name: {
+        fontSize: layout.isTv ? 17 : layout.isCompactPhone ? 13 : layout.isTablet ? 16 : 14,
+      },
+      meta: {
+        fontSize: layout.isTv ? 12 : layout.isCompactPhone ? 10 : 11,
+        marginTop: 2,
+      },
+      chevron: { fontSize: layout.isTv ? 24 : 20 },
+    };
+  }, [layout.isCompactPhone, layout.isTablet, layout.isTv]);
 
   return (
     <Pressable
@@ -57,9 +85,9 @@ function ChannelRow({ channel, index, onFocus, onPress }: ChannelRowProps) {
       }}
       onBlur={() => setFocused(false)}
       onPress={onPress}
-      style={[styles.channelRow, focused && styles.channelRowFocused]}
+      style={[styles.channelRow, rowSize.row, focused && styles.channelRowFocused]}
     >
-      <View style={styles.logoBox}>
+      <View style={[styles.logoBox, rowSize.logo]}>
         {channel.logo && !logoFailed ? (
           <Image source={{ uri: channel.logo }} style={styles.logo} resizeMode="contain" onError={() => setLogoFailed(true)} />
         ) : (
@@ -68,8 +96,8 @@ function ChannelRow({ channel, index, onFocus, onPress }: ChannelRowProps) {
       </View>
 
       <View style={styles.channelText}>
-        <Text numberOfLines={1} style={styles.channelName}>{channel.name}</Text>
-        <Text numberOfLines={1} style={styles.channelMeta}>
+        <Text numberOfLines={1} style={[styles.channelName, rowSize.name]}>{channel.name}</Text>
+        <Text numberOfLines={1} style={[styles.channelMeta, rowSize.meta]}>
           {[channel.group, channel.country].filter(Boolean).join(' · ') || 'FILMA TV'}
         </Text>
       </View>
@@ -77,7 +105,7 @@ function ChannelRow({ channel, index, onFocus, onPress }: ChannelRowProps) {
       <View style={styles.rowBadges}>
         {backupCount ? <Text style={styles.backupBadge}>+{backupCount}</Text> : null}
         <Text style={styles.liveBadge}>LIVE</Text>
-        <Text style={styles.chevron}>›</Text>
+        <Text style={[styles.chevron, rowSize.chevron]}>›</Text>
       </View>
     </Pressable>
   );
@@ -85,6 +113,7 @@ function ChannelRow({ channel, index, onFocus, onPress }: ChannelRowProps) {
 
 export function LiveTvScreen({ onOpenSettings }: Props) {
   const { state } = useFilma();
+  const layout = useResponsiveLayout();
   const [channels, setChannels] = useState<LiveChannel[]>([]);
   const [query, setQuery] = useState('');
   const [selectedCountry, setSelectedCountry] = useState('Albania');
@@ -286,17 +315,39 @@ export function LiveTvScreen({ onOpenSettings }: Props) {
     setPlayingChannel(channel);
   };
 
+  const selectChannelAt = (index: number) => {
+    const channel = playbackQueue[index];
+    if (!channel) return;
+    setPlaybackIndex(index);
+    setPlayingChannel(channel);
+  };
+
   const zapChannel = (delta: number) => {
     if (!playbackQueue.length) return;
     const nextIndex = (playbackIndex + delta + playbackQueue.length) % playbackQueue.length;
-    setPlaybackIndex(nextIndex);
-    setPlayingChannel(playbackQueue[nextIndex]);
+    selectChannelAt(nextIndex);
   };
+
+  const screenStyle = useMemo(() => ({
+    paddingHorizontal: layout.horizontalPadding,
+    paddingTop: layout.isTv ? 24 : layout.isCompactPhone ? 10 : 14,
+  }), [layout.horizontalPadding, layout.isCompactPhone, layout.isTv]);
+
+  const titleStyle = useMemo(() => ({
+    fontSize: layout.isTv ? 34 : layout.isCompactPhone ? 24 : layout.isTablet ? 30 : 26,
+  }), [layout.isCompactPhone, layout.isTablet, layout.isTv]);
+
+  const searchStyle = useMemo(() => ({
+    minHeight: layout.isTv ? 48 : layout.isCompactPhone ? 40 : 44,
+    fontSize: layout.isTv ? 16 : layout.isCompactPhone ? 13 : 14,
+    borderRadius: layout.isCompactPhone ? 11 : 13,
+    paddingHorizontal: layout.isCompactPhone ? 11 : 13,
+  }), [layout.isCompactPhone, layout.isTv]);
 
   if (!activePlaylists.length) {
     return (
-      <View style={styles.empty}>
-        <Text style={styles.title}>{copy.title}</Text>
+      <View style={[styles.empty, { paddingHorizontal: layout.horizontalPadding }]}>
+        <Text style={[styles.title, titleStyle]}>{copy.title}</Text>
         <Text style={styles.emptyText}>{copy.addSource}</Text>
         <FocusButton label={copy.openSettings} active preferredFocus onPress={onOpenSettings} />
       </View>
@@ -304,10 +355,10 @@ export function LiveTvScreen({ onOpenSettings }: Props) {
   }
 
   return (
-    <View style={styles.root}>
+    <View style={[styles.root, screenStyle]}>
       <View style={styles.header}>
         <View style={styles.headerText}>
-          <Text style={styles.title}>{copy.title}</Text>
+          <Text style={[styles.title, titleStyle]}>{copy.title}</Text>
           <Text style={styles.subtitle}>
             {channels.length} {copy.channels} · {healthySources}/{activePlaylists.length} {copy.sourcesOnline}
           </Text>
@@ -347,7 +398,7 @@ export function LiveTvScreen({ onOpenSettings }: Props) {
         onChangeText={setQuery}
         placeholder={copy.search}
         placeholderTextColor={theme.muted}
-        style={styles.search}
+        style={[styles.search, searchStyle]}
         autoCorrect={false}
         autoCapitalize="none"
       />
@@ -409,6 +460,9 @@ export function LiveTvScreen({ onOpenSettings }: Props) {
           onPreviousChannel={() => zapChannel(-1)}
           onNextChannel={() => zapChannel(1)}
           channelPosition={`${playbackIndex + 1}/${playbackQueue.length}`}
+          channelQueue={playbackQueue}
+          channelIndex={playbackIndex}
+          onSelectChannel={selectChannelAt}
         />
       ) : null}
     </View>
@@ -419,70 +473,55 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: theme.background,
-    paddingHorizontal: Platform.isTV ? 58 : 16,
-    paddingTop: Platform.isTV ? 32 : 18,
   },
   empty: {
     flex: 1,
-    paddingHorizontal: Platform.isTV ? 64 : 24,
     alignItems: 'flex-start',
     justifyContent: 'center',
     backgroundColor: theme.background,
-    gap: 20,
+    gap: 16,
   },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 20 },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
   headerText: { flex: 1 },
-  title: { color: theme.text, fontSize: Platform.isTV ? 42 : 30, fontWeight: '900', letterSpacing: -0.8 },
-  subtitle: { color: theme.muted, fontSize: Platform.isTV ? 16 : 14, marginTop: 6 },
-  emptyText: { color: theme.muted, maxWidth: 680, fontSize: Platform.isTV ? 19 : 16, lineHeight: Platform.isTV ? 28 : 24 },
-  countryRow: { gap: 10, paddingTop: 18, paddingBottom: 8, paddingRight: 20 },
-  countryHint: { color: theme.muted, fontSize: 13, marginBottom: 2 },
+  title: { color: theme.text, fontWeight: '900', letterSpacing: -0.7 },
+  subtitle: { color: theme.muted, fontSize: Platform.isTV ? 14 : 12, marginTop: 4 },
+  emptyText: { color: theme.muted, maxWidth: 680, fontSize: Platform.isTV ? 17 : 14, lineHeight: Platform.isTV ? 24 : 21 },
+  countryRow: { gap: 7, paddingTop: 12, paddingBottom: 6, paddingRight: 14 },
+  countryHint: { color: theme.muted, fontSize: 11, marginBottom: 1 },
   search: {
-    marginTop: 10,
-    marginBottom: 6,
-    minHeight: Platform.isTV ? 56 : 50,
+    marginTop: 7,
+    marginBottom: 4,
     borderWidth: 1,
     borderColor: '#323b50',
-    borderRadius: 15,
     backgroundColor: '#121724',
     color: theme.text,
-    paddingHorizontal: 16,
-    fontSize: Platform.isTV ? 18 : 16,
   },
-  groupRow: { gap: 8, paddingVertical: 9, paddingRight: 20 },
-  loader: { marginTop: 40 },
-  list: { paddingTop: 8, paddingBottom: Platform.isTV ? 80 : 110, gap: 8 },
+  groupRow: { gap: 6, paddingVertical: 7, paddingRight: 14 },
+  loader: { marginTop: 30 },
+  list: { paddingTop: 6, paddingBottom: Platform.isTV ? 70 : 96, gap: 6 },
   channelRow: {
-    minHeight: Platform.isTV ? 82 : 70,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: Platform.isTV ? 14 : 10,
-    paddingVertical: 8,
-    borderRadius: 16,
-    borderWidth: 2,
+    borderWidth: 1,
     borderColor: '#1f2635',
     backgroundColor: '#101521',
   },
-  channelRowFocused: { borderColor: theme.accent, backgroundColor: '#161c2a', transform: [{ scale: 1.012 }] },
+  channelRowFocused: { borderColor: theme.accent, backgroundColor: '#161c2a', transform: [{ scale: 1.008 }] },
   logoBox: {
-    width: Platform.isTV ? 62 : 52,
-    height: Platform.isTV ? 62 : 52,
-    borderRadius: 12,
     backgroundColor: '#fff',
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
-    marginRight: 12,
   },
   logo: { width: '86%', height: '86%' },
-  logoFallback: { color: '#111827', fontSize: 16, fontWeight: '900' },
+  logoFallback: { color: '#111827', fontSize: 13, fontWeight: '900' },
   channelText: { flex: 1, minWidth: 0 },
-  channelName: { color: theme.text, fontSize: Platform.isTV ? 20 : 16, fontWeight: '800' },
-  channelMeta: { color: theme.muted, fontSize: Platform.isTV ? 14 : 12, marginTop: 4 },
-  rowBadges: { flexDirection: 'row', alignItems: 'center', gap: 8, marginLeft: 10 },
-  liveBadge: { color: '#fff', backgroundColor: '#dc264f', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 7, fontSize: 11, fontWeight: '900' },
-  backupBadge: { color: theme.text, backgroundColor: '#252d3d', paddingHorizontal: 7, paddingVertical: 4, borderRadius: 7, fontSize: 11, fontWeight: '800' },
-  chevron: { color: theme.muted, fontSize: 28, marginLeft: 2 },
-  error: { color: '#fda4af', marginVertical: 8 },
-  emptyList: { color: theme.muted, paddingVertical: 28, textAlign: 'center' },
+  channelName: { color: theme.text, fontWeight: '800' },
+  channelMeta: { color: theme.muted },
+  rowBadges: { flexDirection: 'row', alignItems: 'center', gap: 5, marginLeft: 7 },
+  liveBadge: { color: '#fff', backgroundColor: '#dc264f', paddingHorizontal: 6, paddingVertical: 3, borderRadius: 6, fontSize: 9, fontWeight: '900' },
+  backupBadge: { color: theme.text, backgroundColor: '#252d3d', paddingHorizontal: 6, paddingVertical: 3, borderRadius: 6, fontSize: 9, fontWeight: '800' },
+  chevron: { color: theme.muted, marginLeft: 1 },
+  error: { color: '#fda4af', marginVertical: 6, fontSize: 12 },
+  emptyList: { color: theme.muted, paddingVertical: 24, textAlign: 'center' },
 });
