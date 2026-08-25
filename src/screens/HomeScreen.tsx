@@ -346,7 +346,7 @@ const styles = StyleSheet.create({
   },
   heroImage: { opacity: 0.78 },
   heroShade: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: Platform.isTV ? 'rgba(7,9,15,0.42)' : 'rgba(7,9,15,0.55)',
   },
   heroContent: {
