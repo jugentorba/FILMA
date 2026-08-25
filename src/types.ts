@@ -82,6 +82,8 @@ export type PlaylistSource = {
   countryCode?: string;
   countryName?: string;
   countryGroup?: string;
+  kind?: 'm3u' | 'xtream';
+  credentialsKey?: string;
 };
 
 export type LiveChannel = {
