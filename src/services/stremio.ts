@@ -45,6 +45,12 @@ export async function fetchCatalog(
     backdrop: meta.background,
     subtitle: meta.releaseInfo,
     genres: meta.genres,
+    source: {
+      kind: 'stremio',
+      manifestUrl,
+      mediaType: type,
+      mediaId: meta.id,
+    },
   }));
 }
 
