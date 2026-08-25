@@ -19,6 +19,7 @@ export function SettingsScreen() {
     clearAudioLanguages,
     setInterfaceDensity,
     addPlaylist,
+    addXtreamPlaylist,
     setPlaylistEnabled,
     removePlaylist,
     addAddon,
@@ -31,6 +32,11 @@ export function SettingsScreen() {
   const text = stringsFor(state.preferences.appLanguage);
   const [playlistName, setPlaylistName] = useState('');
   const [playlistUrl, setPlaylistUrl] = useState('');
+  const [xtreamName, setXtreamName] = useState('');
+  const [xtreamServer, setXtreamServer] = useState('');
+  const [xtreamUsername, setXtreamUsername] = useState('');
+  const [xtreamPassword, setXtreamPassword] = useState('');
+  const [addingXtream, setAddingXtream] = useState(false);
   const [addonName, setAddonName] = useState('');
   const [manifestUrl, setManifestUrl] = useState('');
   const [pairingCode, setPairingCode] = useState('');
@@ -99,6 +105,16 @@ export function SettingsScreen() {
         automatic: 'Automatique',
         playlistUrlError: 'L’URL de la playlist doit commencer par http:// ou https://',
         playlistAdded: 'Playlist ajoutée.',
+        m3uTitle: 'Playlist M3U / M3U8',
+        xtreamTitle: 'Xtream Codes',
+        xtreamHelp: 'Connecte un fournisseur Xtream avec l’adresse du serveur, le nom d’utilisateur et le mot de passe. Les identifiants restent chiffrés sur cet appareil et ne sont pas envoyés vers Dropbox.',
+        xtreamServer: 'Adresse du serveur (https://provider.example)',
+        xtreamUsername: 'Nom d’utilisateur',
+        xtreamPassword: 'Mot de passe',
+        xtreamConnecting: 'Connexion…',
+        xtreamConnect: 'Connecter Xtream',
+        xtreamAdded: 'Source Xtream vérifiée et ajoutée.',
+        xtreamError: 'FILMA n’a pas pu connecter cette source Xtream.',
         addonUrlError: 'Utilisez une URL manifest.json complète et compatible Stremio.',
         addonChecking: 'Vérification de la source…',
         addonInvalidManifest: 'Ce fichier n’est pas un manifeste Stremio valide.',
@@ -107,6 +123,7 @@ export function SettingsScreen() {
         addonLoadError: 'FILMA n’a pas pu charger ou vérifier cette source.',
         addonAdded: 'Source de films vérifiée et ajoutée.',
         myPlaylist: 'Ma playlist',
+        myXtream: 'Mon fournisseur TV',
         mySource: 'Ma source',
         missingDropboxKey: 'La clé d’application Dropbox est absente de cette version.',
         connectDropbox: 'Connecter Dropbox',
@@ -124,6 +141,16 @@ export function SettingsScreen() {
           automatic: 'Automatik',
           playlistUrlError: 'URL-ja e playlistës duhet të fillojë me http:// ose https://',
           playlistAdded: 'Playlista u shtua.',
+          m3uTitle: 'Playlist M3U / M3U8',
+          xtreamTitle: 'Xtream Codes',
+          xtreamHelp: 'Lidh një ofrues Xtream me adresën e serverit, emrin e përdoruesit dhe fjalëkalimin. Kredencialet ruhen të sigurta vetëm në këtë pajisje dhe nuk dërgohen në Dropbox.',
+          xtreamServer: 'Adresa e serverit (https://provider.example)',
+          xtreamUsername: 'Emri i përdoruesit',
+          xtreamPassword: 'Fjalëkalimi',
+          xtreamConnecting: 'Duke u lidhur…',
+          xtreamConnect: 'Lidh Xtream',
+          xtreamAdded: 'Burimi Xtream u verifikua dhe u shtua.',
+          xtreamError: 'FILMA nuk arriti të lidhë këtë burim Xtream.',
           addonUrlError: 'Përdor një URL të plotë manifest.json të përputhshme me Stremio.',
           addonChecking: 'Po kontrollohet burimi…',
           addonInvalidManifest: 'Ky skedar nuk është një manifest i vlefshëm Stremio.',
@@ -132,6 +159,7 @@ export function SettingsScreen() {
           addonLoadError: 'FILMA nuk arriti ta ngarkojë ose verifikojë këtë burim.',
           addonAdded: 'Burimi i filmave u verifikua dhe u shtua.',
           myPlaylist: 'Playlista ime',
+          myXtream: 'Ofruesi im TV',
           mySource: 'Burimi im',
           missingDropboxKey: 'Ky version nuk ka Dropbox App Key.',
           connectDropbox: 'Lidh Dropbox',
@@ -148,6 +176,16 @@ export function SettingsScreen() {
           automatic: 'Automatic',
           playlistUrlError: 'Playlist URL must start with http:// or https://',
           playlistAdded: 'Playlist added.',
+          m3uTitle: 'M3U / M3U8 playlist',
+          xtreamTitle: 'Xtream Codes',
+          xtreamHelp: 'Connect an Xtream provider with its server address, username and password. Credentials stay encrypted on this device and are not uploaded to Dropbox.',
+          xtreamServer: 'Server address (https://provider.example)',
+          xtreamUsername: 'Username',
+          xtreamPassword: 'Password',
+          xtreamConnecting: 'Connecting…',
+          xtreamConnect: 'Connect Xtream',
+          xtreamAdded: 'Xtream source verified and added.',
+          xtreamError: 'FILMA could not connect this Xtream source.',
           addonUrlError: 'Use a full Stremio-compatible manifest.json URL.',
           addonChecking: 'Checking source…',
           addonInvalidManifest: 'This file is not a valid Stremio manifest.',
@@ -156,6 +194,7 @@ export function SettingsScreen() {
           addonLoadError: 'FILMA could not load or verify this source.',
           addonAdded: 'Movie source verified and added.',
           myPlaylist: 'My playlist',
+          myXtream: 'My TV provider',
           mySource: 'My source',
           missingDropboxKey: 'Dropbox App Key is missing from this build.',
           connectDropbox: 'Connect Dropbox',
@@ -179,6 +218,30 @@ export function SettingsScreen() {
     setPlaylistName('');
     setPlaylistUrl('');
     showMessage(copy.playlistAdded);
+  };
+
+  const addXtreamNow = async () => {
+    if (addingXtream) return;
+    setAddingXtream(true);
+    showMessage(copy.xtreamConnecting);
+    try {
+      await addXtreamPlaylist(
+        xtreamName.trim() || copy.myXtream,
+        xtreamServer,
+        xtreamUsername,
+        xtreamPassword,
+      );
+      setXtreamName('');
+      setXtreamServer('');
+      setXtreamUsername('');
+      setXtreamPassword('');
+      showMessage(copy.xtreamAdded);
+    } catch (reason) {
+      const detail = reason instanceof Error && reason.message ? ` ${reason.message}` : '';
+      showMessage(`${copy.xtreamError}${detail}`, true);
+    } finally {
+      setAddingXtream(false);
+    }
   };
 
   const addAddonNow = async () => {
@@ -440,9 +503,11 @@ export function SettingsScreen() {
           <View style={styles.iconBadge}><Text style={styles.iconText}>TV</Text></View>
           <View style={styles.cardHeaderText}>
             <Text style={styles.cardTitle}>{text.liveSources}</Text>
-            <Text style={styles.help}>M3U / M3U8 URL</Text>
+            <Text style={styles.help}>M3U / M3U8 · Xtream Codes</Text>
           </View>
         </View>
+
+        <Text style={styles.fieldLabel}>{copy.m3uTitle}</Text>
         <TextInput value={playlistName} onChangeText={setPlaylistName} placeholder={text.playlistName} placeholderTextColor={theme.muted} style={styles.input} />
         <TextInput
           value={playlistUrl}
@@ -455,8 +520,48 @@ export function SettingsScreen() {
           style={styles.input}
         />
         <View style={styles.actionRow}><FocusButton label={text.addPlaylist} active onPress={addPlaylistNow} /></View>
+
+        <View style={styles.divider} />
+        <Text style={styles.fieldLabel}>{copy.xtreamTitle}</Text>
+        <Text style={styles.help}>{copy.xtreamHelp}</Text>
+        <View style={styles.formSpacer} />
+        <TextInput value={xtreamName} onChangeText={setXtreamName} placeholder={copy.myXtream} placeholderTextColor={theme.muted} style={styles.input} />
+        <TextInput
+          value={xtreamServer}
+          onChangeText={setXtreamServer}
+          placeholder={copy.xtreamServer}
+          placeholderTextColor={theme.muted}
+          autoCapitalize="none"
+          autoCorrect={false}
+          keyboardType="url"
+          style={styles.input}
+        />
+        <TextInput
+          value={xtreamUsername}
+          onChangeText={setXtreamUsername}
+          placeholder={copy.xtreamUsername}
+          placeholderTextColor={theme.muted}
+          autoCapitalize="none"
+          autoCorrect={false}
+          style={styles.input}
+        />
+        <TextInput
+          value={xtreamPassword}
+          onChangeText={setXtreamPassword}
+          placeholder={copy.xtreamPassword}
+          placeholderTextColor={theme.muted}
+          autoCapitalize="none"
+          autoCorrect={false}
+          secureTextEntry
+          style={styles.input}
+        />
+        <View style={styles.actionRow}>
+          <FocusButton label={addingXtream ? copy.xtreamConnecting : copy.xtreamConnect} active onPress={() => void addXtreamNow()} />
+        </View>
+
         {playlists.map(item => {
           const automatic = item.id.startsWith('auto-tv:');
+          const typeLabel = item.kind === 'xtream' ? 'Xtream' : automatic ? copy.automatic : 'M3U';
           return (
             <View key={item.id} style={styles.sourceRow}>
               <View style={styles.sourceText}>
@@ -464,8 +569,11 @@ export function SettingsScreen() {
                   <Text style={styles.sourceName}>{item.name}</Text>
                   <View style={[styles.sourceStatus, item.enabled ? styles.sourceStatusOn : styles.sourceStatusOff]}>
                     <Text style={[styles.sourceStatusText, item.enabled ? styles.sourceStatusTextOn : undefined]}>
-                      {automatic ? copy.automatic : item.enabled ? text.enabled : text.disabled}
+                      {item.enabled ? text.enabled : text.disabled}
                     </Text>
+                  </View>
+                  <View style={styles.sourceTypePill}>
+                    <Text style={styles.sourceTypeText}>{typeLabel}</Text>
                   </View>
                 </View>
                 <Text numberOfLines={1} style={styles.sourceUrl}>{item.url}</Text>
@@ -520,6 +628,7 @@ const styles = StyleSheet.create({
   fieldLabel: { color: theme.text, fontWeight: '900', marginBottom: 8, fontSize: 13 },
   optionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, alignItems: 'center' },
   divider: { height: 1, backgroundColor: theme.border, marginVertical: 14 },
+  formSpacer: { height: 10 },
   statusPanel: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12,
     padding: 12, borderRadius: 13, backgroundColor: theme.background, borderWidth: 1, borderColor: theme.border, marginBottom: 11,
@@ -560,6 +669,8 @@ const styles = StyleSheet.create({
   sourceStatusOff: { backgroundColor: '#252b39' },
   sourceStatusText: { color: theme.muted, fontSize: 9, fontWeight: '900' },
   sourceStatusTextOn: { color: theme.success },
+  sourceTypePill: { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 999, backgroundColor: theme.accentSoft },
+  sourceTypeText: { color: theme.text, fontSize: 9, fontWeight: '900' },
   lastSync: { color: theme.muted, marginTop: 10, fontSize: 11 },
   deviceCard: { width: '100%', maxWidth: 980, paddingHorizontal: 3, paddingVertical: 8 },
   deviceTitle: { color: theme.muted, fontWeight: '800', fontSize: 10, textTransform: 'uppercase', letterSpacing: 1.1 },
