@@ -1,0 +1,59 @@
+name: Verify YouTube Android TV Player
+
+on:
+  push:
+    branches: [youtube-tv-native-player]
+
+concurrency:
+  group: filma-youtube-tv-native-player
+  cancel-in-progress: true
+
+jobs:
+  build-tv:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      EXPO_PUBLIC_YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.13.1'
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install locked dependencies
+        run: yarn install --frozen-lockfile --non-interactive
+
+      - name: Generate Android TV project
+        run: EXPO_TV=1 npx expo prebuild --platform android --clean --no-install
+
+      - name: Verify generated YouTube activity
+        run: |
+          test -f android/app/src/main/java/com/jugentorba/filma/YouTubeTvActivity.java
+          grep -q 'YouTubeTvActivity' android/app/src/main/AndroidManifest.xml
+          grep -q 'filmayoutube' android/app/src/main/AndroidManifest.xml
+
+      - name: Build Android TV release APK
+        run: |
+          chmod +x android/gradlew
+          cd android
+          ./gradlew assembleRelease --no-daemon
+
+      - name: Stage Android TV APK
+        run: cp android/app/build/outputs/apk/release/app-release.apk FILMA-youtube-android-tv.apk
+
+      - name: Upload verification APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: FILMA-YouTube-Android-TV-verify
+          path: FILMA-youtube-android-tv.apk
+          if-no-files-found: error
+          retention-days: 7
