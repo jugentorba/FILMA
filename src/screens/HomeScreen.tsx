@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, FlatList, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, FlatList, Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { demoMovies } from '../data/demo';
 import { fetchCatalog, fetchManifest } from '../services/stremio';
 import { useFilma } from '../store/FilmaContext';
@@ -23,6 +23,7 @@ export function HomeScreen({ onSelect }: Props) {
   const [addonRows, setAddonRows] = useState<CatalogRow[]>([]);
   const [loadingAddons, setLoadingAddons] = useState(false);
   const [addonError, setAddonError] = useState<string>();
+  const [query, setQuery] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -78,10 +79,13 @@ export function HomeScreen({ onSelect }: Props) {
     };
   }, [state.addons]);
 
-  const allLoadedItems = useMemo(
-    () => [...demoMovies, ...addonRows.flatMap(row => row.items)],
-    [addonRows],
-  );
+  const allLoadedItems = useMemo(() => {
+    const unique = new Map<string, MediaItem>();
+    for (const item of [...demoMovies, ...addonRows.flatMap(row => row.items)]) {
+      if (!unique.has(item.id)) unique.set(item.id, item);
+    }
+    return [...unique.values()];
+  }, [addonRows]);
 
   const continueWatching = useMemo(
     () => allLoadedItems
@@ -89,6 +93,26 @@ export function HomeScreen({ onSelect }: Props) {
       .sort((a, b) => new Date(state.progress[b.id].updatedAt).getTime() - new Date(state.progress[a.id].updatedAt).getTime()),
     [allLoadedItems, state.progress],
   );
+
+  const favorites = useMemo(
+    () => allLoadedItems.filter(item => {
+      const favorite = state.favorites[item.id];
+      return Boolean(favorite && !favorite.deletedAt);
+    }),
+    [allLoadedItems, state.favorites],
+  );
+
+  const searchResults = useMemo(() => {
+    const needle = query.trim().toLocaleLowerCase();
+    if (!needle) return [];
+    return allLoadedItems.filter(item => {
+      const haystack = [item.title, item.subtitle, ...(item.genres ?? [])]
+        .filter(Boolean)
+        .join(' ')
+        .toLocaleLowerCase();
+      return haystack.includes(needle);
+    }).slice(0, 50);
+  }, [allLoadedItems, query]);
 
   const hero = continueWatching[0] ?? addonRows[0]?.items[0] ?? demoMovies[0];
 
@@ -101,6 +125,7 @@ export function HomeScreen({ onSelect }: Props) {
         keyExtractor={item => item.id}
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.rowContent}
+        initialNumToRender={Platform.isTV ? 10 : 6}
         renderItem={({ item }) => {
           const favorite = state.favorites[item.id];
           return (
@@ -129,8 +154,26 @@ export function HomeScreen({ onSelect }: Props) {
         </View>
       </View>
 
+      <View style={styles.searchWrap}>
+        <TextInput
+          value={query}
+          onChangeText={setQuery}
+          placeholder="Search movies, series or genres"
+          placeholderTextColor={theme.muted}
+          style={styles.search}
+          autoCorrect={false}
+          autoCapitalize="none"
+        />
+      </View>
+
+      {query.trim() ? (
+        searchResults.length
+          ? row(`Search Results · ${searchResults.length}`, searchResults, 'search')
+          : <Text style={styles.noResults}>No loaded titles match “{query.trim()}”.</Text>
+      ) : null}
       {continueWatching.length ? row('Continue Watching', continueWatching, 'continue') : null}
-      {addonRows.map(catalog => row(catalog.title, catalog.items, catalog.key))}
+      {favorites.length ? row('Favorites', favorites, 'favorites') : null}
+      {!query.trim() ? addonRows.map(catalog => row(catalog.title, catalog.items, catalog.key)) : null}
       {loadingAddons ? (
         <View style={styles.loadingRow}>
           <ActivityIndicator />
@@ -138,7 +181,7 @@ export function HomeScreen({ onSelect }: Props) {
         </View>
       ) : null}
       {addonError ? <Text style={styles.addonError}>{addonError}</Text> : null}
-      {row('FILMA Playback Tests', demoMovies, 'demo')}
+      {!query.trim() ? row('FILMA Playback Tests', demoMovies, 'demo') : null}
     </ScrollView>
   );
 }
@@ -184,6 +227,26 @@ const styles = StyleSheet.create({
   heroActions: {
     flexDirection: 'row',
     marginTop: 24,
+  },
+  searchWrap: {
+    paddingHorizontal: Platform.isTV ? 64 : 20,
+    paddingTop: Platform.isTV ? 28 : 20,
+  },
+  search: {
+    minHeight: Platform.isTV ? 58 : 50,
+    borderWidth: 1,
+    borderColor: theme.border,
+    borderRadius: 14,
+    backgroundColor: theme.surface,
+    color: theme.text,
+    paddingHorizontal: 16,
+    fontSize: Platform.isTV ? 18 : 16,
+  },
+  noResults: {
+    color: theme.muted,
+    paddingHorizontal: Platform.isTV ? 64 : 20,
+    paddingTop: 28,
+    fontSize: 16,
   },
   section: {
     paddingTop: Platform.isTV ? 34 : 28,
