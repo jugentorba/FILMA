@@ -4,6 +4,9 @@ const YOUTUBE_API_BASE = 'https://www.googleapis.com/youtube/v3';
 const API_KEY = process.env.EXPO_PUBLIC_YOUTUBE_API_KEY?.trim();
 const RTSH_ARKIV_HANDLE = '@RTSHArkiv';
 const YOUTUBE_TIMEOUT_MS = 12_000;
+const YOUTUBE_MUSIC_CATEGORY_ID = '10';
+
+export type YouTubeBrowseMode = 'videos' | 'music';
 
 export type YouTubeVideo = {
   id: string;
@@ -123,25 +126,35 @@ export function youtubeConfigured(): boolean {
   return Boolean(API_KEY);
 }
 
-export async function fetchPopularYouTubeVideos(language: AppLanguage): Promise<YouTubeVideo[]> {
+export async function fetchPopularYouTubeVideos(
+  language: AppLanguage,
+  mode: YouTubeBrowseMode = 'videos',
+): Promise<YouTubeVideo[]> {
   const locale = languageRegion(language);
-  const response = await youtubeGet<VideosResponse>('videos', {
+  const params: Record<string, string> = {
     part: 'snippet',
     chart: 'mostPopular',
     maxResults: '36',
     regionCode: locale.region,
-  });
+  };
+  if (mode === 'music') params.videoCategoryId = YOUTUBE_MUSIC_CATEGORY_ID;
+
+  const response = await youtubeGet<VideosResponse>('videos', params);
   return (response.items ?? []).flatMap(item => {
     const video = mapVideoItem(item);
     return video ? [video] : [];
   });
 }
 
-export async function searchYouTubeVideos(query: string, language: AppLanguage): Promise<YouTubeVideo[]> {
+export async function searchYouTubeVideos(
+  query: string,
+  language: AppLanguage,
+  mode: YouTubeBrowseMode = 'videos',
+): Promise<YouTubeVideo[]> {
   const needle = query.trim();
   if (!needle) return [];
   const locale = languageRegion(language);
-  const response = await youtubeGet<SearchResponse>('search', {
+  const params: Record<string, string> = {
     part: 'snippet',
     type: 'video',
     maxResults: '36',
@@ -149,7 +162,10 @@ export async function searchYouTubeVideos(query: string, language: AppLanguage):
     relevanceLanguage: locale.language,
     regionCode: locale.region,
     safeSearch: 'moderate',
-  });
+  };
+  if (mode === 'music') params.videoCategoryId = YOUTUBE_MUSIC_CATEGORY_ID;
+
+  const response = await youtubeGet<SearchResponse>('search', params);
   return (response.items ?? []).flatMap(item => {
     const video = mapSearchItem(item);
     return video ? [video] : [];

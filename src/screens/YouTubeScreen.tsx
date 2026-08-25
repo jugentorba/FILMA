@@ -1,7 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, FlatList, Image, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { stringsFor } from '../i18n';
-import { fetchPopularYouTubeVideos, searchYouTubeVideos, type YouTubeVideo, youtubeConfigured } from '../services/youtube';
+import {
+  fetchPopularYouTubeVideos,
+  searchYouTubeVideos,
+  type YouTubeBrowseMode,
+  type YouTubeVideo,
+  youtubeConfigured,
+} from '../services/youtube';
 import { useFilma } from '../store/FilmaContext';
 import { FocusButton } from '../ui/FocusButton';
 import { theme } from '../ui/theme';
@@ -40,6 +46,7 @@ export function YouTubeScreen({ onOpenVideo }: Props) {
   const text = stringsFor(state.preferences.appLanguage);
   const listRef = useRef<FlatList<YouTubeVideo>>(null);
   const [query, setQuery] = useState('');
+  const [browseMode, setBrowseMode] = useState<YouTubeBrowseMode>('videos');
   const [videos, setVideos] = useState<YouTubeVideo[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>();
@@ -47,19 +54,50 @@ export function YouTubeScreen({ onOpenVideo }: Props) {
   const configured = youtubeConfigured();
   const columns = Platform.isTV ? 4 : 2;
 
+  const modeCopy = useMemo(() => {
+    if (state.preferences.appLanguage === 'fr') {
+      return {
+        videos: 'Vidéos',
+        music: 'Musique',
+        popularVideos: 'Populaire sur YouTube',
+        popularMusic: 'Musique populaire',
+        videoResults: 'Résultats YouTube',
+        musicResults: 'Résultats musique',
+      };
+    }
+    if (state.preferences.appLanguage === 'sq') {
+      return {
+        videos: 'Video',
+        music: 'Muzikë',
+        popularVideos: 'Popullore në YouTube',
+        popularMusic: 'Muzikë popullore',
+        videoResults: 'Rezultatet e YouTube',
+        musicResults: 'Rezultatet e muzikës',
+      };
+    }
+    return {
+      videos: 'Videos',
+      music: 'Music',
+      popularVideos: 'Popular on YouTube',
+      popularMusic: 'Popular music',
+      videoResults: 'YouTube search results',
+      musicResults: 'Music search results',
+    };
+  }, [state.preferences.appLanguage]);
+
   const loadPopular = useCallback(async () => {
     if (!configured) return;
     setLoading(true);
     setError(undefined);
     try {
-      setVideos(await fetchPopularYouTubeVideos(state.preferences.appLanguage));
+      setVideos(await fetchPopularYouTubeVideos(state.preferences.appLanguage, browseMode));
     } catch (reason) {
       setVideos([]);
       setError(reason instanceof Error ? reason.message : text.youtubeLoadError);
     } finally {
       setLoading(false);
     }
-  }, [configured, state.preferences.appLanguage, text.youtubeLoadError]);
+  }, [browseMode, configured, state.preferences.appLanguage, text.youtubeLoadError]);
 
   useEffect(() => {
     if (!query.trim()) void loadPopular();
@@ -72,7 +110,7 @@ export function YouTubeScreen({ onOpenVideo }: Props) {
     const timer = setTimeout(() => {
       setLoading(true);
       setError(undefined);
-      void searchYouTubeVideos(needle, state.preferences.appLanguage)
+      void searchYouTubeVideos(needle, state.preferences.appLanguage, browseMode)
         .then(results => {
           if (!cancelled) setVideos(results);
         })
@@ -90,12 +128,20 @@ export function YouTubeScreen({ onOpenVideo }: Props) {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [configured, query, state.preferences.appLanguage, text.youtubeSearchError]);
+  }, [browseMode, configured, query, state.preferences.appLanguage, text.youtubeSearchError]);
 
-  const heading = useMemo(
-    () => query.trim() ? text.youtubeSearchResults : text.youtubeTrending,
-    [query, text.youtubeSearchResults, text.youtubeTrending],
-  );
+  const heading = useMemo(() => {
+    if (query.trim()) return browseMode === 'music' ? modeCopy.musicResults : modeCopy.videoResults;
+    return browseMode === 'music' ? modeCopy.popularMusic : modeCopy.popularVideos;
+  }, [browseMode, modeCopy, query]);
+
+  const changeMode = (nextMode: YouTubeBrowseMode) => {
+    if (nextMode === browseMode) return;
+    setBrowseMode(nextMode);
+    setVideos([]);
+    setError(undefined);
+    listRef.current?.scrollToOffset({ offset: 0, animated: false });
+  };
 
   if (!configured) {
     return (
@@ -115,6 +161,21 @@ export function YouTubeScreen({ onOpenVideo }: Props) {
           <Text style={styles.title}>YouTube</Text>
           <Text style={styles.subtitle}>{text.youtubeTvSubtitle}</Text>
         </View>
+      </View>
+
+      <View style={styles.modeRow}>
+        <FocusButton
+          compact
+          label={modeCopy.videos}
+          active={browseMode === 'videos'}
+          onPress={() => changeMode('videos')}
+        />
+        <FocusButton
+          compact
+          label={modeCopy.music}
+          active={browseMode === 'music'}
+          onPress={() => changeMode('music')}
+        />
       </View>
 
       <View style={styles.searchRow}>
@@ -196,7 +257,8 @@ const styles = StyleSheet.create({
   title: { color: theme.text, fontSize: Platform.isTV ? 40 : 30, fontWeight: '900' },
   subtitle: { color: theme.muted, marginTop: 4, fontSize: Platform.isTV ? 15 : 13 },
   emptyText: { color: theme.muted, fontSize: Platform.isTV ? 18 : 16, lineHeight: 27, maxWidth: 760, marginTop: 14 },
-  searchRow: { flexDirection: 'row', gap: 10, marginTop: Platform.isTV ? 24 : 18, alignItems: 'center' },
+  modeRow: { flexDirection: 'row', gap: 10, marginTop: Platform.isTV ? 24 : 18 },
+  searchRow: { flexDirection: 'row', gap: 10, marginTop: 12, alignItems: 'center' },
   search: {
     flex: 1,
     minHeight: Platform.isTV ? 58 : 52,
