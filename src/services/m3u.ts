@@ -1,8 +1,22 @@
 import type { LiveChannel } from '../types';
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 function attr(line: string, name: string): string | undefined {
-  const match = line.match(new RegExp(`${name}="([^"]*)"`, 'i'));
-  return match?.[1]?.trim() || undefined;
+  const key = escapeRegExp(name);
+  const match = line.match(new RegExp(`${key}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s,]+))`, 'i'));
+  return (match?.[1] ?? match?.[2] ?? match?.[3])?.trim() || undefined;
+}
+
+function normalized(value?: string): string {
+  return (value ?? '').trim().toLocaleLowerCase().replace(/\s+/g, ' ');
+}
+
+export function channelIdentity(channel: LiveChannel): string {
+  if (channel.tvgId?.trim()) return `tvg:${normalized(channel.tvgId)}`;
+  return `name:${normalized(channel.group)}:${normalized(channel.name)}`;
 }
 
 export function parseM3U(text: string): LiveChannel[] {
@@ -22,8 +36,11 @@ export function parseM3U(text: string): LiveChannel[] {
       continue;
     }
 
-    const name = meta?.split(',').slice(1).join(',').trim() || `Channel ${channels.length + 1}`;
-    const stableKey = `${attr(meta ?? '', 'tvg-id') ?? ''}|${name}|${line}`;
+    const commaIndex = meta?.indexOf(',') ?? -1;
+    const displayName = commaIndex >= 0 ? meta?.slice(commaIndex + 1).trim() : undefined;
+    const name = displayName || `Channel ${channels.length + 1}`;
+    const tvgId = attr(meta ?? '', 'tvg-id');
+    const stableKey = `${tvgId ?? ''}|${attr(meta ?? '', 'group-title') ?? ''}|${name}|${line}`;
 
     channels.push({
       id: encodeURIComponent(stableKey),
@@ -31,7 +48,7 @@ export function parseM3U(text: string): LiveChannel[] {
       url: line,
       logo: attr(meta ?? '', 'tvg-logo'),
       group: attr(meta ?? '', 'group-title'),
-      tvgId: attr(meta ?? '', 'tvg-id'),
+      tvgId,
     });
     meta = undefined;
   }
@@ -39,17 +56,39 @@ export function parseM3U(text: string): LiveChannel[] {
   return channels;
 }
 
-export async function fetchPlaylist(url: string): Promise<LiveChannel[]> {
-  const response = await fetch(url, { headers: { Accept: 'application/x-mpegURL,text/plain,*/*' } });
-  if (!response.ok) throw new Error(`Playlist HTTP ${response.status}`);
-  return parseM3U(await response.text());
+async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
-export async function checkSource(url: string): Promise<{ ok: boolean; status?: number; error?: string }> {
+export async function fetchPlaylist(url: string, timeoutMs = 15_000): Promise<LiveChannel[]> {
+  const response = await fetchWithTimeout(url, {
+    headers: { Accept: 'application/x-mpegURL,application/vnd.apple.mpegurl,text/plain,*/*' },
+  }, timeoutMs);
+  if (!response.ok) throw new Error(`Playlist HTTP ${response.status}`);
+  const channels = parseM3U(await response.text());
+  if (!channels.length) throw new Error('Playlist contains no playable HTTP/HLS channels.');
+  return channels;
+}
+
+export async function checkSource(url: string, timeoutMs = 10_000): Promise<{ ok: boolean; status?: number; error?: string }> {
   try {
-    const response = await fetch(url, { method: 'GET', headers: { Range: 'bytes=0-2048' } });
+    const response = await fetchWithTimeout(url, {
+      method: 'GET',
+      headers: { Range: 'bytes=0-2048' },
+    }, timeoutMs);
     return { ok: response.ok, status: response.status };
   } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : 'Network error' };
+    return {
+      ok: false,
+      error: error instanceof Error
+        ? (error.name === 'AbortError' ? 'Timed out' : error.message)
+        : 'Network error',
+    };
   }
 }
