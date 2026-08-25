@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import QRCode from 'react-native-qrcode-svg';
 import { useDropboxSync } from '../store/DropboxSyncContext';
 import { useFilma } from '../store/FilmaContext';
 import { FocusButton } from '../ui/FocusButton';
@@ -12,6 +13,7 @@ export function SettingsScreen() {
   const [playlistUrl, setPlaylistUrl] = useState('');
   const [addonName, setAddonName] = useState('');
   const [manifestUrl, setManifestUrl] = useState('');
+  const [pairingCode, setPairingCode] = useState('');
   const [message, setMessage] = useState<string>();
 
   const playlists = useMemo(() => state.playlists.filter(item => !item.deletedAt), [state.playlists]);
@@ -43,11 +45,18 @@ export function SettingsScreen() {
 
   const syncStatus = dropbox.status === 'syncing'
     ? 'Syncing…'
-    : dropbox.connected
-      ? 'Connected'
-      : dropbox.status === 'checking'
-        ? 'Checking…'
-        : 'Not connected';
+    : dropbox.status === 'pairing'
+      ? 'Pairing…'
+      : dropbox.connected
+        ? 'Connected'
+        : dropbox.status === 'checking'
+          ? 'Checking…'
+          : 'Not connected';
+
+  const finishPairing = async () => {
+    await dropbox.finishTvPairing(pairingCode);
+    setPairingCode('');
+  };
 
   return (
     <ScrollView style={styles.root} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
@@ -61,7 +70,7 @@ export function SettingsScreen() {
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Cross-device sync</Text>
         <Text style={styles.help}>
-          Continue Watching, favorites, playlists and add-ons can synchronize through your own Dropbox App Folder. FILMA stores the OAuth session securely on this device and never embeds a Dropbox app secret.
+          Continue Watching, favorites, playlists and add-ons synchronize through your own Dropbox App Folder. FILMA stores the OAuth session securely on each device and never embeds a Dropbox app secret.
         </Text>
 
         <View style={styles.statusRow}>
@@ -75,35 +84,76 @@ export function SettingsScreen() {
           </Text>
         ) : null}
 
-        {dropbox.needsTvPairing ? (
-          <Text style={styles.warning}>
-            Apple TV cannot open the phone-style Dropbox authorization page. Connect Dropbox on a phone first; FILMA TV pairing is the next sync step.
-          </Text>
-        ) : null}
-
         {dropbox.error ? <Text style={styles.error}>{dropbox.error}</Text> : null}
 
-        <View style={styles.syncActions}>
-          {!dropbox.connected ? (
-            <FocusButton
-              label="Connect Dropbox"
-              active
-              onPress={() => void dropbox.connect()}
+        {dropbox.needsTvPairing && dropbox.tvPairingUrl && !dropbox.connected ? (
+          <View style={styles.pairingPanel}>
+            <Text style={styles.pairingTitle}>Connect this TV to Dropbox</Text>
+            <Text style={styles.help}>
+              1. Scan this QR code with your phone. 2. Approve FILMA in Dropbox. 3. Dropbox will show a one-time authorization code. 4. Enter that code below.
+            </Text>
+            <View style={styles.qrWrap}>
+              <QRCode
+                value={dropbox.tvPairingUrl}
+                size={Platform.isTV ? 260 : 190}
+                backgroundColor="#ffffff"
+                color="#000000"
+                quietZone={12}
+              />
+            </View>
+            <TextInput
+              value={pairingCode}
+              onChangeText={setPairingCode}
+              placeholder="Dropbox authorization code"
+              placeholderTextColor={theme.muted}
+              autoCapitalize="none"
+              autoCorrect={false}
+              style={[styles.input, styles.pairingInput]}
             />
-          ) : (
-            <>
+            <View style={styles.syncActions}>
               <FocusButton
-                label={dropbox.status === 'syncing' ? 'Syncing…' : 'Sync now'}
+                label="Finish pairing"
                 active
-                onPress={() => void dropbox.syncNow().catch(() => undefined)}
+                onPress={() => void finishPairing()}
               />
               <FocusButton
-                label="Disconnect"
-                onPress={() => void dropbox.disconnect()}
+                label="New QR code"
+                onPress={() => void dropbox.beginTvPairing()}
               />
-            </>
-          )}
-        </View>
+              <FocusButton
+                label="Cancel"
+                onPress={() => {
+                  setPairingCode('');
+                  dropbox.cancelTvPairing();
+                }}
+              />
+            </View>
+          </View>
+        ) : null}
+
+        {!dropbox.tvPairingUrl || dropbox.connected ? (
+          <View style={styles.syncActions}>
+            {!dropbox.connected ? (
+              <FocusButton
+                label={dropbox.needsTvPairing ? 'Pair Dropbox' : 'Connect Dropbox'}
+                active
+                onPress={() => void dropbox.connect()}
+              />
+            ) : (
+              <>
+                <FocusButton
+                  label={dropbox.status === 'syncing' ? 'Syncing…' : 'Sync now'}
+                  active
+                  onPress={() => void dropbox.syncNow().catch(() => undefined)}
+                />
+                <FocusButton
+                  label="Disconnect"
+                  onPress={() => void dropbox.disconnect()}
+                />
+              </>
+            )}
+          </View>
+        ) : null}
 
         {dropbox.lastSyncAt ? (
           <Text style={styles.lastSync}>Last sync: {new Date(dropbox.lastSyncAt).toLocaleString()}</Text>
@@ -226,7 +276,7 @@ const styles = StyleSheet.create({
   help: {
     color: theme.muted,
     marginBottom: 14,
-    lineHeight: 21,
+    lineHeight: Platform.isTV ? 25 : 21,
   },
   input: {
     minHeight: 52,
@@ -292,6 +342,34 @@ const styles = StyleSheet.create({
     color: '#fda4af',
     lineHeight: 21,
     marginTop: 10,
+  },
+  pairingPanel: {
+    marginTop: 16,
+    padding: Platform.isTV ? 22 : 16,
+    borderWidth: 1,
+    borderColor: theme.border,
+    borderRadius: 16,
+    backgroundColor: theme.background,
+    alignItems: 'flex-start',
+  },
+  pairingTitle: {
+    color: theme.text,
+    fontSize: Platform.isTV ? 23 : 18,
+    fontWeight: '900',
+    marginBottom: 8,
+  },
+  qrWrap: {
+    padding: 10,
+    borderRadius: 12,
+    backgroundColor: '#ffffff',
+    alignSelf: Platform.isTV ? 'center' : 'flex-start',
+    marginVertical: 12,
+  },
+  pairingInput: {
+    width: '100%',
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    fontSize: Platform.isTV ? 20 : 16,
+    marginTop: 6,
   },
   syncActions: {
     flexDirection: 'row',
