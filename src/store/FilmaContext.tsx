@@ -143,9 +143,9 @@ export function FilmaProvider({ children }: { children: React.ReactNode }) {
 
     void discoverOfficialMovieProviders().then(providers => {
       if (cancelled) return;
-      const fallbackCatalog = providers.find(provider => provider.id === 'auto-stremio:com.linvo.cinemeta')
+      const cinemetaCatalog = providers.find(provider => provider.id === 'auto-stremio:com.linvo.cinemeta')
         ?? providers.find(provider => provider.providesCatalog);
-      setAutomaticMovieProviders(fallbackCatalog ? [fallbackCatalog] : []);
+      setAutomaticMovieProviders(cinemetaCatalog ? [cinemetaCatalog] : []);
     }).catch(() => {
       if (!cancelled) setAutomaticMovieProviders([]);
     });
@@ -154,8 +154,10 @@ export function FilmaProvider({ children }: { children: React.ReactNode }) {
   }, [ready]);
 
   const effectiveState = useMemo<FilmaState>(() => {
-    const hasEnabledConfiguredMovieProvider = state.addons.some(source => source.enabled && !source.deletedAt);
-    const movieRuntime = hasEnabledConfiguredMovieProvider ? [] : automaticMovieProviders;
+    // Cinemeta stays active as FILMA's stable catalog/metadata source even when
+    // additional providers are configured. Playback resolution remains separate
+    // and can use any compatible stream-capable provider.
+    const movieRuntime = automaticMovieProviders;
     const tvRuntime = automaticTvPlaylists(
       state.preferences.preferredAudioLanguages,
       state.preferences.appLanguage,
