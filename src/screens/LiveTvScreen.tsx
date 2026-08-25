@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, FlatList, Platform, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, FlatList, Image, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { fetchPlaylist, mergeLiveChannels } from '../services/m3u';
 import { useFilma } from '../store/FilmaContext';
 import type { LiveChannel, MediaItem } from '../types';
@@ -20,7 +20,52 @@ type SourceHealth = {
   error?: string;
 };
 
+type ChannelCardProps = {
+  channel: LiveChannel;
+  index: number;
+  onFocus(index: number): void;
+  onPress(): void;
+};
+
 const AUTO_REFRESH_MS = 5 * 60 * 1000;
+
+function ChannelCard({ channel, index, onFocus, onPress }: ChannelCardProps) {
+  const [focused, setFocused] = useState(false);
+  const [logoFailed, setLogoFailed] = useState(false);
+  const backupCount = channel.alternateUrls?.length ?? 0;
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={channel.name}
+      focusable
+      hasTVPreferredFocus={Platform.isTV && index === 0}
+      onFocus={() => {
+        setFocused(true);
+        onFocus(index);
+      }}
+      onBlur={() => setFocused(false)}
+      onPress={onPress}
+      style={[styles.channelCard, focused && styles.channelCardFocused]}
+    >
+      <View style={styles.logoPanel}>
+        {channel.logo && !logoFailed ? (
+          <Image source={{ uri: channel.logo }} style={styles.logo} resizeMode="contain" onError={() => setLogoFailed(true)} />
+        ) : (
+          <View style={styles.logoFallback}>
+            <Text style={styles.logoFallbackText}>{channel.name.slice(0, 2).toUpperCase()}</Text>
+          </View>
+        )}
+        <View style={styles.liveBadge}><Text style={styles.liveBadgeText}>LIVE</Text></View>
+        {backupCount > 0 ? (
+          <View style={styles.backupBadge}><Text style={styles.backupBadgeText}>+{backupCount}</Text></View>
+        ) : null}
+      </View>
+      <Text numberOfLines={2} style={styles.channelName}>{channel.name}</Text>
+      <Text numberOfLines={1} style={styles.channelGroup}>{channel.group || 'FILMA TV'}</Text>
+    </Pressable>
+  );
+}
 
 export function LiveTvScreen({ onSelect, onOpenSettings }: Props) {
   const { state } = useFilma();
@@ -32,6 +77,7 @@ export function LiveTvScreen({ onSelect, onOpenSettings }: Props) {
   const [sourceHealth, setSourceHealth] = useState<SourceHealth[]>([]);
   const groupListRef = useRef<FlatList<{ name: string; count: number }>>(null);
   const channelListRef = useRef<FlatList<LiveChannel>>(null);
+  const columns = Platform.isTV ? 4 : 2;
 
   const copy = useMemo(() => state.preferences.appLanguage === 'fr'
     ? {
@@ -237,31 +283,37 @@ export function LiveTvScreen({ onSelect, onOpenSettings }: Props) {
                 groupListRef.current?.scrollToIndex({ index, viewPosition: 0.3, animated: true });
               }
             }}
-            onPress={() => setSelectedGroup(item.name)}
+            onPress={() => {
+              setSelectedGroup(item.name);
+              channelListRef.current?.scrollToOffset({ offset: 0, animated: false });
+            }}
           />
         )}
       />
 
-      {loading && !channels.length ? <ActivityIndicator size="large" /> : null}
+      {loading && !channels.length ? <ActivityIndicator size="large" style={styles.loader} /> : null}
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
       <FlatList
+        key={`live-grid-${columns}`}
         ref={channelListRef}
         data={visibleChannels}
+        numColumns={columns}
         keyExtractor={item => item.id}
         contentContainerStyle={styles.list}
-        initialNumToRender={Platform.isTV ? 24 : 14}
-        windowSize={Platform.isTV ? 11 : 7}
+        columnWrapperStyle={styles.channelGridRow}
+        initialNumToRender={Platform.isTV ? 16 : 10}
+        windowSize={Platform.isTV ? 9 : 6}
         onScrollToIndexFailed={({ index, averageItemLength }) => {
-          channelListRef.current?.scrollToOffset({ offset: Math.max(0, index * averageItemLength), animated: true });
+          channelListRef.current?.scrollToOffset({ offset: Math.max(0, Math.floor(index / columns) * averageItemLength), animated: true });
         }}
         renderItem={({ item, index }) => (
-          <FocusButton
-            label={`${item.name}${item.group ? `  ·  ${item.group}` : ''}`}
-            style={styles.channel}
-            onFocus={() => {
+          <ChannelCard
+            channel={item}
+            index={index}
+            onFocus={focusedIndex => {
               if (Platform.isTV) {
-                channelListRef.current?.scrollToIndex({ index, viewPosition: 0.46, animated: true });
+                channelListRef.current?.scrollToIndex({ index: focusedIndex, viewPosition: 0.48, animated: true });
               }
             }}
             onPress={() => onSelect({
@@ -284,8 +336,8 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: theme.background,
-    paddingHorizontal: Platform.isTV ? 64 : 20,
-    paddingTop: Platform.isTV ? 36 : 20,
+    paddingHorizontal: Platform.isTV ? 58 : 16,
+    paddingTop: Platform.isTV ? 32 : 18,
   },
   empty: {
     flex: 1,
@@ -301,13 +353,12 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 20,
   },
-  headerText: {
-    flex: 1,
-  },
+  headerText: { flex: 1 },
   title: {
     color: theme.text,
     fontSize: Platform.isTV ? 42 : 30,
     fontWeight: '900',
+    letterSpacing: -0.8,
   },
   subtitle: {
     color: theme.muted,
@@ -322,37 +373,95 @@ const styles = StyleSheet.create({
   },
   search: {
     marginTop: 20,
-    marginBottom: 12,
-    minHeight: 52,
+    marginBottom: 10,
+    minHeight: Platform.isTV ? 58 : 52,
     borderWidth: 1,
-    borderColor: theme.border,
-    borderRadius: 14,
-    backgroundColor: theme.surface,
+    borderColor: '#323b50',
+    borderRadius: 16,
+    backgroundColor: '#121724',
     color: theme.text,
     paddingHorizontal: 16,
-    fontSize: 16,
+    fontSize: Platform.isTV ? 18 : 16,
   },
   groupRow: {
     gap: 10,
     paddingVertical: 10,
     paddingRight: 20,
   },
+  loader: { marginTop: 40 },
   list: {
-    paddingTop: 10,
-    paddingBottom: 80,
-    gap: 10,
+    paddingTop: 12,
+    paddingBottom: Platform.isTV ? 80 : 110,
   },
-  channel: {
+  channelGridRow: {
+    gap: Platform.isTV ? 16 : 10,
+    marginBottom: Platform.isTV ? 20 : 14,
+  },
+  channelCard: {
+    width: Platform.isTV ? '23.6%' : '48.5%',
+    padding: Platform.isTV ? 8 : 5,
+    borderRadius: 17,
+    borderWidth: 2,
+    borderColor: 'transparent',
+    backgroundColor: theme.surface,
+  },
+  channelCardFocused: {
+    borderColor: theme.accent,
+    backgroundColor: theme.surfaceRaised,
+    transform: [{ scale: 1.035 }],
+    zIndex: 2,
+  },
+  logoPanel: {
     width: '100%',
-    alignItems: 'flex-start',
+    aspectRatio: 16 / 9,
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: '#f4f6fa',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
+  logo: { width: '78%', height: '78%' },
+  logoFallback: { flex: 1, width: '100%', alignItems: 'center', justifyContent: 'center', backgroundColor: '#171d2b' },
+  logoFallbackText: { color: '#e5e9f1', fontSize: Platform.isTV ? 34 : 24, fontWeight: '900', letterSpacing: -1 },
+  liveBadge: {
+    position: 'absolute',
+    left: 8,
+    top: 8,
+    paddingHorizontal: 7,
+    paddingVertical: 4,
+    borderRadius: 6,
+    backgroundColor: theme.accent,
+  },
+  liveBadgeText: { color: '#fff', fontSize: 9, fontWeight: '900', letterSpacing: 0.7 },
+  backupBadge: {
+    position: 'absolute',
+    right: 8,
+    top: 8,
+    minWidth: 26,
+    height: 24,
+    paddingHorizontal: 6,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(5,8,14,0.78)',
+  },
+  backupBadgeText: { color: '#fff', fontSize: 10, fontWeight: '900' },
+  channelName: {
+    color: theme.text,
+    fontSize: Platform.isTV ? 17 : 14,
+    lineHeight: Platform.isTV ? 21 : 18,
+    minHeight: Platform.isTV ? 42 : 36,
+    fontWeight: '850',
+    marginTop: 10,
+  },
+  channelGroup: { color: theme.muted, fontSize: 11, marginTop: 3, marginBottom: 3, fontWeight: '700' },
   error: {
     color: '#fda4af',
     marginVertical: 10,
   },
   emptyList: {
     color: theme.muted,
-    paddingVertical: 28,
+    paddingVertical: 34,
     textAlign: 'center',
   },
 });
