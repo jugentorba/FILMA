@@ -1,16 +1,19 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState, Platform } from 'react-native';
 import {
+  beginDropboxTvPairing,
+  completeDropboxTvPairing,
   connectDropbox,
   disconnectDropbox,
   getDropboxAccessToken,
   hasDropboxSession,
   isDropboxConfigured,
+  type DropboxTvPairing,
 } from '../services/dropboxAuth';
 import { DropboxSyncAdapter } from '../services/dropboxSync';
 import { useFilma } from './FilmaContext';
 
-type SyncStatus = 'checking' | 'disconnected' | 'connected' | 'syncing' | 'error';
+type SyncStatus = 'checking' | 'disconnected' | 'pairing' | 'connected' | 'syncing' | 'error';
 
 type DropboxSyncContextValue = {
   configured: boolean;
@@ -19,7 +22,11 @@ type DropboxSyncContextValue = {
   error?: string;
   lastSyncAt?: string;
   needsTvPairing: boolean;
+  tvPairingUrl?: string;
   connect(): Promise<void>;
+  beginTvPairing(): Promise<void>;
+  finishTvPairing(code: string): Promise<void>;
+  cancelTvPairing(): void;
   disconnect(): Promise<void>;
   syncNow(): Promise<void>;
 };
@@ -31,11 +38,12 @@ const REMOTE_PULL_INTERVAL_MS = 60_000;
 export function DropboxSyncProvider({ children }: { children: React.ReactNode }) {
   const { ready, state, syncWith } = useFilma();
   const configured = isDropboxConfigured();
-  const needsTvPairing = Platform.isTV && Platform.OS === 'ios';
+  const needsTvPairing = Platform.isTV;
   const [connected, setConnected] = useState(false);
   const [status, setStatus] = useState<SyncStatus>('checking');
   const [error, setError] = useState<string>();
   const [lastSyncAt, setLastSyncAt] = useState<string>();
+  const [tvPairing, setTvPairing] = useState<DropboxTvPairing>();
   const inFlight = useRef<Promise<void> | null>(null);
   const lastSyncMs = useRef(0);
   const lastSyncedSignature = useRef('');
@@ -102,6 +110,19 @@ export function DropboxSyncProvider({ children }: { children: React.ReactNode })
       return;
     }
 
+    if (needsTvPairing) {
+      try {
+        const pairing = await beginDropboxTvPairing();
+        setTvPairing(pairing);
+        setError(undefined);
+        setStatus('pairing');
+      } catch (reason) {
+        setError(reason instanceof Error ? reason.message : 'Could not start TV pairing.');
+        setStatus('error');
+      }
+      return;
+    }
+
     setError(undefined);
     try {
       await connectDropbox();
@@ -113,7 +134,48 @@ export function DropboxSyncProvider({ children }: { children: React.ReactNode })
       setError(message);
       setStatus('error');
     }
+  }, [configured, needsTvPairing]);
+
+  const beginTvPairing = useCallback(async () => {
+    if (!configured) {
+      setError('This build is missing EXPO_PUBLIC_DROPBOX_APP_KEY.');
+      setStatus('error');
+      return;
+    }
+    try {
+      setTvPairing(await beginDropboxTvPairing());
+      setError(undefined);
+      setStatus('pairing');
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Could not start TV pairing.');
+      setStatus('error');
+    }
   }, [configured]);
+
+  const finishTvPairing = useCallback(async (code: string) => {
+    if (!tvPairing) {
+      setError('Start Dropbox pairing first.');
+      setStatus('error');
+      return;
+    }
+
+    setError(undefined);
+    try {
+      await completeDropboxTvPairing(code, tvPairing);
+      setTvPairing(undefined);
+      setConnected(true);
+      setStatus('connected');
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Dropbox TV pairing failed.');
+      setStatus('pairing');
+    }
+  }, [tvPairing]);
+
+  const cancelTvPairing = useCallback(() => {
+    setTvPairing(undefined);
+    setError(undefined);
+    setStatus(connected ? 'connected' : 'disconnected');
+  }, [connected]);
 
   useEffect(() => {
     if (connected && status === 'connected' && lastSyncMs.current === 0) {
@@ -126,6 +188,7 @@ export function DropboxSyncProvider({ children }: { children: React.ReactNode })
       await disconnectDropbox();
     } finally {
       setConnected(false);
+      setTvPairing(undefined);
       setStatus('disconnected');
       setError(undefined);
       lastSyncMs.current = 0;
@@ -134,8 +197,6 @@ export function DropboxSyncProvider({ children }: { children: React.ReactNode })
     }
   }, []);
 
-  // Push local changes automatically, but throttle playback progress writes so a
-  // five-second player tick does not become a Dropbox request every five seconds.
   useEffect(() => {
     if (!ready || !connected || status === 'checking' || stateSignature === lastSyncedSignature.current) return;
 
@@ -147,8 +208,6 @@ export function DropboxSyncProvider({ children }: { children: React.ReactNode })
     return () => clearTimeout(timer);
   }, [connected, ready, stateSignature, status, syncNow]);
 
-  // Pull periodically while the app is active so changes from another device
-  // arrive even when this device has not changed its own state.
   useEffect(() => {
     if (!ready || !connected) return;
     const timer = setInterval(() => {
@@ -176,10 +235,28 @@ export function DropboxSyncProvider({ children }: { children: React.ReactNode })
     error,
     lastSyncAt,
     needsTvPairing,
+    tvPairingUrl: tvPairing?.authorizeUrl,
     connect,
+    beginTvPairing,
+    finishTvPairing,
+    cancelTvPairing,
     disconnect,
     syncNow,
-  }), [configured, connect, connected, disconnect, error, lastSyncAt, needsTvPairing, status, syncNow]);
+  }), [
+    beginTvPairing,
+    cancelTvPairing,
+    configured,
+    connect,
+    connected,
+    disconnect,
+    error,
+    finishTvPairing,
+    lastSyncAt,
+    needsTvPairing,
+    status,
+    syncNow,
+    tvPairing?.authorizeUrl,
+  ]);
 
   return <DropboxSyncContext.Provider value={value}>{children}</DropboxSyncContext.Provider>;
 }
