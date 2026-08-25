@@ -55,6 +55,7 @@ jobs:
             --esModuleInterop
           node tests/sync.test.cjs
           node tests/sources.test.cjs
+          node tests/archive-provider.test.cjs
           node tests/m3u.test.cjs
           node tests/local-playlist.test.cjs
           node tests/youtube.test.cjs
