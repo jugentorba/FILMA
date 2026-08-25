@@ -181,6 +181,8 @@ function normalizePlaylist(raw: unknown): PlaylistSource | null {
 
   const createdAt = timestamp(raw.createdAt);
   const deletedAt = stringValue(raw.deletedAt);
+  const kind = raw.kind === 'xtream' ? 'xtream' : raw.kind === 'm3u' ? 'm3u' : undefined;
+  const credentialsKey = stringValue(raw.credentialsKey);
   return {
     id,
     name: stringValue(raw.name) ?? 'My playlist',
@@ -195,6 +197,8 @@ function normalizePlaylist(raw: unknown): PlaylistSource | null {
     ...(stringValue(raw.countryCode) ? { countryCode: stringValue(raw.countryCode) } : {}),
     ...(stringValue(raw.countryName) ? { countryName: stringValue(raw.countryName) } : {}),
     ...(stringValue(raw.countryGroup) ? { countryGroup: stringValue(raw.countryGroup) } : {}),
+    ...(kind ? { kind } : {}),
+    ...(kind === 'xtream' && credentialsKey ? { credentialsKey } : {}),
   };
 }
 
