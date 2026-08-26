@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, ImageBackground, Modal, Platform, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { stringsFor } from '../i18n';
 import { getMetaCached } from '../services/mediaDiscovery';
@@ -33,24 +33,24 @@ export function MediaDetailsModal({ item, favorite, knownPlayable = false, onPla
   const copy = useMemo(() => state.preferences.appLanguage === 'fr'
     ? {
         movie: 'FILM', series: 'SÉRIE', play: 'Lire dans FILMA', episodes: 'Voir les épisodes',
-        checking: 'Vérification des sources…', direct: 'Lecture directe disponible', external: 'Disponible chez un fournisseur externe',
-        none: 'Aucune source de lecture disponible actuellement', unknown: 'FILMA vérifiera les sources avant la lecture.',
-        openProvider: 'Ouvrir le fournisseur', sources: 'Gérer les sources',
+        checking: 'Recherche automatique des sources…', direct: 'Lecture directe disponible', external: 'Disponible chez un fournisseur externe',
+        none: 'Aucune source disponible actuellement', unknown: 'FILMA vérifiera automatiquement les fournisseurs.',
+        openProvider: 'Ouvrir le fournisseur', retry: 'Rechercher à nouveau', sources: 'Sources (optionnel)',
         noSynopsis: 'Aucun résumé disponible pour le moment.', favorite: 'Dans ma liste', addFavorite: 'Ajouter à ma liste',
       }
     : state.preferences.appLanguage === 'sq'
       ? {
           movie: 'FILM', series: 'SERIAL', play: 'Luaj në FILMA', episodes: 'Shiko episodet',
-          checking: 'Duke kontrolluar burimet…', direct: 'Ka transmetim direkt', external: 'I disponueshëm te një ofrues i jashtëm',
-          none: 'Nuk ka burim luajtjeje për momentin', unknown: 'FILMA do të kontrollojë burimet para luajtjes.',
-          openProvider: 'Hap ofruesin', sources: 'Menaxho burimet',
+          checking: 'Duke kërkuar automatikisht burimet…', direct: 'Ka transmetim direkt', external: 'I disponueshëm te një ofrues i jashtëm',
+          none: 'Nuk ka burim të disponueshëm për momentin', unknown: 'FILMA do t’i kontrollojë automatikisht ofruesit.',
+          openProvider: 'Hap ofruesin', retry: 'Kërko përsëri', sources: 'Burimet (opsionale)',
           noSynopsis: 'Nuk ka përshkrim për momentin.', favorite: 'Në listën time', addFavorite: 'Shto në listën time',
         }
       : {
           movie: 'MOVIE', series: 'SERIES', play: 'Play in FILMA', episodes: 'View episodes',
-          checking: 'Checking playback sources…', direct: 'Direct playback available', external: 'Available from an external provider',
-          none: 'No playback source is currently available', unknown: 'FILMA will check providers before playback.',
-          openProvider: 'Open provider', sources: 'Manage sources',
+          checking: 'Searching providers automatically…', direct: 'Direct playback available', external: 'Available from an external provider',
+          none: 'No source is currently available', unknown: 'FILMA will check providers automatically.',
+          openProvider: 'Open provider', retry: 'Search again', sources: 'Sources (optional)',
           noSynopsis: 'No synopsis is available yet.', favorite: 'In My List', addFavorite: 'Add to My List',
         }, [state.preferences.appLanguage]);
 
@@ -72,7 +72,7 @@ export function MediaDetailsModal({ item, favorite, knownPlayable = false, onPla
     return () => { cancelled = true; };
   }, [item]);
 
-  useEffect(() => {
+  const checkAvailability = useCallback(async (force = false) => {
     setProviderName(undefined);
     if (isSeries) {
       setAvailability('unknown');
@@ -87,25 +87,27 @@ export function MediaDetailsModal({ item, favorite, knownPlayable = false, onPla
       return;
     }
 
-    let cancelled = false;
     setAvailability('checking');
-    void resolveStreamsAcrossAddons(item, state.addons, state.preferences.preferredAudioLanguages)
-      .then(resolution => {
-        if (cancelled) return;
-        const best = resolution.streams[0];
-        if (!best) {
-          setAvailability('none');
-          return;
-        }
-        setProviderName(best.providerName);
-        setAvailability(isExternalResolvedStream(best.url) ? 'external' : 'direct');
-      })
-      .catch(() => {
-        if (!cancelled) setAvailability('unknown');
-      });
-
-    return () => { cancelled = true; };
+    try {
+      const resolution = await resolveStreamsAcrossAddons(item, state.addons, state.preferences.preferredAudioLanguages, force);
+      const best = resolution.streams[0];
+      if (!best) {
+        setAvailability('none');
+        return;
+      }
+      setProviderName(best.providerName);
+      setAvailability(isExternalResolvedStream(best.url) ? 'external' : 'direct');
+    } catch {
+      setAvailability('unknown');
+    }
   }, [initiallyPlayable, isSeries, item, state.addons, state.preferences.preferredAudioLanguages]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (cancelled) return;
+    void checkAvailability(false);
+    return () => { cancelled = true; };
+  }, [checkAvailability]);
 
   const backdrop = item.backdrop || item.poster;
   const typeLabel = isSeries ? copy.series : copy.movie;
@@ -127,12 +129,15 @@ export function MediaDetailsModal({ item, favorite, knownPlayable = false, onPla
       : availability === 'external'
         ? copy.openProvider
         : availability === 'none'
-          ? copy.sources
+          ? `↻ ${copy.retry}`
           : undefined;
 
   const handlePrimary = () => {
-    if (isSeries || availability === 'direct' || availability === 'external') onPlay(item);
-    else onOpenSources();
+    if (isSeries || availability === 'direct' || availability === 'external') {
+      onPlay(item);
+      return;
+    }
+    if (availability === 'none') void checkAvailability(true);
   };
 
   return (
@@ -168,6 +173,7 @@ export function MediaDetailsModal({ item, favorite, knownPlayable = false, onPla
 
             <View style={styles.actions}>
               {primaryLabel ? <FocusButton active preferredFocus label={primaryLabel} onPress={handlePrimary} /> : null}
+              {availability === 'none' ? <FocusButton label={copy.sources} onPress={onOpenSources} /> : null}
               <FocusButton label={favorite ? `♥ ${copy.favorite}` : `♡ ${copy.addFavorite}`} onPress={onToggleFavorite} />
               <FocusButton label={text.dismiss} onPress={onClose} />
             </View>
