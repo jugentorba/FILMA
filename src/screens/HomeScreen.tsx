@@ -1,1 +1,1 @@
-export { HomeScreen } from './HomeV2';
+export { HomeProviderV3 as HomeScreen } from './HomeProviderV3';
