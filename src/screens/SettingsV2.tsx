@@ -15,7 +15,6 @@ export function SettingsScreen() {
   const {
     deviceId,
     state,
-    updatePreferences,
     setAppLanguage,
     toggleAudioLanguage,
     clearAudioLanguages,
@@ -53,7 +52,10 @@ export function SettingsScreen() {
   const [validatingAddon, setValidatingAddon] = useState(false);
 
   const playlists = useMemo(() => state.playlists.filter(item => !item.deletedAt), [state.playlists]);
-  const addons = useMemo(() => state.addons.filter(item => !item.deletedAt), [state.addons]);
+  const customAddons = useMemo(
+    () => state.addons.filter(item => !item.deletedAt && !item.id.startsWith('auto-stremio:')),
+    [state.addons],
+  );
 
   const copy = useMemo(() => {
     if (state.preferences.appLanguage === 'fr') {
@@ -61,18 +63,21 @@ export function SettingsScreen() {
         subtitle: 'Choisissez vos langues et la façon dont FILMA trouve et lit le contenu.',
         languageCard: 'Langues', appLanguage: 'Langue de l’application',
         contentLanguages: 'Recherche & audio',
-        contentHelp: 'Ces langues sont utilisées pour les catalogues qui proposent un filtre de langue, pour classer les sources de lecture et pour choisir automatiquement la piste audio. Touchez-les dans l’ordre de priorité souhaité.',
+        contentHelp: 'Ces langues servent à classer les résultats, les sources de lecture et à choisir automatiquement la piste audio.',
         automaticOrder: 'Ordre automatique : Français → Albanais → Anglais',
         resetOrder: 'Ordre automatique', subtitleRule: 'Sous-titres',
-        subtitleHelp: 'FILMA préfère automatiquement les sous-titres dans la langue de l’application, puis dans vos langues audio.',
+        subtitleHelp: 'FILMA préfère la langue de l’application, puis vos langues audio.',
         appearance: 'Apparence', appearanceHelp: 'Compact affiche davantage de contenu. Confortable augmente les cartes et commandes.',
         compact: 'Compact', comfortable: 'Confortable',
-        movieSources: 'Sources films & séries', movieSummary: 'FILMA Free est intégré. Ajoutez ici d’autres fournisseurs compatibles Stremio si vous en utilisez.',
+        movieSources: 'Films & séries',
+        movieSummary: 'FILMA gère automatiquement le catalogue, les épisodes et la recherche de lecture. Les sources personnalisées restent optionnelles.',
+        filmaMovies: 'FILMA Films & Séries',
+        filmaSourceHelp: 'Catalogue, épisodes et recherche de lecture gérés automatiquement par FILMA.',
+        customSources: 'Sources personnalisées',
         tvSources: 'Sources TV', tvSummary: 'Chaînes automatiques + playlist M3U/M3U8, fichier local ou compte Xtream.',
         sync: 'Synchronisation', syncSummary: 'Continue Watching, favoris, profils et sources via Dropbox.',
         deviceMode: 'Mode de l’appareil', phone: 'Téléphone', tv: 'TV',
-        open: 'Gérer', hide: 'Masquer', automatic: 'Automatique', builtIn: 'Intégré',
-        playable: 'Lecture directe', catalog: 'Catalogue',
+        open: 'Gérer', hide: 'Masquer', automatic: 'Automatique',
         playlistUrlError: 'L’URL de la playlist doit commencer par http:// ou https://', playlistAdded: 'Playlist ajoutée.',
         m3uTitle: 'URL M3U / M3U8', fileTitle: 'Fichier M3U / M3U8', importFile: 'Importer un fichier', importing: 'Importation…',
         fileImported: (n: number) => `${n} chaîne${n === 1 ? '' : 's'} importée${n === 1 ? '' : 's'}.`, fileError: 'Impossible d’importer ce fichier.',
@@ -90,18 +95,21 @@ export function SettingsScreen() {
         subtitle: 'Zgjidh gjuhët dhe mënyrën si FILMA kërkon dhe luan përmbajtjen.',
         languageCard: 'Gjuhët', appLanguage: 'Gjuha e aplikacionit',
         contentLanguages: 'Kërkimi & audio',
-        contentHelp: 'Këto gjuhë përdoren për katalogët me filtër gjuhe, për renditjen e burimeve të luajtjes dhe për zgjedhjen automatike të audios. Preki sipas rendit të përparësisë.',
+        contentHelp: 'Këto gjuhë përdoren për renditjen e rezultateve, burimeve të luajtjes dhe zgjedhjen automatike të audios.',
         automaticOrder: 'Rendi automatik: Frëngjisht → Shqip → Anglisht',
         resetOrder: 'Rendi automatik', subtitleRule: 'Titrat',
-        subtitleHelp: 'FILMA preferon titrat në gjuhën e aplikacionit, pastaj në gjuhët e zgjedhura të audios.',
+        subtitleHelp: 'FILMA preferon gjuhën e aplikacionit, pastaj gjuhët e audios.',
         appearance: 'Pamja', appearanceHelp: 'Kompakt shfaq më shumë përmbajtje. Komode rrit kartat dhe komandat.',
         compact: 'Kompakt', comfortable: 'Komode',
-        movieSources: 'Burimet e filmave & serialeve', movieSummary: 'FILMA Free është i integruar. Këtu mund të shtosh ofrues të tjerë Stremio që përdor.',
+        movieSources: 'Filma & seriale',
+        movieSummary: 'FILMA menaxhon automatikisht katalogun, episodet dhe kërkimin e luajtjes. Burimet personale janë opsionale.',
+        filmaMovies: 'FILMA Filma & Seriale',
+        filmaSourceHelp: 'Katalogu, episodet dhe kërkimi i luajtjes menaxhohen automatikisht nga FILMA.',
+        customSources: 'Burime personale',
         tvSources: 'Burimet TV', tvSummary: 'Kanale automatike + M3U/M3U8, skedar lokal ose llogari Xtream.',
         sync: 'Sinkronizimi', syncSummary: 'Vazhdo shikimin, të preferuarat, profilet dhe burimet me Dropbox.',
         deviceMode: 'Modaliteti i pajisjes', phone: 'Telefon', tv: 'TV',
-        open: 'Menaxho', hide: 'Fshih', automatic: 'Automatik', builtIn: 'Integruar',
-        playable: 'Luhet direkt', catalog: 'Katalog',
+        open: 'Menaxho', hide: 'Fshih', automatic: 'Automatik',
         playlistUrlError: 'URL-ja duhet të fillojë me http:// ose https://', playlistAdded: 'Playlista u shtua.',
         m3uTitle: 'URL M3U / M3U8', fileTitle: 'Skedar M3U / M3U8', importFile: 'Importo skedar', importing: 'Duke importuar…',
         fileImported: (n: number) => `${n} kanale u importuan.`, fileError: 'Skedari nuk u importua.',
@@ -118,18 +126,21 @@ export function SettingsScreen() {
       subtitle: 'Choose your languages and how FILMA finds and plays content.',
       languageCard: 'Languages', appLanguage: 'App language',
       contentLanguages: 'Search & audio',
-      contentHelp: 'These languages are used by catalogues that support language filtering, to rank playback sources, and to select the audio track automatically. Tap them in the priority order you want.',
+      contentHelp: 'These languages rank results and playback choices and select the preferred audio track automatically.',
       automaticOrder: 'Automatic order: French → Albanian → English',
       resetOrder: 'Automatic order', subtitleRule: 'Subtitles',
-      subtitleHelp: 'FILMA automatically prefers subtitles in the app language, then your selected audio languages.',
+      subtitleHelp: 'FILMA prefers the app language first, then your selected audio languages.',
       appearance: 'Appearance', appearanceHelp: 'Compact shows more content. Comfortable makes cards and controls larger.',
       compact: 'Compact', comfortable: 'Comfortable',
-      movieSources: 'Movie & series sources', movieSummary: 'FILMA Free is built in. Add other Stremio-compatible providers here if you use them.',
+      movieSources: 'Movies & Series',
+      movieSummary: 'FILMA automatically handles the catalogue, episodes and playback discovery. Custom sources remain optional.',
+      filmaMovies: 'FILMA Movies & Series',
+      filmaSourceHelp: 'Catalogue, episodes and playback discovery are handled automatically by FILMA.',
+      customSources: 'Custom sources',
       tvSources: 'TV sources', tvSummary: 'Automatic channels + M3U/M3U8 URL, local file, or Xtream account.',
       sync: 'Sync', syncSummary: 'Continue Watching, favorites, profiles and sources through Dropbox.',
       deviceMode: 'Device mode', phone: 'Phone', tv: 'TV',
-      open: 'Manage', hide: 'Hide', automatic: 'Automatic', builtIn: 'Built in',
-      playable: 'Direct playback', catalog: 'Catalogue',
+      open: 'Manage', hide: 'Hide', automatic: 'Automatic',
       playlistUrlError: 'Playlist URL must start with http:// or https://', playlistAdded: 'Playlist added.',
       m3uTitle: 'M3U / M3U8 URL', fileTitle: 'M3U / M3U8 file', importFile: 'Import file', importing: 'Importing…',
       fileImported: (n: number) => `${n} channel${n === 1 ? '' : 's'} imported.`, fileError: 'Could not import this file.',
@@ -213,6 +224,7 @@ export function SettingsScreen() {
 
   const syncStatus = dropbox.connected ? text.connected : dropbox.status === 'syncing' ? text.syncing : dropbox.status === 'checking' ? text.checking : text.notConnected;
   const selectedLanguages = state.preferences.preferredAudioLanguages;
+  const movieSourceStatus = customAddons.length ? `${copy.automatic} + ${customAddons.length}` : copy.automatic;
 
   return (
     <ScrollView
@@ -275,28 +287,39 @@ export function SettingsScreen() {
         icon="▶"
         title={copy.movieSources}
         subtitle={copy.movieSummary}
-        status={`${addons.length} ${text.enabled.toLocaleLowerCase()}`}
+        status={movieSourceStatus}
         action={showMovieSources ? copy.hide : copy.open}
         open={showMovieSources}
         onToggle={() => setShowMovieSources(value => !value)}
       >
         <View style={styles.sourceList}>
-          {addons.map(item => {
-            const automatic = item.id.startsWith('auto-stremio:');
-            const builtIn = item.id === 'auto-stremio:com.filma.archive';
-            return (
-              <View key={item.id} style={styles.sourceRow}>
-                <View style={styles.sourceMain}>
-                  <View style={styles.sourceNameLine}>
-                    <Text style={styles.sourceName}>{item.name}</Text>
-                    <View style={[styles.tag, builtIn && styles.tagGood]}><Text style={[styles.tagText, builtIn && styles.tagGoodText]}>{builtIn ? copy.playable : automatic ? copy.automatic : item.enabled ? text.enabled : text.disabled}</Text></View>
-                  </View>
-                  <Text numberOfLines={1} style={styles.sourceUrl}>{builtIn ? copy.builtIn : item.manifestUrl}</Text>
-                </View>
-                {!automatic ? <View style={styles.sourceActions}><FocusButton compact label={item.enabled ? text.disable : text.enable} onPress={() => setAddonEnabled(item.id, !item.enabled)} /><FocusButton compact label={text.remove} onPress={() => removeAddon(item.id)} /></View> : null}
+          <View style={styles.sourceRow}>
+            <View style={styles.sourceMain}>
+              <View style={styles.sourceNameLine}>
+                <Text style={styles.sourceName}>{copy.filmaMovies}</Text>
+                <View style={styles.tagGood}><Text style={styles.tagGoodText}>{copy.automatic}</Text></View>
               </View>
-            );
-          })}
+              <Text style={styles.sourceDescription}>{copy.filmaSourceHelp}</Text>
+            </View>
+          </View>
+
+          {customAddons.length ? <Text style={styles.sourceSectionLabel}>{copy.customSources}</Text> : null}
+          {customAddons.map(item => (
+            <View key={item.id} style={styles.sourceRow}>
+              <View style={styles.sourceMain}>
+                <View style={styles.sourceNameLine}>
+                  <Text style={styles.sourceName}>{item.name}</Text>
+                  <View style={styles.tag}><Text style={styles.tagText}>{item.enabled ? text.enabled : text.disabled}</Text></View>
+                </View>
+                <Text numberOfLines={1} style={styles.sourceUrl}>{item.manifestUrl}</Text>
+              </View>
+              <View style={styles.sourceActions}>
+                <FocusButton compact label={item.enabled ? text.disable : text.enable} onPress={() => setAddonEnabled(item.id, !item.enabled)} />
+                <FocusButton compact label={text.remove} onPress={() => removeAddon(item.id)} />
+              </View>
+            </View>
+          ))}
+
           <View style={styles.divider} />
           <TextInput value={addonName} onChangeText={setAddonName} placeholder={copy.sourceName} placeholderTextColor={theme.muted} style={styles.input} />
           <TextInput value={manifestUrl} onChangeText={setManifestUrl} placeholder="https://provider.example/manifest.json" placeholderTextColor={theme.muted} autoCapitalize="none" autoCorrect={false} keyboardType="url" style={styles.input} />
@@ -403,15 +426,15 @@ function SummaryCard({ icon, title, subtitle, status, action, open, onToggle, ch
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#07090f' },
+  root: { flex: 1, backgroundColor: '#05070b' },
   pageHeader: { maxWidth: 900, marginBottom: 17 },
   kicker: { color: theme.accent, fontSize: 10, fontWeight: '900', letterSpacing: 2.2 },
   pageTitle: { color: '#f7f8fb', fontWeight: '900', letterSpacing: -0.8, marginTop: 4 },
   pageSubtitle: { color: '#8993a5', marginTop: 5, fontSize: 12, lineHeight: 18 },
-  card: { width: '100%', maxWidth: 980, borderRadius: 17, borderWidth: 1, borderColor: '#222a39', backgroundColor: '#10141e', padding: Platform.isTV ? 20 : 14, marginBottom: 12 },
+  card: { width: '100%', maxWidth: 980, borderRadius: 18, backgroundColor: '#11141a', padding: Platform.isTV ? 20 : 14, marginBottom: 12 },
   cardHeading: { flexDirection: 'row', gap: 10, alignItems: 'flex-start', marginBottom: 14 },
   cardHeadingText: { flex: 1 },
-  icon: { width: 37, height: 37, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: '#20283a' },
+  icon: { width: 37, height: 37, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: '#20242d' },
   iconText: { color: '#eef2f8', fontSize: 11, fontWeight: '900' },
   cardTitle: { color: '#f3f5f9', fontSize: Platform.isTV ? 20 : 17, fontWeight: '900' },
   cardSubtitle: { color: '#808a9e', marginTop: 3, fontSize: Platform.isTV ? 13 : 11, lineHeight: Platform.isTV ? 19 : 16 },
@@ -419,28 +442,30 @@ const styles = StyleSheet.create({
   fieldHelp: { color: '#818b9d', fontSize: 10, lineHeight: 15, marginBottom: 9 },
   buttonRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, alignItems: 'center' },
   languageButtons: { marginTop: 7 },
-  divider: { height: 1, backgroundColor: '#252c3a', marginVertical: 14 },
-  infoStrip: { flexDirection: 'row', gap: 9, alignItems: 'flex-start', borderRadius: 12, backgroundColor: '#0b1019', borderWidth: 1, borderColor: '#202837', padding: 11, marginTop: 13 },
+  divider: { height: 1, backgroundColor: '#252a33', marginVertical: 14 },
+  infoStrip: { flexDirection: 'row', gap: 9, alignItems: 'flex-start', borderRadius: 12, backgroundColor: '#0b0e13', padding: 11, marginTop: 13 },
   infoDot: { width: 7, height: 7, borderRadius: 99, backgroundColor: '#60dca2', marginTop: 4 },
   infoText: { flex: 1 },
   infoTitle: { color: '#e8ecf3', fontSize: 11, fontWeight: '900' },
   infoBody: { color: '#7f899b', fontSize: 10, lineHeight: 15, marginTop: 2 },
   summaryFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
-  statusPill: { flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 999, backgroundColor: '#0b1019', paddingHorizontal: 9, paddingVertical: 6 },
+  statusPill: { flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 999, backgroundColor: '#0b0e13', paddingHorizontal: 9, paddingVertical: 6 },
   statusDot: { width: 6, height: 6, borderRadius: 99, backgroundColor: '#5bd89e' },
   statusText: { color: '#a8b1c0', fontSize: 9, fontWeight: '800' },
-  sourceList: { borderTopWidth: 1, borderTopColor: '#252c3a', marginTop: 13, paddingTop: 4 },
-  sourceRow: { flexDirection: Platform.isTV ? 'row' : 'column', alignItems: Platform.isTV ? 'center' : 'stretch', gap: 8, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#202735' },
+  sourceList: { marginTop: 13, paddingTop: 4 },
+  sourceSectionLabel: { color: '#747e90', fontSize: 9, fontWeight: '900', letterSpacing: 0.8, textTransform: 'uppercase', marginTop: 12, marginBottom: 3 },
+  sourceRow: { flexDirection: Platform.isTV ? 'row' : 'column', alignItems: Platform.isTV ? 'center' : 'stretch', gap: 8, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#20242d' },
   sourceMain: { flex: 1 },
   sourceNameLine: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6 },
   sourceName: { color: '#edf0f5', fontSize: 12, fontWeight: '900' },
+  sourceDescription: { color: '#7c8595', marginTop: 4, fontSize: 10, lineHeight: 15 },
   sourceUrl: { color: '#6f798c', marginTop: 3, fontSize: 9 },
   sourceActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 5 },
-  tag: { borderRadius: 999, paddingHorizontal: 7, paddingVertical: 3, backgroundColor: '#252c3a' },
-  tagGood: { backgroundColor: '#173c30' },
+  tag: { borderRadius: 999, paddingHorizontal: 7, paddingVertical: 3, backgroundColor: '#252a33' },
+  tagGood: { borderRadius: 999, paddingHorizontal: 7, paddingVertical: 3, backgroundColor: '#173c30' },
   tagText: { color: '#98a2b4', fontSize: 8, fontWeight: '900' },
-  tagGoodText: { color: '#65dfa8' },
-  input: { width: '100%', minHeight: 43, borderWidth: 1, borderColor: '#30384a', borderRadius: 11, backgroundColor: '#090d15', color: '#eef1f6', paddingHorizontal: 11, marginBottom: 8, fontSize: 12 },
+  tagGoodText: { color: '#65dfa8', fontSize: 8, fontWeight: '900' },
+  input: { width: '100%', minHeight: 43, borderWidth: 1, borderColor: '#303640', borderRadius: 11, backgroundColor: '#090c11', color: '#eef1f6', paddingHorizontal: 11, marginBottom: 8, fontSize: 12 },
   pairingPanel: { paddingTop: 8 },
   qrWrap: { alignSelf: 'flex-start', padding: 6, backgroundColor: '#fff', borderRadius: 10, marginBottom: 10 },
   error: { color: '#fda4af', fontSize: 11, marginBottom: 8 },
