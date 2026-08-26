@@ -2,6 +2,7 @@ const assert = require('node:assert/strict');
 
 const {
   canonicalMediaKey,
+  canonicalSeriesMetaId,
   dedupeMediaItems,
   selectBrowseCatalogs,
 } = require('../.sync-test-build/services/mediaDiscovery.js');
@@ -30,6 +31,12 @@ function item(id, title, year, poster, sourceUrl = manifestUrl) {
   const deduped = dedupeMediaItems([first, better]);
   assert.equal(deduped.length, 1);
   assert.equal(deduped[0].poster, 'https://img.example/poster.jpg');
+}
+
+{
+  assert.equal(canonicalSeriesMetaId('tt31072815'), 'tt31072815');
+  assert.equal(canonicalSeriesMetaId('TT31072815:1:3'), 'tt31072815');
+  assert.equal(canonicalSeriesMetaId('provider-specific-series-id'), undefined);
 }
 
 {
