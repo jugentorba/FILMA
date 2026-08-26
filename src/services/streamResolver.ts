@@ -27,14 +27,31 @@ export type StreamResolution = { streams: ResolvedStream[]; diagnostics: StreamR
 type ManifestCacheEntry = { manifest: StremioManifest; fetchedAt: number };
 type ProviderCandidates = { direct: ResolvedStream[]; external: ResolvedStream[] };
 type MediaIdentity = { type: string; id: string };
+type ResolutionCacheEntry = { expiresAt: number; resolution: StreamResolution };
 
 const MANIFEST_CACHE_TTL_MS = 5 * 60 * 1000;
+const RESOLUTION_CACHE_HIT_MS = 5 * 60 * 1000;
+const RESOLUTION_CACHE_MISS_MS = 60 * 1000;
 const EXTERNAL_PROVIDER_PREFIX = 'external-provider:';
 const manifestCache = new Map<string, ManifestCacheEntry>();
 const recentStreamCandidates = new Map<string, ResolvedStream[]>();
+const resolutionCache = new Map<string, ResolutionCacheEntry>();
 
 export function resolvedStreamsForItem(mediaId: string): ResolvedStream[] {
   return recentStreamCandidates.get(mediaId) ?? [];
+}
+
+export function isExternalResolvedStream(value: string): boolean {
+  return value.startsWith(EXTERNAL_PROVIDER_PREFIX);
+}
+
+export function externalProviderUrlFromResolved(value: string): string | undefined {
+  if (!isExternalResolvedStream(value)) return undefined;
+  try {
+    return decodeURIComponent(value.slice(EXTERNAL_PROVIDER_PREFIX.length));
+  } catch {
+    return undefined;
+  }
 }
 
 async function manifestFor(url: string): Promise<StremioManifest> {
@@ -101,6 +118,42 @@ function emptyDiagnostics(configuredProviders: number): StreamResolutionDiagnost
   };
 }
 
+function providerUrl(provider: AddonSource): string {
+  return provider.manifestUrl.trim().toLocaleLowerCase();
+}
+
+function resolutionCacheKey(item: MediaItem, providers: AddonSource[], preferred: AudioLanguage[]): string {
+  const source = item.source?.kind === 'stremio'
+    ? `${item.source.manifestUrl}|${item.source.mediaType}|${item.source.videoId ?? item.source.mediaId}`
+    : item.id;
+  const providerKey = providers
+    .filter(provider => provider.enabled && !provider.deletedAt)
+    .map(provider => providerUrl(provider))
+    .sort()
+    .join(',');
+  return `${source}|providers=${providerKey}|audio=${preferred.join(',')}`;
+}
+
+function cachedResolution(key: string): StreamResolution | undefined {
+  const cached = resolutionCache.get(key);
+  if (!cached) return undefined;
+  if (cached.expiresAt <= Date.now()) {
+    resolutionCache.delete(key);
+    return undefined;
+  }
+  return cached.resolution;
+}
+
+function finishResolution(item: MediaItem, cacheKey: string, streams: ResolvedStream[], diagnostics: StreamResolutionDiagnostics): StreamResolution {
+  const result = { streams, diagnostics: { ...diagnostics } };
+  recentStreamCandidates.set(item.id, streams);
+  resolutionCache.set(cacheKey, {
+    expiresAt: Date.now() + (streams.length ? RESOLUTION_CACHE_HIT_MS : RESOLUTION_CACHE_MISS_MS),
+    resolution: result,
+  });
+  return result;
+}
+
 async function resolveProviderBatch(providers: AddonSource[], identity: MediaIdentity, diagnostics: StreamResolutionDiagnostics): Promise<ProviderCandidates[]> {
   return Promise.all(providers.map(async addon => {
     try {
@@ -139,24 +192,25 @@ function rankedExternal(candidates: ProviderCandidates[], preferred: AudioLangua
   return dedupeStreams(rankStreamsByPreferredAudio(candidates.flatMap(candidate => candidate.external), preferred));
 }
 
-function providerUrl(provider: AddonSource): string {
-  return provider.manifestUrl.trim().toLocaleLowerCase();
-}
-
 export async function resolveStreamsAcrossAddons(item: MediaItem, addons: AddonSource[], preferredAudioLanguages: AudioLanguage[]): Promise<StreamResolution> {
-  recentStreamCandidates.delete(item.id);
   const configured = addons.filter(addon => addon.enabled && !addon.deletedAt);
+  const cacheKey = resolutionCacheKey(item, configured, preferredAudioLanguages);
+  const cached = cachedResolution(cacheKey);
+  if (cached) {
+    recentStreamCandidates.set(item.id, cached.streams);
+    return cached;
+  }
+
+  recentStreamCandidates.delete(item.id);
   const diagnostics = emptyDiagnostics(configured.length);
   const identity = canonicalIdentity(item);
-  if (!identity) return { streams: [], diagnostics };
+  if (!identity) return finishResolution(item, cacheKey, [], diagnostics);
 
   const source = itemProvider(item);
   const automaticPromise = discoverAutomaticStreamProviders().catch(() => [] as AddonSource[]);
   const allCandidates: ProviderCandidates[] = [];
   const attemptedUrls = new Set<string>();
 
-  // Stage 1: the provider that supplied this item. This is the fastest path for
-  // FILMA Free and for user add-ons that provide both catalog and streams.
   if (source) {
     diagnostics.enabledProviders += 1;
     attemptedUrls.add(providerUrl(source));
@@ -165,12 +219,10 @@ export async function resolveStreamsAcrossAddons(item: MediaItem, addons: AddonS
     const direct = rankedDirect(candidates, preferredAudioLanguages);
     if (direct.length) {
       diagnostics.directPlayableEntries = direct.length;
-      recentStreamCandidates.set(item.id, direct);
-      return { streams: direct, diagnostics };
+      return finishResolution(item, cacheKey, direct, diagnostics);
     }
   }
 
-  // Stage 2: enabled providers already present in the user's app state.
   const configuredFallbacks = mergeMovieProviders([], configured).filter(provider => !attemptedUrls.has(providerUrl(provider)));
   configuredFallbacks.forEach(provider => attemptedUrls.add(providerUrl(provider)));
   diagnostics.enabledProviders += configuredFallbacks.length;
@@ -180,13 +232,10 @@ export async function resolveStreamsAcrossAddons(item: MediaItem, addons: AddonS
     const direct = rankedDirect(candidates, preferredAudioLanguages);
     if (direct.length) {
       diagnostics.directPlayableEntries = direct.length;
-      recentStreamCandidates.set(item.id, direct);
-      return { streams: direct, diagnostics };
+      return finishResolution(item, cacheKey, direct, diagnostics);
     }
   }
 
-  // Stage 3: network-discovered automatic fallbacks only when the local paths
-  // did not produce a direct playable URL.
   const automatic = await automaticPromise;
   diagnostics.automaticProviders = automatic.length;
   const automaticFallbacks = mergeMovieProviders([], automatic).filter(provider => !attemptedUrls.has(providerUrl(provider)));
@@ -199,6 +248,5 @@ export async function resolveStreamsAcrossAddons(item: MediaItem, addons: AddonS
   const direct = rankedDirect(allCandidates, preferredAudioLanguages);
   diagnostics.directPlayableEntries = direct.length;
   const resolved = direct.length ? direct : rankedExternal(allCandidates, preferredAudioLanguages);
-  recentStreamCandidates.set(item.id, resolved);
-  return { streams: resolved, diagnostics };
+  return finishResolution(item, cacheKey, resolved, diagnostics);
 }
