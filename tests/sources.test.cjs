@@ -4,7 +4,12 @@ const {
   automaticTvPlaylists,
   mergeMovieProviders,
   mergeTvPlaylists,
+  officialMovieProvidersFromIndex,
 } = require('../.sync-test-build/services/sourceDiscovery.js');
+const {
+  websiteManifestCandidates,
+  manifestLinksFromWebsiteDocument,
+} = require('../.sync-test-build/services/websiteSourceDiscovery.js');
 const {
   catalogCanLoadWithoutSearch,
   catalogLanguageExtra,
@@ -141,6 +146,52 @@ function playlist(id, name, url) {
     types: ['movie'],
   });
   assert.deepEqual(validation, { valid: false, reason: 'invalid-manifest' });
+}
+
+{
+  const providers = officialMovieProvidersFromIndex([
+    {
+      manifest: { id: 'example.stream', name: 'Example Stream', resources: ['stream'], types: ['movie', 'series'] },
+      transportUrl: 'https://provider.example/manifest.json',
+      flags: { official: true },
+    },
+    {
+      manifest: { id: 'example.subtitles', name: 'Subtitles', resources: ['subtitles'], types: ['movie'] },
+      transportUrl: 'https://subtitles.example/manifest.json',
+      flags: { official: true },
+    },
+    {
+      manifest: { id: 'example.local', name: 'Local', resources: ['stream'], types: ['movie'] },
+      transportUrl: 'http://127.0.0.1:9999/manifest.json',
+      flags: { official: true },
+    },
+  ]);
+  assert.equal(providers.length, 1);
+  assert.equal(providers[0].id, 'auto-stremio:example.stream');
+  assert.equal(providers[0].providesStream, true);
+}
+
+{
+  assert.deepEqual(
+    websiteManifestCandidates('https://example.com/app'),
+    [
+      'https://example.com/app',
+      'https://example.com/app/manifest.json',
+      'https://example.com/manifest.json',
+    ],
+  );
+  assert.deepEqual(websiteManifestCandidates('not a url'), []);
+}
+
+{
+  const links = manifestLinksFromWebsiteDocument(
+    'https://example.com/app',
+    '<link rel="alternate" href="/provider/manifest.json"><script>window.cfg={"manifestUrl":"https://cdn.example.com/manifest.json"}</script>',
+  );
+  assert.deepEqual(links, [
+    'https://example.com/provider/manifest.json',
+    'https://cdn.example.com/manifest.json',
+  ]);
 }
 
 {
