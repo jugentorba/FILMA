@@ -271,6 +271,45 @@ function FilmaApp() {
     await resolveStreamsFor(item);
   };
 
+  const handleOpenEpisodesFromPlayer = useCallback(async () => {
+    const current = selected;
+    if (!current || current.source?.kind !== 'stremio' || current.source.mediaType !== 'series') return;
+    const source = current.source;
+    const seriesTitle = current.title.includes(' · ') ? current.title.split(' · ')[0] : current.title;
+    setResolvingTitle(seriesTitle);
+    try {
+      const meta = await getMetaCached(source.manifestUrl, 'series', source.mediaId);
+      const episodes = (meta.videos ?? []).filter(video => Boolean(video.id && video.title));
+      if (!episodes.length) {
+        setSelected(null);
+        setAvailabilityNotice(playbackCopy.noEpisodes);
+        return;
+      }
+      const series: MediaItem = {
+        id: `series:${source.manifestUrl}:${source.mediaId}`,
+        title: seriesTitle,
+        subtitle: current.subtitle,
+        poster: current.poster,
+        backdrop: current.backdrop,
+        genres: current.genres,
+        year: current.year,
+        source: {
+          kind: 'stremio',
+          manifestUrl: source.manifestUrl,
+          mediaType: 'series',
+          mediaId: source.mediaId,
+        },
+      };
+      setSelected(null);
+      setPendingEpisodes({ series, episodes });
+    } catch (error) {
+      setSelected(null);
+      setPlaybackError(error instanceof Error && error.message ? `${playbackCopy.episodesFailed} ${error.message}` : playbackCopy.episodesFailed);
+    } finally {
+      setResolvingTitle(undefined);
+    }
+  }, [playbackCopy.episodesFailed, playbackCopy.noEpisodes, selected]);
+
   const handleBrowseSelect = (item: MediaItem) => {
     setPlaybackError(undefined);
     clearAvailability();
@@ -294,6 +333,7 @@ function FilmaApp() {
   const detailsFavorite = detailsItem ? state.favorites[detailsItem.id] : undefined;
   const detailsKnownPlayable = Boolean(detailsItem?.streamUrl || detailsItem?.source?.kind === 'youtube' || (detailsItem?.source?.kind === 'stremio' && detailsItem.source.manifestUrl === FILMA_ARCHIVE_MANIFEST_URL));
   const mobilePrimary = screen === 'live' ? 'library' : screen;
+  const selectedIsEpisode = selected?.source?.kind === 'stremio' && selected.source.mediaType === 'series' && Boolean(selected.source.videoId);
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -373,7 +413,17 @@ function FilmaApp() {
       ) : null}
 
       {selectedYouTube ? <YouTubePlayerModal videoId={selectedYouTube.id} title={selectedYouTube.title} channelTitle={selectedYouTube.channelTitle} onClose={() => setSelectedYouTube(null)} /> : null}
-      {selected?.streamUrl ? <PlayerModal item={selected} progress={state.progress[selected.id]} favorite={Boolean(selectedFavorite && !selectedFavorite.deletedAt)} onProgress={handleProgress} onToggleFavorite={() => toggleFavorite(selected.id)} onClose={() => setSelected(null)} /> : null}
+      {selected?.streamUrl ? (
+        <PlayerModal
+          item={selected}
+          progress={state.progress[selected.id]}
+          favorite={Boolean(selectedFavorite && !selectedFavorite.deletedAt)}
+          onProgress={handleProgress}
+          onToggleFavorite={() => toggleFavorite(selected.id)}
+          onOpenEpisodes={selectedIsEpisode ? () => void handleOpenEpisodesFromPlayer() : undefined}
+          onClose={() => setSelected(null)}
+        />
+      ) : null}
     </SafeAreaView>
   );
 }
