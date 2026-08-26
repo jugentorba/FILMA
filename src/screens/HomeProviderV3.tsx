@@ -28,7 +28,7 @@ import {
 } from '../services/stremio';
 import { fetchRtshArchiveMovies, type YouTubeVideo, youtubeConfigured } from '../services/youtube';
 import { useFilma } from '../store/FilmaContext';
-import type { AddonSource, FilmaState, MediaItem } from '../types';
+import type { FilmaState, MediaItem } from '../types';
 import { FocusButton } from '../ui/FocusButton';
 import { MediaCard } from '../ui/MediaCard';
 import { theme } from '../ui/theme';
@@ -44,10 +44,8 @@ type BrowseMode = 'all' | 'movie' | 'series';
 
 type CatalogRow = {
   key: string;
-  providerId: string;
-  providerName: string;
   title: string;
-  subtitle: string;
+  subtitle?: string;
   mediaType: 'movie' | 'series';
   directlyPlayable: boolean;
   items: MediaItem[];
@@ -69,8 +67,6 @@ type HomeCopy = {
   featured: string;
   freeToPlay: string;
   freeToPlayHelp: string;
-  playsHere: string;
-  catalogHelp: string;
   search: string;
   audio: string;
   watched: string;
@@ -80,47 +76,45 @@ type HomeCopy = {
   retry: string;
   noResults: string;
   loading: string;
+  updatedByFilma: string;
 };
 
-const MAX_ROWS = 16;
+const MAX_ROWS = 14;
 
 function copyFor(language: FilmaState['preferences']['appLanguage']): HomeCopy {
   if (language === 'fr') {
     return {
       heading: 'Films & séries', all: 'Tout', movies: 'Films', series: 'Séries',
-      popular: 'Populaires', new: 'Nouveautés', featured: 'Mieux notés',
-      freeToPlay: 'Gratuit · Lecture dans FILMA',
-      freeToPlayHelp: 'Films avec flux directs que FILMA peut lire lui-même.',
-      playsHere: 'LECTURE FILMA', catalogHelp: 'Catalogue synchronisé avec les fournisseurs actifs.',
-      search: 'Rechercher un film ou une série', audio: 'Langues', watched: 'regardé',
-      sourceProblem: 'Une partie du catalogue est indisponible',
-      sourceProblemHelp: 'FILMA continue avec les fournisseurs qui répondent. Les autres seront réessayés automatiquement.',
-      configure: 'Sources', retry: 'Actualiser', noResults: 'Aucun résultat', loading: 'Chargement des films et séries…',
+      popular: 'Populaires', new: 'Nouveautés', featured: 'À découvrir',
+      freeToPlay: 'Gratuit sur FILMA', freeToPlayHelp: 'Lecture directe dans FILMA.',
+      search: 'Rechercher un film ou une série', audio: 'Audio', watched: 'regardé',
+      sourceProblem: 'Certains contenus n’ont pas été actualisés',
+      sourceProblemHelp: 'FILMA continuera automatiquement avec les sources disponibles et réessaiera les autres.',
+      configure: 'Réglages', retry: 'Actualiser', noResults: 'Aucun résultat', loading: 'Chargement…',
+      updatedByFilma: 'Mis à jour automatiquement par FILMA',
     };
   }
   if (language === 'sq') {
     return {
       heading: 'Filma & seriale', all: 'Të gjitha', movies: 'Filma', series: 'Seriale',
-      popular: 'Më të njohura', new: 'Të reja', featured: 'Më të vlerësuara',
-      freeToPlay: 'Falas · Luhet në FILMA',
-      freeToPlayHelp: 'Filma me transmetim direkt që FILMA mund t’i luajë vetë.',
-      playsHere: 'LUHET NË FILMA', catalogHelp: 'Katalog i sinkronizuar me burimet aktive.',
-      search: 'Kërko film ose serial', audio: 'Gjuhët', watched: 'parë',
-      sourceProblem: 'Një pjesë e katalogut nuk u ngarkua',
-      sourceProblemHelp: 'FILMA vazhdon me burimet që punojnë. Burimet e tjera do të provohen përsëri automatikisht.',
-      configure: 'Burimet', retry: 'Rifresko', noResults: 'Nuk u gjet asgjë', loading: 'Duke ngarkuar filma dhe seriale…',
+      popular: 'Më të njohura', new: 'Të reja', featured: 'Për ty',
+      freeToPlay: 'Falas në FILMA', freeToPlayHelp: 'Luhet direkt në FILMA.',
+      search: 'Kërko film ose serial', audio: 'Audio', watched: 'parë',
+      sourceProblem: 'Disa përmbajtje nuk u përditësuan',
+      sourceProblemHelp: 'FILMA do të vazhdojë me burimet që punojnë dhe do t’i provojë të tjerat përsëri automatikisht.',
+      configure: 'Cilësimet', retry: 'Rifresko', noResults: 'Nuk u gjet asgjë', loading: 'Duke ngarkuar…',
+      updatedByFilma: 'Përditësohet automatikisht nga FILMA',
     };
   }
   return {
     heading: 'Movies & Series', all: 'All', movies: 'Movies', series: 'Series',
-    popular: 'Popular', new: 'New', featured: 'Featured',
-    freeToPlay: 'Free · Plays in FILMA',
-    freeToPlayHelp: 'Movies with direct streams FILMA can play itself.',
-    playsHere: 'PLAYS IN FILMA', catalogHelp: 'Catalogue synchronized with your active providers.',
-    search: 'Search movies and series', audio: 'Languages', watched: 'watched',
-    sourceProblem: 'Part of the catalogue is unavailable',
-    sourceProblemHelp: 'FILMA is continuing with the providers that respond. Other providers will be retried automatically.',
-    configure: 'Sources', retry: 'Refresh', noResults: 'No results found', loading: 'Loading movies and series…',
+    popular: 'Popular', new: 'New', featured: 'For You',
+    freeToPlay: 'Free on FILMA', freeToPlayHelp: 'Plays directly in FILMA.',
+    search: 'Search movies and series', audio: 'Audio', watched: 'watched',
+    sourceProblem: 'Some content was not refreshed',
+    sourceProblemHelp: 'FILMA will keep using the available sources and retry the others automatically.',
+    configure: 'Settings', retry: 'Refresh', noResults: 'No results found', loading: 'Loading…',
+    updatedByFilma: 'Updated automatically by FILMA',
   };
 }
 
@@ -150,19 +144,15 @@ function catalogKindLabel(catalog: StremioCatalog, copy: HomeCopy): string {
 }
 
 function rowLabels(
-  addon: AddonSource,
-  manifest: StremioManifest,
+  manifestUrl: string,
   catalog: StremioCatalog,
   copy: HomeCopy,
-): { title: string; subtitle: string } {
-  if (addon.manifestUrl === FILMA_ARCHIVE_MANIFEST_URL) {
+): { title: string; subtitle?: string } {
+  if (manifestUrl === FILMA_ARCHIVE_MANIFEST_URL) {
     return { title: copy.freeToPlay, subtitle: copy.freeToPlayHelp };
   }
   const type = catalog.type === 'series' ? copy.series : copy.movies;
-  return {
-    title: `${catalogKindLabel(catalog, copy)} ${type}`,
-    subtitle: `${manifest.name || addon.name} · ${copy.catalogHelp}`,
-  };
+  return { title: `${catalogKindLabel(catalog, copy)} ${type}` };
 }
 
 function exactIdDedupe(items: MediaItem[]): MediaItem[] {
@@ -178,16 +168,10 @@ function CatalogRowView({ row, state, onSelect }: { row: CatalogRow; state: Film
   const listRef = useRef<FlatList<MediaItem>>(null);
   const layout = useResponsiveLayout();
   return (
-    <View style={{ paddingTop: layout.isTv ? 28 : layout.isCompactPhone ? 18 : 23 }}>
+    <View style={{ paddingTop: layout.isTv ? 30 : layout.isCompactPhone ? 20 : 25 }}>
       <View style={[styles.sectionHeader, { paddingHorizontal: layout.horizontalPadding }]}>
-        <View style={styles.sectionHeadingText}>
-          <View style={styles.sectionTitleLine}>
-            <Text style={[styles.sectionTitle, { fontSize: layout.isTv ? 24 : layout.isCompactPhone ? 17 : 20 }]}>{row.title}</Text>
-            {row.directlyPlayable ? <View style={styles.playablePill}><Text style={styles.playablePillText}>▶</Text></View> : null}
-          </View>
-          <Text numberOfLines={1} style={styles.sectionSubtitle}>{row.subtitle}</Text>
-        </View>
-        <Text style={styles.sectionCount}>{row.items.length}</Text>
+        <Text style={[styles.sectionTitle, { fontSize: layout.isTv ? 25 : layout.isCompactPhone ? 18 : 21 }]}>{row.title}</Text>
+        {row.subtitle ? <Text numberOfLines={1} style={styles.sectionSubtitle}>{row.subtitle}</Text> : null}
       </View>
       <FlatList
         ref={listRef}
@@ -222,18 +206,12 @@ function CatalogRowView({ row, state, onSelect }: { row: CatalogRow; state: Film
 
 function SimpleMediaRow({ title, subtitle, items, state, onSelect }: {
   title: string;
-  subtitle: string;
+  subtitle?: string;
   items: MediaItem[];
   state: FilmaState;
   onSelect(item: MediaItem): void;
 }) {
-  return (
-    <CatalogRowView
-      row={{ key: title, providerId: 'local', providerName: 'FILMA', title, subtitle, mediaType: 'movie', directlyPlayable: false, items }}
-      state={state}
-      onSelect={onSelect}
-    />
-  );
+  return <CatalogRowView row={{ key: title, title, subtitle, mediaType: 'movie', directlyPlayable: false, items }} state={state} onSelect={onSelect} />;
 }
 
 export function HomeProviderV3({ onSelect, onOpenYouTubeVideo, onOpenSettings }: Props) {
@@ -252,10 +230,7 @@ export function HomeProviderV3({ onSelect, onOpenYouTubeVideo, onOpenSettings }:
   const [searching, setSearching] = useState(false);
   const [archiveVideos, setArchiveVideos] = useState<YouTubeVideo[]>([]);
 
-  const activeAddons = useMemo(
-    () => state.addons.filter(addon => addon.enabled && !addon.deletedAt),
-    [state.addons],
-  );
+  const activeAddons = useMemo(() => state.addons.filter(addon => addon.enabled && !addon.deletedAt), [state.addons]);
 
   useEffect(() => {
     let cancelled = false;
@@ -284,11 +259,9 @@ export function HomeProviderV3({ onSelect, onOpenYouTubeVideo, onOpenSettings }:
               catalogExtrasForPreferences(catalog, state.preferences.preferredAudioLanguages),
             );
             if (!items.length) return null;
-            const labels = rowLabels(addon, manifest, catalog, copy);
+            const labels = rowLabels(addon.manifestUrl, catalog, copy);
             return {
               key: `${addon.id}:${catalog.type}:${catalog.id}`,
-              providerId: addon.id,
-              providerName: manifest.name || addon.name,
               title: labels.title,
               subtitle: labels.subtitle,
               mediaType: catalog.type === 'series' ? 'series' : 'movie',
@@ -356,10 +329,9 @@ export function HomeProviderV3({ onSelect, onOpenYouTubeVideo, onOpenSettings }:
     return Boolean(favorite && !favorite.deletedAt);
   }), [state.favorites, visibleItems]);
 
-  const hero = continueWatching[0] ?? playableItems[0] ?? favorites[0] ?? visibleItems[0] ?? null;
+  const hero = continueWatching[0] ?? favorites[0] ?? playableItems[0] ?? visibleItems[0] ?? null;
   const heroProgress = hero ? state.progress[hero.id] : undefined;
   const heroRatio = heroProgress?.durationSeconds ? Math.min(1, Math.max(0, heroProgress.positionSeconds / heroProgress.durationSeconds)) : 0;
-  const heroPlayable = hero?.source?.kind === 'stremio' && hero.source.manifestUrl === FILMA_ARCHIVE_MANIFEST_URL;
 
   const localResults = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase();
@@ -412,13 +384,14 @@ export function HomeProviderV3({ onSelect, onOpenYouTubeVideo, onOpenSettings }:
     setReload(value => value + 1);
   };
 
-  const heroHeight = layout.isTv ? 430 : layout.isTablet ? 360 : layout.isCompactPhone ? 255 : 290;
+  const heroHeight = layout.isTv ? 455 : layout.isTablet ? 385 : layout.isCompactPhone ? 300 : 335;
+  const heroHorizontalMargin = layout.isTv || layout.isTablet ? layout.horizontalPadding : 0;
 
   return (
-    <ScrollView style={styles.root} contentContainerStyle={{ paddingBottom: layout.isTv ? 70 : 108 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-      <View style={[styles.top, { paddingHorizontal: layout.horizontalPadding, paddingTop: layout.isTv ? 28 : 13 }]}>
+    <ScrollView style={styles.root} contentContainerStyle={{ paddingBottom: layout.isTv ? 70 : 104 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+      <View style={[styles.top, { paddingHorizontal: layout.horizontalPadding, paddingTop: layout.isTv ? 26 : 10 }]}>
         <View style={styles.headingRow}>
-          <Text style={[styles.heading, { fontSize: layout.isTv ? 35 : layout.isCompactPhone ? 23 : 27 }]}>{copy.heading}</Text>
+          <Text style={[styles.heading, { fontSize: layout.isTv ? 35 : layout.isCompactPhone ? 24 : 28 }]}>{copy.heading}</Text>
           <View style={styles.modeRow}>
             <FocusButton compact label={copy.all} active={mode === 'all'} onPress={() => setMode('all')} />
             <FocusButton compact label={copy.movies} active={mode === 'movie'} onPress={() => setMode('movie')} />
@@ -441,7 +414,7 @@ export function HomeProviderV3({ onSelect, onOpenYouTubeVideo, onOpenSettings }:
             />
             {searching ? <ActivityIndicator size="small" /> : null}
           </View>
-          <View style={styles.audioBox}>
+          <View style={styles.audioChip}>
             <Text style={styles.audioLabel}>{copy.audio}</Text>
             <Text numberOfLines={1} style={styles.audioValue}>{audioSummary}</Text>
           </View>
@@ -451,16 +424,20 @@ export function HomeProviderV3({ onSelect, onOpenYouTubeVideo, onOpenSettings }:
       {!query.trim() && hero ? (
         <ImageBackground
           source={hero.backdrop ? { uri: hero.backdrop } : hero.poster ? { uri: hero.poster } : undefined}
-          style={[styles.hero, { minHeight: heroHeight, marginHorizontal: layout.horizontalPadding }]}
-          imageStyle={styles.heroImage}
+          style={[
+            styles.hero,
+            {
+              minHeight: heroHeight,
+              marginHorizontal: heroHorizontalMargin,
+              borderRadius: layout.isTv || layout.isTablet ? 22 : 0,
+            },
+          ]}
+          imageStyle={{ borderRadius: layout.isTv || layout.isTablet ? 22 : 0 }}
         >
           <View style={styles.heroShade} />
-          <View style={[styles.heroBody, { padding: layout.isTv ? 34 : layout.isCompactPhone ? 18 : 24 }]}>
-            <View style={[styles.heroBadge, heroPlayable && styles.heroBadgePlayable]}>
-              <Text style={styles.heroBadgeText}>{heroPlayable ? copy.playsHere : (mediaType(hero) === 'series' ? copy.series : copy.movies).toUpperCase()}</Text>
-            </View>
-            <Text numberOfLines={2} style={[styles.heroTitle, { fontSize: layout.isTv ? 43 : layout.isCompactPhone ? 25 : 31, lineHeight: layout.isTv ? 48 : layout.isCompactPhone ? 29 : 36 }]}>{hero.title}</Text>
-            <Text numberOfLines={1} style={styles.heroMeta}>{[hero.year, hero.genres?.slice(0, 2).join(' · '), hero.subtitle].filter(Boolean).join('   •   ')}</Text>
+          <View style={[styles.heroBody, { padding: layout.isTv ? 36 : layout.isCompactPhone ? 20 : 25 }]}>
+            <Text numberOfLines={2} style={[styles.heroTitle, { fontSize: layout.isTv ? 45 : layout.isCompactPhone ? 29 : 34, lineHeight: layout.isTv ? 50 : layout.isCompactPhone ? 33 : 39 }]}>{hero.title}</Text>
+            <Text numberOfLines={1} style={styles.heroMeta}>{[hero.year, hero.genres?.slice(0, 2).join(' · ')].filter(Boolean).join('   •   ')}</Text>
             {heroRatio > 0 ? (
               <View style={styles.heroProgressWrap}>
                 <View style={styles.heroProgressTrack}><View style={[styles.heroProgressFill, { width: `${Math.round(heroRatio * 100)}%` }]} /></View>
@@ -476,18 +453,18 @@ export function HomeProviderV3({ onSelect, onOpenYouTubeVideo, onOpenSettings }:
 
       {query.trim() ? (
         searchResults.length ? (
-          <SimpleMediaRow title={`${text.searchResults} · ${searchResults.length}`} subtitle={copy.catalogHelp} items={searchResults} state={state} onSelect={onSelect} />
+          <SimpleMediaRow title={`${text.searchResults} · ${searchResults.length}`} subtitle={copy.updatedByFilma} items={searchResults} state={state} onSelect={onSelect} />
         ) : !searching ? (
           <View style={[styles.notice, { marginHorizontal: layout.horizontalPadding }]}><Text style={styles.noticeTitle}>{copy.noResults}</Text></View>
         ) : null
       ) : (
         <>
-          {continueWatching.length ? <SimpleMediaRow title={text.continueWatching} subtitle="FILMA" items={continueWatching} state={state} onSelect={onSelect} /> : null}
-          {favorites.length ? <SimpleMediaRow title={text.favorites} subtitle="FILMA" items={favorites} state={state} onSelect={onSelect} /> : null}
+          {continueWatching.length ? <SimpleMediaRow title={text.continueWatching} items={continueWatching} state={state} onSelect={onSelect} /> : null}
+          {favorites.length ? <SimpleMediaRow title={text.favorites} items={favorites} state={state} onSelect={onSelect} /> : null}
           {visibleRows.map(row => <CatalogRowView key={row.key} row={row} state={state} onSelect={onSelect} />)}
           {mode !== 'series' && rtshItems.length ? (
             <SimpleMediaRow
-              title={state.preferences.appLanguage === 'fr' ? 'Films albanais · RTSH Arkiv' : state.preferences.appLanguage === 'sq' ? 'Filma shqiptarë · RTSH Arkiv' : 'Albanian Movies · RTSH Arkiv'}
+              title={state.preferences.appLanguage === 'fr' ? 'Films albanais' : state.preferences.appLanguage === 'sq' ? 'Filma shqiptarë' : 'Albanian Movies'}
               subtitle="RTSH Arkiv"
               items={rtshItems}
               state={state}
@@ -524,44 +501,35 @@ export function HomeProviderV3({ onSelect, onOpenYouTubeVideo, onOpenSettings }:
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#07090f' },
+  root: { flex: 1, backgroundColor: '#05070b' },
   top: { paddingBottom: 14 },
   headingRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
-  heading: { color: '#f7f8fb', fontWeight: '900', letterSpacing: -0.8 },
+  heading: { color: '#fafbfc', fontWeight: '900', letterSpacing: -0.9 },
   modeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  searchRow: { marginTop: 12, gap: 8 },
-  searchRowWide: { flexDirection: 'row', alignItems: 'stretch' },
-  searchBox: { flex: 1, minHeight: Platform.isTV ? 52 : 44, flexDirection: 'row', alignItems: 'center', gap: 9, paddingHorizontal: 13, borderRadius: 14, borderWidth: 1, borderColor: '#242b3a', backgroundColor: '#10141e' },
-  searchIcon: { color: '#939cad', fontSize: 21, fontWeight: '800' },
-  searchInput: { flex: 1, color: '#f5f7fb', fontSize: Platform.isTV ? 17 : 14, paddingVertical: 0 },
-  audioBox: { minHeight: Platform.isTV ? 52 : 44, minWidth: Platform.isTV ? 290 : 0, maxWidth: Platform.isTV ? 360 : undefined, justifyContent: 'center', paddingHorizontal: 13, borderRadius: 14, borderWidth: 1, borderColor: '#242b3a', backgroundColor: '#10141e' },
-  audioLabel: { color: '#7f899b', fontSize: 9, fontWeight: '900', letterSpacing: 1, textTransform: 'uppercase' },
-  audioValue: { color: '#eef1f6', marginTop: 2, fontSize: 12, fontWeight: '800' },
-  hero: { overflow: 'hidden', borderRadius: Platform.isTV ? 22 : 17, justifyContent: 'flex-end', backgroundColor: '#111622', borderWidth: 1, borderColor: '#20283a' },
-  heroImage: { borderRadius: Platform.isTV ? 22 : 17, opacity: 0.78 },
-  heroShade: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: 'rgba(3,5,10,0.57)' },
-  heroBody: { maxWidth: Platform.isTV ? 760 : 620 },
-  heroBadge: { alignSelf: 'flex-start', borderRadius: 999, paddingHorizontal: 9, paddingVertical: 5, backgroundColor: 'rgba(12,16,25,0.88)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.16)' },
-  heroBadgePlayable: { backgroundColor: 'rgba(26,92,66,0.91)', borderColor: 'rgba(99,241,175,0.45)' },
-  heroBadgeText: { color: '#f7f8fb', fontSize: 9, fontWeight: '900', letterSpacing: 0.9 },
-  heroTitle: { color: '#ffffff', marginTop: 11, fontWeight: '900', letterSpacing: -1 },
-  heroMeta: { color: '#d4dae5', marginTop: 7, fontSize: Platform.isTV ? 14 : 11, fontWeight: '700' },
+  searchRow: { marginTop: 12, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  searchRowWide: { alignItems: 'stretch' },
+  searchBox: { flex: 1, minHeight: Platform.isTV ? 52 : 44, flexDirection: 'row', alignItems: 'center', gap: 9, paddingHorizontal: 14, borderRadius: 15, backgroundColor: '#11141a' },
+  searchIcon: { color: '#929aab', fontSize: 21, fontWeight: '800' },
+  searchInput: { flex: 1, color: '#f6f7f9', fontSize: Platform.isTV ? 17 : 14, paddingVertical: 0 },
+  audioChip: { maxWidth: Platform.isTV ? 330 : 132, minHeight: Platform.isTV ? 52 : 44, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 15, backgroundColor: '#11141a' },
+  audioLabel: { color: '#707989', fontSize: 8, fontWeight: '900', letterSpacing: 0.8, textTransform: 'uppercase' },
+  audioValue: { color: '#dfe3e9', marginTop: 1, fontSize: 10, fontWeight: '800' },
+  hero: { overflow: 'hidden', justifyContent: 'flex-end', backgroundColor: '#10131a' },
+  heroShade: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: 'rgba(2,4,8,0.52)' },
+  heroBody: { maxWidth: Platform.isTV ? 760 : 620, justifyContent: 'flex-end' },
+  heroTitle: { color: '#fff', fontWeight: '900', letterSpacing: -1.1 },
+  heroMeta: { color: '#d1d6df', marginTop: 7, fontSize: Platform.isTV ? 14 : 11, fontWeight: '700' },
   heroActions: { flexDirection: 'row', marginTop: 16 },
   heroProgressWrap: { width: '75%', maxWidth: 370, marginTop: 13 },
   heroProgressTrack: { height: 4, overflow: 'hidden', borderRadius: 99, backgroundColor: 'rgba(255,255,255,0.27)' },
   heroProgressFill: { height: '100%', borderRadius: 99, backgroundColor: theme.accent },
   heroProgressText: { color: '#ced5e2', marginTop: 4, fontSize: 9, fontWeight: '800' },
-  sectionHeader: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12, marginBottom: 9 },
-  sectionHeadingText: { flex: 1 },
-  sectionTitleLine: { flexDirection: 'row', alignItems: 'center', gap: 7 },
-  sectionTitle: { color: '#f4f6fa', fontWeight: '900', letterSpacing: -0.4 },
-  sectionSubtitle: { color: '#7e8799', fontSize: 10, marginTop: 2, fontWeight: '600' },
-  sectionCount: { color: '#687286', fontWeight: '900', fontSize: 10, paddingBottom: 2 },
-  playablePill: { width: 21, height: 21, borderRadius: 99, backgroundColor: '#173d31', alignItems: 'center', justifyContent: 'center' },
-  playablePillText: { color: '#69e7ad', fontSize: 9, fontWeight: '900' },
+  sectionHeader: { paddingBottom: 10 },
+  sectionTitle: { color: '#f5f6f8', fontWeight: '900', letterSpacing: -0.45 },
+  sectionSubtitle: { color: '#777f8e', fontSize: 10, marginTop: 2, fontWeight: '600' },
   loadingRow: { flexDirection: 'row', alignItems: 'center', gap: 9, paddingTop: 22 },
   loadingText: { color: '#8791a4', fontWeight: '700', fontSize: 12 },
-  notice: { marginTop: 20, borderRadius: 14, borderWidth: 1, borderColor: '#2a3141', backgroundColor: '#10141e', padding: 13, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  notice: { marginTop: 20, borderRadius: 16, backgroundColor: '#11141a', padding: 14, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
   noticeTextBlock: { flex: 1, minWidth: 190 },
   noticeTitle: { color: '#eff2f7', fontSize: 14, fontWeight: '900' },
   noticeText: { color: '#8993a5', marginTop: 4, fontSize: 11, lineHeight: 16 },
