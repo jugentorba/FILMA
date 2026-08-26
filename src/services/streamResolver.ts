@@ -188,10 +188,6 @@ function rankedDirect(candidates: ProviderCandidates[], preferred: AudioLanguage
   return dedupeStreams(rankStreamsByPreferredAudio(candidates.flatMap(candidate => candidate.direct), preferred));
 }
 
-function rankedExternal(candidates: ProviderCandidates[], preferred: AudioLanguage[]): ResolvedStream[] {
-  return dedupeStreams(rankStreamsByPreferredAudio(candidates.flatMap(candidate => candidate.external), preferred));
-}
-
 export async function resolveStreamsAcrossAddons(
   item: MediaItem,
   addons: AddonSource[],
@@ -278,6 +274,7 @@ export async function resolveStreamsAcrossAddons(
     }
   }
 
-  const external = rankedExternal(allCandidates, preferredAudioLanguages);
-  return finishResolution(item, cacheKey, external, diagnostics);
+  // Keep external provider links in diagnostics only. They are not direct media
+  // URLs and must never be sent to FILMA's internal video player as if playable.
+  return finishResolution(item, cacheKey, [], diagnostics);
 }
