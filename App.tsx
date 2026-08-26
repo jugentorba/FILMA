@@ -41,16 +41,17 @@ type PlaybackCopy = {
   itemNotPlayable: string;
   noEpisodes: string;
   episodesFailed: string;
-  sources: string;
+  retry: string;
+  sourcesOptional: string;
 };
 
 function playbackCopyFor(language: AppLanguage): PlaybackCopy {
   if (language === 'fr') {
     return {
-      noEnabledSource: 'Aucune source de lecture n’est configurée pour les films et séries.',
+      noEnabledSource: 'Aucune source de lecture automatique n’est disponible pour ce titre.',
       manifestsUnavailable: 'FILMA n’a pas pu contacter les fournisseurs de lecture. Vérifiez la connexion et réessayez.',
-      noStreamResource: 'Tes fournisseurs actuels donnent un catalogue, mais aucun ne fournit de lecture pour ce titre.',
-      noCompatibleProvider: 'Ce titre est dans le catalogue, mais aucun fournisseur actif ne prend actuellement en charge sa lecture.',
+      noStreamResource: 'Les fournisseurs trouvés donnent un catalogue, mais aucun ne fournit de lecture pour ce titre.',
+      noCompatibleProvider: 'Ce titre est dans le catalogue, mais aucun fournisseur trouvé ne prend actuellement en charge sa lecture.',
       noProviderResponse: 'Les fournisseurs compatibles n’ont renvoyé aucune disponibilité de lecture pour ce titre.',
       indirectEntries: count => `${count} option${count === 1 ? '' : 's'} externe${count === 1 ? '' : 's'} détectée${count === 1 ? '' : 's'}, mais aucune lecture directe dans FILMA.`,
       noPlayableStream: 'Ce titre est disponible dans le catalogue, mais aucune source de lecture n’est disponible pour le moment.',
@@ -61,15 +62,16 @@ function playbackCopyFor(language: AppLanguage): PlaybackCopy {
       itemNotPlayable: 'Ce contenu ne fournit pas de source de lecture.',
       noEpisodes: 'Cette série n’a renvoyé aucune liste d’épisodes.',
       episodesFailed: 'FILMA n’a pas pu charger les épisodes de cette série.',
-      sources: 'Sources',
+      retry: 'Rechercher à nouveau',
+      sourcesOptional: 'Sources (optionnel)',
     };
   }
   if (language === 'sq') {
     return {
-      noEnabledSource: 'Nuk ka burim aktiv për luajtjen e filmave dhe serialeve.',
+      noEnabledSource: 'Nuk ka burim automatik luajtjeje për këtë titull.',
       manifestsUnavailable: 'FILMA nuk arriti të kontaktojë burimet e luajtjes. Kontrollo internetin dhe provo përsëri.',
-      noStreamResource: 'Burimet aktuale japin katalog, por asnjëri nuk ofron luajtje për këtë titull.',
-      noCompatibleProvider: 'Ky titull është në katalog, por asnjë burim aktiv nuk e mbështet aktualisht luajtjen e tij.',
+      noStreamResource: 'Burimet e gjetura japin katalog, por asnjëri nuk ofron luajtje për këtë titull.',
+      noCompatibleProvider: 'Ky titull është në katalog, por asnjë burim i gjetur nuk e mbështet aktualisht luajtjen e tij.',
       noProviderResponse: 'Burimet e përputhshme nuk kthyen disponueshmëri luajtjeje për këtë titull.',
       indirectEntries: count => `U gjetën ${count} opsione të jashtme, por jo transmetim direkt në FILMA.`,
       noPlayableStream: 'Ky titull është në katalog, por për momentin nuk ka burim luajtjeje.',
@@ -80,14 +82,15 @@ function playbackCopyFor(language: AppLanguage): PlaybackCopy {
       itemNotPlayable: 'Ky përmbajtje nuk ka burim luajtjeje.',
       noEpisodes: 'Ky serial nuk ktheu asnjë listë episodesh.',
       episodesFailed: 'FILMA nuk arriti të ngarkojë episodet e këtij seriali.',
-      sources: 'Burimet',
+      retry: 'Kërko përsëri',
+      sourcesOptional: 'Burimet (opsionale)',
     };
   }
   return {
-    noEnabledSource: 'No playback provider is configured for movies and series.',
+    noEnabledSource: 'No automatic playback provider is currently available for this title.',
     manifestsUnavailable: 'FILMA could not contact the playback providers. Check the connection and try again.',
-    noStreamResource: 'Your current providers supply catalogue data, but none supplies playback for this title.',
-    noCompatibleProvider: 'This title is in the catalogue, but none of your active providers currently supports playback for it.',
+    noStreamResource: 'The providers found supply catalogue data, but none supplies playback for this title.',
+    noCompatibleProvider: 'This title is in the catalogue, but none of the providers found currently supports playback for it.',
     noProviderResponse: 'Compatible providers returned no playback availability for this title.',
     indirectEntries: count => `${count} external option${count === 1 ? '' : 's'} found, but no direct playback in FILMA.`,
     noPlayableStream: 'This title is in the catalogue, but no playback source is currently available.',
@@ -98,7 +101,8 @@ function playbackCopyFor(language: AppLanguage): PlaybackCopy {
     itemNotPlayable: 'This content does not provide a playback source.',
     noEpisodes: 'This series source returned no episode list.',
     episodesFailed: 'FILMA could not load this series episode list.',
-    sources: 'Sources',
+    retry: 'Search again',
+    sourcesOptional: 'Sources (optional)',
   };
 }
 
@@ -122,34 +126,43 @@ function FilmaApp() {
   const [detailsItem, setDetailsItem] = useState<MediaItem | null>(null);
   const [selectedYouTube, setSelectedYouTube] = useState<YouTubeVideo | null>(null);
   const [pendingEpisodes, setPendingEpisodes] = useState<PendingEpisodes | null>(null);
+  const [pendingRetryItem, setPendingRetryItem] = useState<MediaItem | null>(null);
   const [resolvingTitle, setResolvingTitle] = useState<string>();
   const [playbackError, setPlaybackError] = useState<string>();
   const [availabilityNotice, setAvailabilityNotice] = useState<string>();
 
-  const goMovies = () => { setMode('movies'); setScreen('home'); };
-  const goLive = () => { setMode('live'); setScreen('live'); };
-  const goYouTube = () => { if (isTvMode) setScreen('youtube'); };
-  const goSettings = () => { setDetailsItem(null); setAvailabilityNotice(undefined); setScreen('settings'); };
+  const clearAvailability = () => {
+    setAvailabilityNotice(undefined);
+    setPendingRetryItem(null);
+  };
 
-  const resolveStreamsFor = async (item: MediaItem) => {
+  const goMovies = () => { clearAvailability(); setMode('movies'); setScreen('home'); };
+  const goLive = () => { clearAvailability(); setMode('live'); setScreen('live'); };
+  const goYouTube = () => { if (isTvMode) { clearAvailability(); setScreen('youtube'); } };
+  const goSettings = () => { setDetailsItem(null); clearAvailability(); setScreen('settings'); };
+
+  const resolveStreamsFor = async (item: MediaItem, force = false) => {
     if (item.source?.kind !== 'stremio') {
       setPlaybackError(playbackCopy.missingMediaIdentity);
       return;
     }
     setPlaybackError(undefined);
     setAvailabilityNotice(undefined);
+    setPendingRetryItem(null);
     setResolvingTitle(item.title);
     try {
-      const resolution = await resolveStreamsAcrossAddons(item, state.addons, state.preferences.preferredAudioLanguages);
+      const resolution = await resolveStreamsAcrossAddons(item, state.addons, state.preferences.preferredAudioLanguages, force);
       const best = resolution.streams[0];
       if (!best) {
-        if (resolution.diagnostics.manifestsLoaded === 0 && resolution.diagnostics.enabledProviders > 0) setPlaybackError(resolutionMessage(resolution.diagnostics, playbackCopy));
-        else setAvailabilityNotice(resolutionMessage(resolution.diagnostics, playbackCopy));
+        setPendingRetryItem(item);
+        setAvailabilityNotice(resolutionMessage(resolution.diagnostics, playbackCopy));
         return;
       }
+      setPendingRetryItem(null);
       setSelected({ ...item, streamUrl: best.url });
     } catch (error) {
-      setPlaybackError(error instanceof Error && error.message ? `${playbackCopy.resolveFailed} ${error.message}` : playbackCopy.resolveFailed);
+      setPendingRetryItem(item);
+      setAvailabilityNotice(error instanceof Error && error.message ? `${playbackCopy.resolveFailed} ${error.message}` : playbackCopy.resolveFailed);
     } finally {
       setResolvingTitle(undefined);
     }
@@ -157,7 +170,7 @@ function FilmaApp() {
 
   const handleYouTubeVideo = async (video: YouTubeVideo) => {
     setPlaybackError(undefined);
-    setAvailabilityNotice(undefined);
+    clearAvailability();
     if (Platform.OS === 'android') {
       setSelectedYouTube(video);
       return;
@@ -186,7 +199,7 @@ function FilmaApp() {
   const handlePlayItem = async (item: MediaItem) => {
     setDetailsItem(null);
     setPlaybackError(undefined);
-    setAvailabilityNotice(undefined);
+    clearAvailability();
     if (item.streamUrl) { setSelected(item); return; }
     if (item.source?.kind === 'youtube') {
       await handleYouTubeVideo({ id: item.source.videoId, title: item.title, channelTitle: item.source.channelTitle ?? item.subtitle ?? 'YouTube', thumbnail: item.poster });
@@ -218,13 +231,17 @@ function FilmaApp() {
 
   const handleBrowseSelect = (item: MediaItem) => {
     setPlaybackError(undefined);
-    setAvailabilityNotice(undefined);
+    clearAvailability();
     setDetailsItem(item);
   };
 
   const handleLiveSelect = async (item: MediaItem) => {
     setDetailsItem(null);
     await handlePlayItem(item);
+  };
+
+  const dismissAvailability = () => {
+    clearAvailability();
   };
 
   const handleProgress = useCallback((positionSeconds: number, durationSeconds: number) => {
@@ -264,7 +281,11 @@ function FilmaApp() {
       {availabilityNotice ? (
         <View style={styles.noticeBar}>
           <Text style={styles.noticeText}>{availabilityNotice}</Text>
-          <View style={styles.noticeActions}><FocusButton compact active label={playbackCopy.sources} onPress={goSettings} /><FocusButton compact label={text.dismiss} onPress={() => setAvailabilityNotice(undefined)} /></View>
+          <View style={styles.noticeActions}>
+            {pendingRetryItem ? <FocusButton compact active label={playbackCopy.retry} onPress={() => void resolveStreamsFor(pendingRetryItem, true)} /> : null}
+            {pendingRetryItem ? <FocusButton compact label={playbackCopy.sourcesOptional} onPress={goSettings} /> : null}
+            <FocusButton compact label={text.dismiss} onPress={dismissAvailability} />
+          </View>
         </View>
       ) : null}
       {resolvingTitle ? <View style={styles.resolveBar}><ActivityIndicator size="small" /><Text numberOfLines={1} style={styles.resolveText}>{text.loading} {resolvingTitle}…</Text></View> : null}
@@ -335,6 +356,6 @@ const styles = StyleSheet.create({
   errorText: { flex: 1, color: '#fecdd3', fontWeight: '700' },
   noticeBar: { minHeight: 62, paddingHorizontal: Platform.isTV ? 48 : 14, paddingVertical: 9, backgroundColor: '#172033', borderBottomWidth: 1, borderBottomColor: '#33415d', flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
   noticeText: { flex: 1, minWidth: 190, color: '#d7dfec', fontWeight: '700', fontSize: 12 },
-  noticeActions: { flexDirection: 'row', gap: 6 },
+  noticeActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   content: { flex: 1 },
 });
