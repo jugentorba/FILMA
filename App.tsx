@@ -336,7 +336,7 @@ function FilmaApp() {
         {screen === 'home' ? <HomeScreen onSelect={handleBrowseSelect} onOpenYouTubeVideo={video => void handleYouTubeVideo(video)} onOpenSettings={goSettings} /> : null}
         {screen === 'search' ? <SearchScreen onSelect={handleBrowseSelect} /> : null}
         {screen === 'library' ? <LibraryScreen onSelect={handleBrowseSelect} onOpenLiveTv={goLive} /> : null}
-        {screen === 'profile' ? <View style={styles.profileScreen}><View style={styles.profileQuick}><ProfileSwitcher /></View><SettingsScreen /></View> : null}
+        {screen === 'profile' ? <SettingsScreen /> : null}
         {screen === 'live' ? <LiveTvScreen onSelect={item => void handleLiveSelect(item)} onOpenSettings={goSettings} /> : null}
         {screen === 'youtube' && isTvMode ? <YouTubeScreen onOpenVideo={video => void handleYouTubeVideo(video)} /> : null}
         {screen === 'settings' ? <SettingsScreen /> : null}
@@ -401,6 +401,4 @@ const styles = StyleSheet.create({
   noticeActions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6 },
   closeNotice: { color: '#e8e8e9', fontSize: 28, lineHeight: 29, fontWeight: '300', paddingHorizontal: 4 },
   content: { flex: 1 },
-  profileScreen: { flex: 1 },
-  profileQuick: { position: 'absolute', top: 14, right: 16, zIndex: 30 },
 });
