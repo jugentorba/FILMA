@@ -1,6 +1,6 @@
 import { StatusBar } from 'expo-status-bar';
-import React, { useCallback, useMemo, useState } from 'react';
-import { ActivityIndicator, Linking, Platform, SafeAreaView, StyleSheet, Text, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, BackHandler, Linking, Platform, SafeAreaView, StyleSheet, Text, View } from 'react-native';
 import { stringsFor } from './src/i18n';
 import { HomeScreen } from './src/screens/HomeScreen';
 import { LiveTvScreen } from './src/screens/LiveTvScreen';
@@ -122,6 +122,7 @@ function FilmaApp() {
   const text = stringsFor(state.preferences.appLanguage);
   const playbackCopy = useMemo(() => playbackCopyFor(state.preferences.appLanguage), [state.preferences.appLanguage]);
   const [screen, setScreen] = useState<Screen>('home');
+  const screenHistoryRef = useRef<Screen[]>([]);
   const [selected, setSelected] = useState<MediaItem | null>(null);
   const [detailsItem, setDetailsItem] = useState<MediaItem | null>(null);
   const [selectedYouTube, setSelectedYouTube] = useState<YouTubeVideo | null>(null);
@@ -136,10 +137,51 @@ function FilmaApp() {
     setPendingRetryItem(null);
   };
 
-  const goMovies = () => { clearAvailability(); setMode('movies'); setScreen('home'); };
-  const goLive = () => { clearAvailability(); setMode('live'); setScreen('live'); };
-  const goYouTube = () => { if (isTvMode) { clearAvailability(); setScreen('youtube'); } };
-  const goSettings = () => { setDetailsItem(null); clearAvailability(); setScreen('settings'); };
+  const navigateTo = (next: Screen) => {
+    if (next !== screen) screenHistoryRef.current.push(screen);
+    setScreen(next);
+  };
+
+  const goMovies = () => { clearAvailability(); setMode('movies'); navigateTo('home'); };
+  const goLive = () => { clearAvailability(); setMode('live'); navigateTo('live'); };
+  const goYouTube = () => { if (isTvMode) { clearAvailability(); navigateTo('youtube'); } };
+  const goSettings = () => { setDetailsItem(null); clearAvailability(); navigateTo('settings'); };
+
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (selected) { setSelected(null); return true; }
+      if (selectedYouTube) { setSelectedYouTube(null); return true; }
+      if (pendingEpisodes) { setPendingEpisodes(null); return true; }
+      if (detailsItem) { setDetailsItem(null); return true; }
+      if (playbackError) { setPlaybackError(undefined); return true; }
+      if (availabilityNotice) { clearAvailability(); return true; }
+      if (resolvingTitle) return true;
+
+      const previous = screenHistoryRef.current.pop();
+      if (previous) {
+        clearAvailability();
+        if (previous === 'home') setMode('movies');
+        if (previous === 'live') setMode('live');
+        setScreen(previous);
+        return true;
+      }
+
+      if (screen !== 'home') {
+        clearAvailability();
+        setMode('movies');
+        setScreen('home');
+        return true;
+      }
+
+      // At the FILMA home screen the Android Back button is intentionally consumed.
+      // This prevents an accidental app exit; Home/Recents remain available to leave FILMA.
+      return true;
+    });
+
+    return () => subscription.remove();
+  }, [availabilityNotice, detailsItem, pendingEpisodes, playbackError, resolvingTitle, screen, selected, selectedYouTube, setMode]);
 
   const resolveStreamsFor = async (item: MediaItem, force = false) => {
     if (item.source?.kind !== 'stremio') {
@@ -273,7 +315,7 @@ function FilmaApp() {
       ) : (
         <View style={styles.mobileHeader}>
           <View style={styles.brandRow}><View style={styles.brandMark}><Text style={styles.brandMarkText}>F</Text></View><Text style={styles.brand}>FILMA</Text></View>
-          <View style={styles.mobileHeaderActions}><Text style={styles.screenLabel}>{screen === 'home' ? text.movies : screen === 'live' ? text.liveTv : screen === 'youtube' ? text.youtube : text.settings}</Text><ProfileSwitcher /></View>
+          <ProfileSwitcher />
         </View>
       )}
 
@@ -338,18 +380,16 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: theme.background },
+  safe: { flex: 1, backgroundColor: '#05070b' },
   loading: { flex: 1, backgroundColor: theme.background, alignItems: 'center', justifyContent: 'center', gap: 22 },
   tvNav: { minHeight: 82, paddingHorizontal: 52, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#090c14', borderBottomWidth: 1, borderBottomColor: theme.border, zIndex: 10 },
-  mobileHeader: { minHeight: 58, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#090c14', borderBottomWidth: 1, borderBottomColor: '#1d2432', gap: 10 },
-  mobileHeaderActions: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 8, flexShrink: 1 },
+  mobileHeader: { minHeight: 54, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#07090f', gap: 10 },
   brandRow: { flexDirection: 'row', alignItems: 'center', gap: 10, flexShrink: 0 },
-  brandMark: { width: Platform.isTV ? 38 : 30, height: Platform.isTV ? 38 : 30, borderRadius: 10, backgroundColor: theme.accent, alignItems: 'center', justifyContent: 'center' },
-  brandMarkText: { color: '#fff', fontWeight: '900', fontSize: Platform.isTV ? 20 : 16 },
+  brandMark: { width: Platform.isTV ? 38 : 29, height: Platform.isTV ? 38 : 29, borderRadius: 10, backgroundColor: theme.accent, alignItems: 'center', justifyContent: 'center' },
+  brandMarkText: { color: '#fff', fontWeight: '900', fontSize: Platform.isTV ? 20 : 15 },
   brand: { color: theme.text, fontWeight: '900', fontSize: Platform.isTV ? 29 : 20, letterSpacing: 2 },
-  screenLabel: { color: theme.muted, fontWeight: '800', fontSize: 12, textTransform: 'uppercase', letterSpacing: 1 },
   navButtons: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  bottomNav: { minHeight: 70, paddingHorizontal: 8, paddingTop: 4, paddingBottom: 4, flexDirection: 'row', gap: 2, backgroundColor: '#090c14', borderTopWidth: 1, borderTopColor: '#202737' },
+  bottomNav: { minHeight: 66, marginHorizontal: 10, marginTop: 4, marginBottom: 7, paddingHorizontal: 6, paddingVertical: 4, flexDirection: 'row', gap: 2, backgroundColor: 'rgba(14,17,24,0.98)', borderWidth: 1, borderColor: '#242a36', borderRadius: 20, overflow: 'hidden' },
   resolveBar: { minHeight: 48, paddingHorizontal: Platform.isTV ? 48 : 16, backgroundColor: theme.surface, flexDirection: 'row', alignItems: 'center', gap: 12, borderBottomWidth: 1, borderBottomColor: theme.border },
   resolveText: { color: theme.text, fontWeight: '700', flex: 1 },
   errorBar: { minHeight: 58, paddingHorizontal: Platform.isTV ? 48 : 14, paddingVertical: 8, backgroundColor: '#3b1018', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
