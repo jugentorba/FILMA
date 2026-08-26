@@ -16,6 +16,7 @@ type Props = {
   onClose(): void;
   onToggleFavorite(): void;
   favorite: boolean;
+  onOpenEpisodes?(): void;
   onPreviousChannel?(): void;
   onNextChannel?(): void;
   channelPosition?: string;
@@ -108,6 +109,7 @@ export function PlayerModalNuvio({
   onClose,
   onToggleFavorite,
   favorite,
+  onOpenEpisodes,
   onPreviousChannel,
   onNextChannel,
   channelPosition,
@@ -143,10 +145,10 @@ export function PlayerModalNuvio({
   const channelListRef = useRef<FlatList<LiveChannel>>(null);
 
   const copy = useMemo(() => state.preferences.appLanguage === 'fr'
-    ? { fill: 'Remplir', fit: 'Ajuster', subtitles: 'Sous-titres', audio: 'Audio', sources: 'Sources', channels: 'Chaînes', previous: 'Chaîne précédente', next: 'Chaîne suivante', nextSource: 'Source suivante', trying: (n: number, total: number) => `Source ${n}/${total}…`, failed: 'Aucune source ne peut lire ce contenu.', timeout: 'La source met trop de temps à démarrer.', opening: 'Ouverture…' }
+    ? { fill: 'Remplir', fit: 'Ajuster', subtitles: 'Sous-titres', audio: 'Audio', sources: 'Sources', episodes: 'Épisodes', channels: 'Chaînes', previous: 'Chaîne précédente', next: 'Chaîne suivante', nextSource: 'Source suivante', trying: (n: number, total: number) => `Source ${n}/${total}…`, failed: 'Aucune source ne peut lire ce contenu.', timeout: 'La source met trop de temps à démarrer.', opening: 'Ouverture…' }
     : state.preferences.appLanguage === 'sq'
-      ? { fill: 'Mbush', fit: 'Përshtat', subtitles: 'Titrat', audio: 'Audio', sources: 'Burimet', channels: 'Kanalet', previous: 'Kanali para', next: 'Kanali tjetër', nextSource: 'Burimi tjetër', trying: (n: number, total: number) => `Burimi ${n}/${total}…`, failed: 'Asnjë burim nuk mund ta luajë këtë përmbajtje.', timeout: 'Burimi po vonon shumë.', opening: 'Duke hapur…' }
-      : { fill: 'Fill', fit: 'Fit', subtitles: 'Subtitles', audio: 'Audio', sources: 'Sources', channels: 'Channels', previous: 'Previous channel', next: 'Next channel', nextSource: 'Next source', trying: (n: number, total: number) => `Source ${n}/${total}…`, failed: 'No source can play this content.', timeout: 'This source is taking too long to start.', opening: 'Opening…' },
+      ? { fill: 'Mbush', fit: 'Përshtat', subtitles: 'Titrat', audio: 'Audio', sources: 'Burimet', episodes: 'Episodet', channels: 'Kanalet', previous: 'Kanali para', next: 'Kanali tjetër', nextSource: 'Burimi tjetër', trying: (n: number, total: number) => `Burimi ${n}/${total}…`, failed: 'Asnjë burim nuk mund ta luajë këtë përmbajtje.', timeout: 'Burimi po vonon shumë.', opening: 'Duke hapur…' }
+      : { fill: 'Fill', fit: 'Fit', subtitles: 'Subtitles', audio: 'Audio', sources: 'Sources', episodes: 'Episodes', channels: 'Channels', previous: 'Previous channel', next: 'Next channel', nextSource: 'Next source', trying: (n: number, total: number) => `Source ${n}/${total}…`, failed: 'No source can play this content.', timeout: 'This source is taking too long to start.', opening: 'Opening…' },
   [state.preferences.appLanguage]);
 
   const candidateUrls = useMemo(() => [...new Set([
@@ -394,6 +396,7 @@ export function PlayerModalNuvio({
               {!isLive ? <ToolbarControl icon="CC" label={copy.subtitles} active={subtitleIndex >= 0} onPress={cycleSubtitles} /> : null}
               {!isLive ? <ToolbarControl icon="◉" label={copy.audio} active={audioTracks.length > 1} onPress={cycleAudio} /> : null}
               {candidateUrls.length > 1 ? <ToolbarControl icon="↔" label={copy.sources} onPress={manuallyTryNextSource} /> : null}
+              {!isLive && onOpenEpisodes ? <ToolbarControl icon="▤" label={copy.episodes} onPress={onOpenEpisodes} /> : null}
               {isLive && channelQueue.length ? <ToolbarControl icon="☰" label={copy.channels} onPress={() => setChannelPickerOpen(true)} /> : null}
               {isLive && onPreviousChannel ? <ToolbarControl icon="‹" label={copy.previous} onPress={onPreviousChannel} /> : null}
               {isLive && onNextChannel ? <ToolbarControl icon="›" label={copy.next} onPress={onNextChannel} /> : null}
