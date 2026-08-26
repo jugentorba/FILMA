@@ -404,7 +404,7 @@ export function SettingsScreen() {
           <FocusButton compact active={isTvMode} label={copy.tv} onPress={() => setTvModeEnabled(true)} />
         </View>
         <View style={styles.divider} />
-        <Text style={styles.deviceText}>FILMA 0.1.6 · build 7</Text>
+        <Text style={styles.deviceText}>FILMA 0.1.7 · build 8</Text>
         <Text style={styles.deviceText}>{text.device}: {deviceId}</Text>
       </View>
     </ScrollView>
