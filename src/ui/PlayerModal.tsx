@@ -59,6 +59,7 @@ type PlayerButtonProps = {
 
 const PLAYBACK_START_TIMEOUT_MS = 15_000;
 const EXTERNAL_PROVIDER_PREFIX = 'external-provider:';
+const ABSOLUTE_FILL: ViewStyle = { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 };
 
 const LANGUAGE_ALIASES: Record<AppLanguage | AudioLanguage, string[]> = {
   en: ['en', 'eng', 'english', 'anglais', 'anglisht'],
@@ -240,9 +241,7 @@ export function PlayerModal({
   const player = useVideoPlayer(initialExternalProvider ? null : (item.streamUrl ?? null), instance => {
     instance.timeUpdateEventInterval = 5;
     if (!initialExternalProvider) {
-      if (!progress?.completed && progress?.positionSeconds && progress.positionSeconds > 5) {
-        instance.currentTime = progress.positionSeconds;
-      }
+      if (!progress?.completed && progress?.positionSeconds && progress.positionSeconds > 5) instance.currentTime = progress.positionSeconds;
       instance.play();
     }
   });
@@ -283,13 +282,11 @@ export function PlayerModal({
   const switchToNextCandidate = useCallback(async (reason?: string) => {
     if (replacingRef.current) return;
     replacingRef.current = true;
-
     try {
       while (true) {
         const currentUrl = currentUrlRef.current;
         if (currentUrl) failedUrlsRef.current.add(currentUrl);
         const nextUrl = candidateUrls.find(url => !failedUrlsRef.current.has(url));
-
         if (!nextUrl) {
           setSourceMessage(undefined);
           setSourceReady(false);
@@ -345,12 +342,10 @@ export function PlayerModal({
 
   useTVEventHandler(event => {
     if (!Platform.isTV || !isLive || customControlFocused) return;
-
     if (channelPickerOpen) {
       if (event.eventType === 'menu') setChannelPickerOpen(false);
       return;
     }
-
     if (event.eventType === 'select' && channelQueue.length) {
       setChannelPickerOpen(true);
       return;
@@ -364,13 +359,11 @@ export function PlayerModal({
 
   useEventListener(player, 'sourceLoad', ({ availableAudioTracks, availableSubtitleTracks }) => {
     if (Platform.OS === 'web' || (Platform.OS === 'ios' && Platform.isTV)) return;
-
     const audioPreferences = state.preferences.preferredAudioLanguages;
     if (audioPreferences.length && availableAudioTracks.length) {
       const preferredAudio = bestLanguageTrack(availableAudioTracks, audioPreferences, false);
       if (preferredAudio) player.audioTrack = preferredAudio;
     }
-
     if (availableSubtitleTracks.length) {
       const subtitlePreferences = [
         state.preferences.appLanguage,
@@ -409,9 +402,7 @@ export function PlayerModal({
 
   useEffect(() => {
     if (initialExternalProvider || sourceReady || terminalError || !currentUrlRef.current) return;
-    const timer = setTimeout(() => {
-      void switchToNextCandidate(copy.timeout);
-    }, PLAYBACK_START_TIMEOUT_MS);
+    const timer = setTimeout(() => void switchToNextCandidate(copy.timeout), PLAYBACK_START_TIMEOUT_MS);
     return () => clearTimeout(timer);
   }, [copy.timeout, initialExternalProvider, sourceAttempt, sourceReady, switchToNextCandidate, terminalError]);
 
@@ -424,7 +415,6 @@ export function PlayerModal({
   const controlFocusProps = isLive
     ? { onFocus: () => setCustomControlFocused(true), onBlur: () => setCustomControlFocused(false) }
     : {};
-
   const densityFactor = state.preferences.interfaceDensity === 'comfortable' ? 1.05 : 0.94;
   const channelRowHeight = Math.round((layout.isTv ? 62 : layout.isCompactPhone ? 50 : layout.isTablet ? 58 : 54) * densityFactor);
   const channelPanelStyle = useMemo<ViewStyle>(() => ({
@@ -435,62 +425,31 @@ export function PlayerModal({
   const subtitleSize = layout.isTv ? 12 : layout.isCompactPhone ? 9 : 10;
   const channelTitleSize = layout.isTv ? 25 : layout.isCompactPhone ? 17 : layout.isTablet ? 22 : 20;
   const compactDock = layout.isCompactPhone || (!layout.isTv && !layout.isTablet);
-
   const previousLabel = compactDock ? '‹' : `‹ ${copy.previousChannel}`;
   const nextLabel = compactDock ? '›' : `${copy.nextChannel} ›`;
   const nextSourceLabel = compactDock ? '↻' : `↻ ${copy.nextSource}`;
 
   return (
-    <Modal
-      visible
-      animationType="fade"
-      supportedOrientations={['landscape', 'portrait']}
-      presentationStyle="fullScreen"
-      onRequestClose={requestClose}
-    >
+    <Modal visible animationType="fade" supportedOrientations={['landscape', 'portrait']} presentationStyle="fullScreen" onRequestClose={requestClose}>
       <View style={styles.root}>
         {!initialExternalProvider ? (
-          <VideoView
-            style={styles.video}
-            player={player}
-            nativeControls
-            contentFit="contain"
-            fullscreenOptions={{ enable: true }}
-          />
+          <VideoView style={styles.video} player={player} nativeControls contentFit="contain" fullscreenOptions={{ enable: true }} />
         ) : <View style={styles.video} />}
 
         <SafeAreaView pointerEvents="box-none" style={styles.safeChrome}>
           <View pointerEvents="box-none" style={styles.chromeLayout}>
             <View style={[styles.topChrome, { marginHorizontal: layout.isTv ? 28 : 10, marginTop: layout.isTv ? 16 : 6 }]}>
-              <PlayerButton
-                label="×"
-                accessibilityLabel={text.dismiss}
-                preferredFocus={!isLive}
-                onPress={requestClose}
-                {...controlFocusProps}
-              />
-
+              <PlayerButton label="×" accessibilityLabel={text.dismiss} preferredFocus={!isLive} onPress={requestClose} {...controlFocusProps} />
               <View style={styles.titleBlock} pointerEvents="none">
                 <Text numberOfLines={1} style={[styles.title, { fontSize: titleSize }]}>{item.title}</Text>
                 <Text numberOfLines={1} style={[styles.subtitle, { fontSize: subtitleSize }]}>
                   {item.subtitle ?? copy.player}{channelPosition ? ` · ${channelPosition}` : ''}
                 </Text>
               </View>
-
               {isLive && channelQueue.length ? (
-                <PlayerButton
-                  label="☰"
-                  accessibilityLabel={copy.channels}
-                  onPress={() => setChannelPickerOpen(true)}
-                  {...controlFocusProps}
-                />
+                <PlayerButton label="☰" accessibilityLabel={copy.channels} onPress={() => setChannelPickerOpen(true)} {...controlFocusProps} />
               ) : !isLive ? (
-                <PlayerButton
-                  label={favorite ? '♥' : '♡'}
-                  accessibilityLabel={text.favorites}
-                  active={favorite}
-                  onPress={onToggleFavorite}
-                />
+                <PlayerButton label={favorite ? '♥' : '♡'} accessibilityLabel={text.favorites} active={favorite} onPress={onToggleFavorite} />
               ) : <View style={styles.playerButtonPlaceholder} />}
             </View>
 
@@ -502,21 +461,12 @@ export function PlayerModal({
                   <Text numberOfLines={2} style={styles.statusText}>{terminalError ?? sourceMessage}</Text>
                 </View>
               ) : null}
-
               {(isLive && (onPreviousChannel || onNextChannel || candidateUrls.length > 1)) || (!isLive && candidateUrls.length > 1) ? (
                 <View style={styles.controlDock}>
-                  {isLive && onPreviousChannel ? (
-                    <PlayerButton label={previousLabel} accessibilityLabel={copy.previousChannel} onPress={onPreviousChannel} wide={!compactDock} {...controlFocusProps} />
-                  ) : null}
-                  {isLive && channelQueue.length ? (
-                    <PlayerButton label="☰" accessibilityLabel={copy.channels} onPress={() => setChannelPickerOpen(true)} {...controlFocusProps} />
-                  ) : null}
-                  {candidateUrls.length > 1 ? (
-                    <PlayerButton label={nextSourceLabel} accessibilityLabel={copy.nextSource} onPress={manuallyTryNextSource} wide={!compactDock} {...controlFocusProps} />
-                  ) : null}
-                  {isLive && onNextChannel ? (
-                    <PlayerButton label={nextLabel} accessibilityLabel={copy.nextChannel} onPress={onNextChannel} wide={!compactDock} {...controlFocusProps} />
-                  ) : null}
+                  {isLive && onPreviousChannel ? <PlayerButton label={previousLabel} accessibilityLabel={copy.previousChannel} onPress={onPreviousChannel} wide={!compactDock} {...controlFocusProps} /> : null}
+                  {isLive && channelQueue.length ? <PlayerButton label="☰" accessibilityLabel={copy.channels} onPress={() => setChannelPickerOpen(true)} {...controlFocusProps} /> : null}
+                  {candidateUrls.length > 1 ? <PlayerButton label={nextSourceLabel} accessibilityLabel={copy.nextSource} onPress={manuallyTryNextSource} wide={!compactDock} {...controlFocusProps} /> : null}
+                  {isLive && onNextChannel ? <PlayerButton label={nextLabel} accessibilityLabel={copy.nextChannel} onPress={onNextChannel} wide={!compactDock} {...controlFocusProps} /> : null}
                 </View>
               ) : null}
             </View>
@@ -540,9 +490,7 @@ export function PlayerModal({
                 keyExtractor={channel => channel.id}
                 initialScrollIndex={Math.max(0, Math.min(channelIndex, channelQueue.length - 1))}
                 getItemLayout={(_, index) => ({ length: channelRowHeight, offset: channelRowHeight * index, index })}
-                onScrollToIndexFailed={({ index }) => {
-                  channelListRef.current?.scrollToOffset({ offset: Math.max(0, index * channelRowHeight), animated: false });
-                }}
+                onScrollToIndexFailed={({ index }) => channelListRef.current?.scrollToOffset({ offset: Math.max(0, index * channelRowHeight), animated: false })}
                 contentContainerStyle={styles.channelPanelList}
                 renderItem={({ item: channel, index }) => {
                   const current = index === channelIndex;
@@ -554,12 +502,7 @@ export function PlayerModal({
                       accessibilityLabel={channel.name}
                       onFocus={() => channelListRef.current?.scrollToIndex({ index, viewPosition: 0.48, animated: true })}
                       onPress={() => chooseChannel(index)}
-                      style={({ focused }) => [
-                        styles.channelOption,
-                        { minHeight: Math.max(42, channelRowHeight - 6) },
-                        current && styles.channelOptionCurrent,
-                        focused && styles.channelOptionFocused,
-                      ]}
+                      style={({ focused }) => [styles.channelOption, { minHeight: Math.max(42, channelRowHeight - 6) }, current && styles.channelOptionCurrent, focused && styles.channelOptionFocused]}
                     >
                       <View style={styles.channelOptionLogo}>
                         {channel.logo ? <Image source={{ uri: channel.logo }} style={styles.channelOptionLogoImage} resizeMode="contain" /> : null}
@@ -583,115 +526,38 @@ export function PlayerModal({
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#000' },
-  video: { ...StyleSheet.absoluteFillObject, backgroundColor: '#000' },
-  safeChrome: { ...StyleSheet.absoluteFillObject },
+  video: { ...ABSOLUTE_FILL, backgroundColor: '#000' },
+  safeChrome: { ...ABSOLUTE_FILL },
   chromeLayout: { flex: 1 },
-  topChrome: {
-    minHeight: 54,
-    paddingHorizontal: 8,
-    paddingVertical: 7,
-    borderRadius: 17,
-    backgroundColor: 'rgba(5,7,12,0.72)',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 9,
-  },
+  topChrome: { minHeight: 54, paddingHorizontal: 8, paddingVertical: 7, borderRadius: 17, backgroundColor: 'rgba(5,7,12,0.72)', flexDirection: 'row', alignItems: 'center', gap: 9 },
   titleBlock: { flex: 1, minWidth: 0 },
   title: { color: '#fff', fontWeight: '900', letterSpacing: -0.25 },
   subtitle: { color: '#b4bdcc', marginTop: 2, fontWeight: '700' },
   chromeSpacer: { flex: 1 },
   bottomChrome: { alignItems: 'center', gap: 8 },
-  controlDock: {
-    maxWidth: '100%',
-    minHeight: 50,
-    paddingHorizontal: 7,
-    paddingVertical: 6,
-    borderRadius: 18,
-    backgroundColor: 'rgba(5,7,12,0.76)',
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 7,
-  },
-  playerButton: {
-    minWidth: Platform.isTV ? 48 : 42,
-    height: Platform.isTV ? 48 : 42,
-    borderRadius: 999,
-    paddingHorizontal: 11,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(22,25,33,0.94)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.13)',
-  },
+  controlDock: { maxWidth: '100%', minHeight: 50, paddingHorizontal: 7, paddingVertical: 6, borderRadius: 18, backgroundColor: 'rgba(5,7,12,0.76)', flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center', gap: 7 },
+  playerButton: { minWidth: Platform.isTV ? 48 : 42, height: Platform.isTV ? 48 : 42, borderRadius: 999, paddingHorizontal: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(22,25,33,0.94)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.13)' },
   playerButtonWide: { minWidth: Platform.isTV ? 138 : 112, borderRadius: 999 },
   playerButtonActive: { backgroundColor: 'rgba(247,58,95,0.94)', borderColor: theme.accent },
   playerButtonFocused: { borderColor: '#fff', borderWidth: 2, transform: [{ scale: 1.04 }] },
   playerButtonText: { color: '#fff', fontSize: Platform.isTV ? 21 : 18, fontWeight: '900', lineHeight: Platform.isTV ? 24 : 21 },
   playerButtonTextWide: { fontSize: Platform.isTV ? 14 : 12, lineHeight: Platform.isTV ? 18 : 15 },
   playerButtonPlaceholder: { width: Platform.isTV ? 48 : 42, height: Platform.isTV ? 48 : 42 },
-  statusBanner: {
-    maxWidth: 720,
-    borderRadius: 13,
-    backgroundColor: 'rgba(13,25,40,0.94)',
-    borderWidth: 1,
-    borderColor: theme.border,
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-  },
+  statusBanner: { maxWidth: 720, borderRadius: 13, backgroundColor: 'rgba(13,25,40,0.94)', borderWidth: 1, borderColor: theme.border, paddingHorizontal: 14, paddingVertical: 9 },
   errorBanner: { backgroundColor: 'rgba(59,16,24,0.96)' },
   statusText: { color: theme.text, fontWeight: '800', textAlign: 'center', fontSize: Platform.isTV ? 14 : 11 },
-  channelOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    zIndex: 40,
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-  },
-  channelOverlayBackdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.58)',
-  },
-  channelPanel: {
-    height: '100%',
-    backgroundColor: 'rgba(7,9,14,0.985)',
-    borderLeftWidth: 1,
-    borderLeftColor: '#252b38',
-  },
-  channelPanelHeader: {
-    paddingHorizontal: Platform.isTV ? 18 : 12,
-    paddingTop: Platform.isTV ? 16 : 8,
-    paddingBottom: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
+  channelOverlay: { ...ABSOLUTE_FILL, zIndex: 40, flexDirection: 'row', justifyContent: 'flex-end' },
+  channelOverlayBackdrop: { ...ABSOLUTE_FILL, backgroundColor: 'rgba(0,0,0,0.58)' },
+  channelPanel: { height: '100%', backgroundColor: 'rgba(7,9,14,0.985)', borderLeftWidth: 1, borderLeftColor: '#252b38' },
+  channelPanelHeader: { paddingHorizontal: Platform.isTV ? 18 : 12, paddingTop: Platform.isTV ? 16 : 8, paddingBottom: 10, flexDirection: 'row', alignItems: 'center', gap: 10 },
   channelPanelHeading: { flex: 1, minWidth: 0 },
   channelPanelTitle: { color: '#fff', fontWeight: '900', letterSpacing: -0.5 },
   channelPanelHint: { color: '#8e98aa', fontSize: Platform.isTV ? 12 : 9, fontWeight: '700', marginTop: 3 },
   channelPanelList: { paddingHorizontal: Platform.isTV ? 16 : 10, paddingBottom: 24 },
-  channelOption: {
-    marginBottom: 6,
-    borderRadius: 12,
-    paddingHorizontal: 9,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#10141d',
-    borderWidth: 1,
-    borderColor: '#202633',
-  },
+  channelOption: { marginBottom: 6, borderRadius: 12, paddingHorizontal: 9, flexDirection: 'row', alignItems: 'center', backgroundColor: '#10141d', borderWidth: 1, borderColor: '#202633' },
   channelOptionCurrent: { backgroundColor: '#182331', borderColor: '#3f546f' },
   channelOptionFocused: { borderColor: '#fff', borderWidth: 2, transform: [{ scale: 1.012 }] },
-  channelOptionLogo: {
-    width: Platform.isTV ? 42 : 34,
-    height: Platform.isTV ? 42 : 34,
-    marginRight: 9,
-    borderRadius: 8,
-    backgroundColor: '#0a0d13',
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-  },
+  channelOptionLogo: { width: Platform.isTV ? 42 : 34, height: Platform.isTV ? 42 : 34, marginRight: 9, borderRadius: 8, backgroundColor: '#0a0d13', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   channelOptionLogoImage: { width: '100%', height: '100%' },
   channelOptionText: { flex: 1, minWidth: 0 },
   channelOptionName: { color: '#f4f6fa', fontSize: Platform.isTV ? 16 : 12, fontWeight: '900' },
