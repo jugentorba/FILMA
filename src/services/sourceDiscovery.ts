@@ -7,7 +7,8 @@ const WATCHHUB_MANIFEST_URL = 'https://watchhub.strem.io/manifest.json';
 const IPTV_ORG_COUNTRY_BASE = 'https://iptv-org.github.io/iptv/countries';
 const DISCOVERY_TIMESTAMP = '1970-01-01T00:00:00.000Z';
 const OFFICIAL_INDEX_CACHE_MS = 30 * 60 * 1000;
-const OFFICIAL_INDEX_TIMEOUT_MS = 10_000;
+const OFFICIAL_INDEX_RETRY_MS = 2 * 60 * 1000;
+const OFFICIAL_INDEX_TIMEOUT_MS = 6_000;
 
 const UNSUPPORTED_AUTOMATIC_PROVIDER_IDS = new Set(['org.stremio.pubdomainmovies', 'org.stremio.local']);
 
@@ -47,7 +48,8 @@ const ALBANIA_GROUP_SOURCES: CountrySource[] = [
 const BASE_AUDIO_LANGUAGES: AudioLanguage[] = ['fr', 'sq', 'en'];
 
 let officialProviderCache: CachedOfficialProviders | undefined;
-let refreshInFlight: Promise<void> | undefined;
+let refreshInFlight: Promise<DiscoveredMovieProvider[]> | undefined;
+let lastRefreshAttemptAt = 0;
 
 async function fetchOfficialIndex(): Promise<Response> {
   const controller = new AbortController();
@@ -165,21 +167,26 @@ export function mergeMovieProviders(configured: AddonSource[], automatic: AddonS
   ]);
 }
 
-async function refreshOfficialProviders(): Promise<void> {
+async function refreshOfficialProviders(force = false): Promise<DiscoveredMovieProvider[]> {
   if (refreshInFlight) return refreshInFlight;
+  const current = officialProviderCache?.providers ?? coreProviders();
+  if (!force && Date.now() - lastRefreshAttemptAt < OFFICIAL_INDEX_RETRY_MS) return current;
+
+  lastRefreshAttemptAt = Date.now();
   refreshInFlight = (async () => {
     try {
       const response = await fetchOfficialIndex();
-      if (!response.ok) return;
+      if (!response.ok) return current;
       const payload = await response.json() as unknown;
-      if (!Array.isArray(payload)) return;
+      if (!Array.isArray(payload)) return current;
       const providers = ensureCoreProviders(dedupeProviders(
         payload.map(entry => providerFromEntry(entry as OfficialAddonIndexEntry))
           .filter((provider): provider is DiscoveredMovieProvider => provider !== null),
       ));
       officialProviderCache = { fetchedAt: Date.now(), providers };
+      return providers;
     } catch {
-      // Core providers remain available even if refresh fails.
+      return current;
     } finally {
       refreshInFlight = undefined;
     }
@@ -187,9 +194,13 @@ async function refreshOfficialProviders(): Promise<void> {
   return refreshInFlight;
 }
 
+export async function refreshOfficialMovieProviders(): Promise<DiscoveredMovieProvider[]> {
+  return refreshOfficialProviders(true);
+}
+
 export async function discoverOfficialMovieProviders(): Promise<DiscoveredMovieProvider[]> {
   if (!officialProviderCache) {
-    officialProviderCache = { fetchedAt: Date.now(), providers: coreProviders() };
+    officialProviderCache = { fetchedAt: 0, providers: coreProviders() };
     void refreshOfficialProviders();
     return officialProviderCache.providers;
   }
