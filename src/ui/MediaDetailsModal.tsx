@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, ImageBackground, Modal, Platform, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, ImageBackground, Linking, Modal, Platform, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { stringsFor } from '../i18n';
 import { getMetaCached } from '../services/mediaDiscovery';
-import { isExternalResolvedStream, resolveStreamsAcrossAddons } from '../services/streamResolver';
+import { externalProviderUrlFromResolved, isExternalResolvedStream, resolveStreamsAcrossAddons, type ResolvedStream } from '../services/streamResolver';
 import { FILMA_ARCHIVE_MANIFEST_URL } from '../services/stremio';
 import { useFilma } from '../store/FilmaContext';
 import type { MediaItem } from '../types';
@@ -29,6 +29,8 @@ export function MediaDetailsModal({ item, favorite, knownPlayable = false, onPla
   const [metaLoading, setMetaLoading] = useState(false);
   const [availability, setAvailability] = useState<Availability>('unknown');
   const [providerName, setProviderName] = useState<string>();
+  const [externalOptions, setExternalOptions] = useState<ResolvedStream[]>([]);
+  const [providerOpenError, setProviderOpenError] = useState(false);
 
   const copy = useMemo(() => state.preferences.appLanguage === 'fr'
     ? {
@@ -36,6 +38,7 @@ export function MediaDetailsModal({ item, favorite, knownPlayable = false, onPla
         checking: 'Recherche automatique des sources…', direct: 'Lecture directe disponible', external: 'Disponible chez un fournisseur externe',
         none: 'Aucune source disponible actuellement', unknown: 'FILMA vérifiera automatiquement les fournisseurs.',
         openProvider: 'Ouvrir le fournisseur', retry: 'Rechercher à nouveau', sources: 'Sources (optionnel)',
+        options: 'Options disponibles', providerFailed: 'FILMA n’a pas pu ouvrir cette option.',
         noSynopsis: 'Aucun résumé disponible pour le moment.', favorite: 'Dans ma liste', addFavorite: 'Ajouter à ma liste',
       }
     : state.preferences.appLanguage === 'sq'
@@ -44,6 +47,7 @@ export function MediaDetailsModal({ item, favorite, knownPlayable = false, onPla
           checking: 'Duke kërkuar automatikisht burimet…', direct: 'Ka transmetim direkt', external: 'I disponueshëm te një ofrues i jashtëm',
           none: 'Nuk ka burim të disponueshëm për momentin', unknown: 'FILMA do t’i kontrollojë automatikisht ofruesit.',
           openProvider: 'Hap ofruesin', retry: 'Kërko përsëri', sources: 'Burimet (opsionale)',
+          options: 'Opsionet e disponueshme', providerFailed: 'FILMA nuk arriti ta hapë këtë opsion.',
           noSynopsis: 'Nuk ka përshkrim për momentin.', favorite: 'Në listën time', addFavorite: 'Shto në listën time',
         }
       : {
@@ -51,6 +55,7 @@ export function MediaDetailsModal({ item, favorite, knownPlayable = false, onPla
           checking: 'Searching providers automatically…', direct: 'Direct playback available', external: 'Available from an external provider',
           none: 'No source is currently available', unknown: 'FILMA will check providers automatically.',
           openProvider: 'Open provider', retry: 'Search again', sources: 'Sources (optional)',
+          options: 'Available options', providerFailed: 'FILMA could not open this option.',
           noSynopsis: 'No synopsis is available yet.', favorite: 'In My List', addFavorite: 'Add to My List',
         }, [state.preferences.appLanguage]);
 
@@ -74,6 +79,8 @@ export function MediaDetailsModal({ item, favorite, knownPlayable = false, onPla
 
   const checkAvailability = useCallback(async (force = false) => {
     setProviderName(undefined);
+    setExternalOptions([]);
+    setProviderOpenError(false);
     if (isSeries) {
       setAvailability('unknown');
       return;
@@ -96,18 +103,33 @@ export function MediaDetailsModal({ item, favorite, knownPlayable = false, onPla
         return;
       }
       setProviderName(best.providerName);
-      setAvailability(isExternalResolvedStream(best.url) ? 'external' : 'direct');
+      if (isExternalResolvedStream(best.url)) {
+        setExternalOptions(resolution.streams.filter(stream => isExternalResolvedStream(stream.url)).slice(0, 8));
+        setAvailability('external');
+      } else {
+        setAvailability('direct');
+      }
     } catch {
       setAvailability('unknown');
     }
   }, [initiallyPlayable, isSeries, item, state.addons, state.preferences.preferredAudioLanguages]);
 
   useEffect(() => {
-    let cancelled = false;
-    if (cancelled) return;
     void checkAvailability(false);
-    return () => { cancelled = true; };
   }, [checkAvailability]);
+
+  const openExternalOption = useCallback(async (stream: ResolvedStream) => {
+    const url = externalProviderUrlFromResolved(stream.url);
+    if (!url) return;
+    setProviderOpenError(false);
+    try {
+      const canOpen = await Linking.canOpenURL(url);
+      if (!canOpen) throw new Error('Unsupported provider URL');
+      await Linking.openURL(url);
+    } catch {
+      setProviderOpenError(true);
+    }
+  }, []);
 
   const backdrop = item.backdrop || item.poster;
   const typeLabel = isSeries ? copy.series : copy.movie;
@@ -165,6 +187,23 @@ export function MediaDetailsModal({ item, favorite, knownPlayable = false, onPla
               <Text style={styles.providerText}>{note}</Text>
             </View>
 
+            {availability === 'external' && externalOptions.length > 1 ? (
+              <View style={styles.optionsPanel}>
+                <Text style={styles.optionsTitle}>{copy.options}</Text>
+                <View style={styles.optionsButtons}>
+                  {externalOptions.map((stream, index) => (
+                    <FocusButton
+                      key={`${stream.providerManifestUrl}:${stream.url}:${index}`}
+                      compact
+                      label={stream.title || stream.providerName}
+                      onPress={() => void openExternalOption(stream)}
+                    />
+                  ))}
+                </View>
+                {providerOpenError ? <Text style={styles.providerError}>{copy.providerFailed}</Text> : null}
+              </View>
+            ) : null}
+
             {metaLoading ? (
               <View style={styles.loadingRow}><ActivityIndicator size="small" /><Text style={styles.synopsis}>{text.loading}</Text></View>
             ) : (
@@ -204,6 +243,10 @@ const styles = StyleSheet.create({
   noteDotGood: { backgroundColor: '#65e0a6' },
   noteDotNone: { backgroundColor: '#f0a45b' },
   providerText: { flex: 1, color: '#9ba5b6', fontSize: 11, lineHeight: 16, fontWeight: '700' },
+  optionsPanel: { borderRadius: 12, borderWidth: 1, borderColor: '#252d3b', backgroundColor: '#0d121b', padding: 11, gap: 9 },
+  optionsTitle: { color: '#d9dfe8', fontSize: 11, fontWeight: '900' },
+  optionsButtons: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  providerError: { color: '#fda4af', fontSize: 10, fontWeight: '700' },
   synopsis: { color: '#c5ccd8', fontSize: Platform.isTV ? 15 : 12, lineHeight: Platform.isTV ? 22 : 18 },
   loadingRow: { flexDirection: 'row', alignItems: 'center', gap: 9 },
   actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingBottom: 4 },
