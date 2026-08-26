@@ -45,7 +45,7 @@ type BrowseMode = 'all' | 'movie' | 'series';
 type CatalogRow = {
   key: string;
   title: string;
-  subtitle?: string;
+  subtitle: string | undefined;
   mediaType: 'movie' | 'series';
   directlyPlayable: boolean;
   items: MediaItem[];
