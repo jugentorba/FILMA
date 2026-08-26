@@ -46,6 +46,7 @@ jobs:
             src/services/mediaDiscovery.ts \
             src/services/sourceDiscovery.ts \
             src/services/addonValidation.ts \
+            src/services/websiteSourceDiscovery.ts \
             src/services/m3u.ts \
             src/services/youtube.ts \
             --ignoreConfig \
