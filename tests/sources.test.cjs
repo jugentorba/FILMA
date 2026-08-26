@@ -87,7 +87,28 @@ function playlist(id, name, url) {
     resources: ['catalog', 'meta'],
     types: ['movie'],
   });
-  assert.deepEqual(validation, { valid: false, reason: 'no-stream-resource' });
+  assert.deepEqual(validation, { valid: true, name: 'Catalog only' });
+}
+
+{
+  const validation = validatePlaybackManifest({
+    id: 'example.stream-only',
+    name: 'Stream only',
+    version: '1.0.0',
+    resources: [{ name: 'stream', types: ['movie', 'series'] }],
+  });
+  assert.deepEqual(validation, { valid: true, name: 'Stream only' });
+}
+
+{
+  const validation = validatePlaybackManifest({
+    id: 'example.subtitles-only',
+    name: 'Subtitles only',
+    version: '1.0.0',
+    resources: ['subtitles'],
+    types: ['movie', 'series'],
+  });
+  assert.deepEqual(validation, { valid: false, reason: 'no-media-resource' });
 }
 
 {
