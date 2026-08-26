@@ -2,11 +2,11 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, ImageBackground, Modal, Platform, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { stringsFor } from '../i18n';
 import { getMetaCached } from '../services/mediaDiscovery';
+import { isExternalResolvedStream, resolveStreamsAcrossAddons } from '../services/streamResolver';
 import { FILMA_ARCHIVE_MANIFEST_URL } from '../services/stremio';
 import { useFilma } from '../store/FilmaContext';
 import type { MediaItem } from '../types';
 import { FocusButton } from './FocusButton';
-import { theme } from './theme';
 import { useResponsiveLayout } from './useResponsiveLayout';
 
 type Props = {
@@ -14,41 +14,49 @@ type Props = {
   favorite: boolean;
   knownPlayable?: boolean;
   onPlay(item: MediaItem): void;
+  onOpenSources(): void;
   onToggleFavorite(): void;
   onClose(): void;
 };
 
-export function MediaDetailsModal({ item, favorite, knownPlayable = false, onPlay, onToggleFavorite, onClose }: Props) {
+type Availability = 'checking' | 'direct' | 'external' | 'none' | 'unknown';
+
+export function MediaDetailsModal({ item, favorite, knownPlayable = false, onPlay, onOpenSources, onToggleFavorite, onClose }: Props) {
   const { state } = useFilma();
   const layout = useResponsiveLayout();
   const text = stringsFor(state.preferences.appLanguage);
   const [description, setDescription] = useState<string>();
   const [metaLoading, setMetaLoading] = useState(false);
+  const [availability, setAvailability] = useState<Availability>('unknown');
+  const [providerName, setProviderName] = useState<string>();
 
   const copy = useMemo(() => state.preferences.appLanguage === 'fr'
     ? {
         movie: 'FILM', series: 'SÉRIE', play: 'Lire dans FILMA', episodes: 'Voir les épisodes',
-        check: 'Vérifier les sources', available: 'Lecture directe disponible',
-        catalog: 'Titre de catalogue · FILMA vérifiera tes sources avant de lancer la lecture.',
+        checking: 'Vérification des sources…', direct: 'Lecture directe disponible', external: 'Disponible chez un fournisseur externe',
+        none: 'Aucune source de lecture disponible actuellement', unknown: 'FILMA vérifiera les sources avant la lecture.',
+        openProvider: 'Ouvrir le fournisseur', sources: 'Gérer les sources',
         noSynopsis: 'Aucun résumé disponible pour le moment.', favorite: 'Dans ma liste', addFavorite: 'Ajouter à ma liste',
       }
     : state.preferences.appLanguage === 'sq'
       ? {
           movie: 'FILM', series: 'SERIAL', play: 'Luaj në FILMA', episodes: 'Shiko episodet',
-          check: 'Kontrollo burimet', available: 'Ka transmetim direkt',
-          catalog: 'Titull katalogu · FILMA do të kontrollojë burimet para luajtjes.',
+          checking: 'Duke kontrolluar burimet…', direct: 'Ka transmetim direkt', external: 'I disponueshëm te një ofrues i jashtëm',
+          none: 'Nuk ka burim luajtjeje për momentin', unknown: 'FILMA do të kontrollojë burimet para luajtjes.',
+          openProvider: 'Hap ofruesin', sources: 'Menaxho burimet',
           noSynopsis: 'Nuk ka përshkrim për momentin.', favorite: 'Në listën time', addFavorite: 'Shto në listën time',
         }
       : {
           movie: 'MOVIE', series: 'SERIES', play: 'Play in FILMA', episodes: 'View episodes',
-          check: 'Check sources', available: 'Direct playback available',
-          catalog: 'Catalogue title · FILMA will check your providers before playback.',
+          checking: 'Checking playback sources…', direct: 'Direct playback available', external: 'Available from an external provider',
+          none: 'No playback source is currently available', unknown: 'FILMA will check providers before playback.',
+          openProvider: 'Open provider', sources: 'Manage sources',
           noSynopsis: 'No synopsis is available yet.', favorite: 'In My List', addFavorite: 'Add to My List',
         }, [state.preferences.appLanguage]);
 
   const isSeries = item.source?.kind === 'stremio' && item.source.mediaType === 'series' && !item.source.videoId;
   const isArchive = item.source?.kind === 'stremio' && item.source.manifestUrl === FILMA_ARCHIVE_MANIFEST_URL;
-  const direct = knownPlayable || Boolean(item.streamUrl) || isArchive || item.source?.kind === 'youtube';
+  const initiallyPlayable = knownPlayable || Boolean(item.streamUrl) || isArchive || item.source?.kind === 'youtube';
 
   useEffect(() => {
     if (item.source?.kind !== 'stremio') {
@@ -58,21 +66,74 @@ export function MediaDetailsModal({ item, favorite, knownPlayable = false, onPla
     let cancelled = false;
     setMetaLoading(true);
     void getMetaCached(item.source.manifestUrl, item.source.mediaType, item.source.mediaId)
-      .then(meta => {
-        if (!cancelled) setDescription(meta.description?.trim() || undefined);
-      })
-      .catch(() => {
-        if (!cancelled) setDescription(undefined);
-      })
-      .finally(() => {
-        if (!cancelled) setMetaLoading(false);
-      });
+      .then(meta => { if (!cancelled) setDescription(meta.description?.trim() || undefined); })
+      .catch(() => { if (!cancelled) setDescription(undefined); })
+      .finally(() => { if (!cancelled) setMetaLoading(false); });
     return () => { cancelled = true; };
   }, [item]);
 
+  useEffect(() => {
+    setProviderName(undefined);
+    if (isSeries) {
+      setAvailability('unknown');
+      return;
+    }
+    if (initiallyPlayable) {
+      setAvailability('direct');
+      return;
+    }
+    if (item.source?.kind !== 'stremio') {
+      setAvailability('unknown');
+      return;
+    }
+
+    let cancelled = false;
+    setAvailability('checking');
+    void resolveStreamsAcrossAddons(item, state.addons, state.preferences.preferredAudioLanguages)
+      .then(resolution => {
+        if (cancelled) return;
+        const best = resolution.streams[0];
+        if (!best) {
+          setAvailability('none');
+          return;
+        }
+        setProviderName(best.providerName);
+        setAvailability(isExternalResolvedStream(best.url) ? 'external' : 'direct');
+      })
+      .catch(() => {
+        if (!cancelled) setAvailability('unknown');
+      });
+
+    return () => { cancelled = true; };
+  }, [initiallyPlayable, isSeries, item, state.addons, state.preferences.preferredAudioLanguages]);
+
   const backdrop = item.backdrop || item.poster;
   const typeLabel = isSeries ? copy.series : copy.movie;
-  const actionLabel = isSeries ? copy.episodes : direct ? copy.play : copy.check;
+  const available = availability === 'direct' || availability === 'external';
+  const note = availability === 'checking'
+    ? copy.checking
+    : availability === 'direct'
+      ? `${copy.direct}${providerName ? ` · ${providerName}` : ''}`
+      : availability === 'external'
+        ? `${copy.external}${providerName ? ` · ${providerName}` : ''}`
+        : availability === 'none'
+          ? copy.none
+          : copy.unknown;
+
+  const primaryLabel = isSeries
+    ? copy.episodes
+    : availability === 'direct'
+      ? `▶ ${copy.play}`
+      : availability === 'external'
+        ? copy.openProvider
+        : availability === 'none'
+          ? copy.sources
+          : undefined;
+
+  const handlePrimary = () => {
+    if (isSeries || availability === 'direct' || availability === 'external') onPlay(item);
+    else onOpenSources();
+  };
 
   return (
     <Modal visible animationType="fade" onRequestClose={onClose} transparent>
@@ -85,8 +146,8 @@ export function MediaDetailsModal({ item, favorite, knownPlayable = false, onPla
           >
             <View style={styles.heroShade} />
             <View style={[styles.heroContent, { padding: layout.isTv ? 30 : 18 }]}>
-              <View style={[styles.typeBadge, direct && styles.typeBadgePlayable]}>
-                <Text style={[styles.typeBadgeText, direct && styles.typeBadgePlayableText]}>{direct ? `▶ ${copy.available}` : typeLabel}</Text>
+              <View style={[styles.typeBadge, available && styles.typeBadgePlayable]}>
+                <Text style={[styles.typeBadgeText, available && styles.typeBadgePlayableText]}>{available ? `▶ ${note}` : typeLabel}</Text>
               </View>
               <Text numberOfLines={2} style={[styles.title, { fontSize: layout.isTv ? 38 : layout.isCompactPhone ? 27 : 32 }]}>{item.title}</Text>
               <Text numberOfLines={2} style={styles.meta}>{[item.year, item.genres?.slice(0, 3).join(' · '), item.subtitle].filter(Boolean).join('  •  ')}</Text>
@@ -95,8 +156,8 @@ export function MediaDetailsModal({ item, favorite, knownPlayable = false, onPla
 
           <ScrollView contentContainerStyle={[styles.body, { padding: layout.isTv ? 28 : 17 }]}>
             <View style={styles.providerNote}>
-              <View style={[styles.noteDot, direct && styles.noteDotGood]} />
-              <Text style={styles.providerText}>{direct ? copy.available : copy.catalog}</Text>
+              {availability === 'checking' ? <ActivityIndicator size="small" /> : <View style={[styles.noteDot, available && styles.noteDotGood, availability === 'none' && styles.noteDotNone]} />}
+              <Text style={styles.providerText}>{note}</Text>
             </View>
 
             {metaLoading ? (
@@ -106,7 +167,7 @@ export function MediaDetailsModal({ item, favorite, knownPlayable = false, onPla
             )}
 
             <View style={styles.actions}>
-              <FocusButton active preferredFocus label={isSeries ? actionLabel : `▶ ${actionLabel}`} onPress={() => onPlay(item)} />
+              {primaryLabel ? <FocusButton active preferredFocus label={primaryLabel} onPress={handlePrimary} /> : null}
               <FocusButton label={favorite ? `♥ ${copy.favorite}` : `♡ ${copy.addFavorite}`} onPress={onToggleFavorite} />
               <FocusButton label={text.dismiss} onPress={onClose} />
             </View>
@@ -125,16 +186,17 @@ const styles = StyleSheet.create({
   heroImage: { opacity: 0.78 },
   heroShade: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: 'rgba(3,5,10,0.58)' },
   heroContent: { maxWidth: 820 },
-  typeBadge: { alignSelf: 'flex-start', borderRadius: 999, backgroundColor: 'rgba(13,17,27,0.9)', borderWidth: 1, borderColor: '#4b5568', paddingHorizontal: 9, paddingVertical: 5 },
+  typeBadge: { alignSelf: 'flex-start', maxWidth: '94%', borderRadius: 999, backgroundColor: 'rgba(13,17,27,0.9)', borderWidth: 1, borderColor: '#4b5568', paddingHorizontal: 9, paddingVertical: 5 },
   typeBadgePlayable: { backgroundColor: 'rgba(20,70,52,0.92)', borderColor: '#3f9d76' },
-  typeBadgeText: { color: '#dce2ec', fontSize: 9, fontWeight: '900', letterSpacing: 0.8 },
+  typeBadgeText: { color: '#dce2ec', fontSize: 9, fontWeight: '900', letterSpacing: 0.5 },
   typeBadgePlayableText: { color: '#84edbb' },
   title: { color: '#fff', fontWeight: '900', letterSpacing: -0.9, marginTop: 12 },
   meta: { color: '#d4dae5', marginTop: 7, fontSize: Platform.isTV ? 14 : 11, fontWeight: '700' },
   body: { gap: 15 },
-  providerNote: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, borderRadius: 12, borderWidth: 1, borderColor: '#252d3b', backgroundColor: '#10151f', padding: 11 },
-  noteDot: { width: 7, height: 7, borderRadius: 99, marginTop: 4, backgroundColor: '#9ca3af' },
+  providerNote: { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 12, borderWidth: 1, borderColor: '#252d3b', backgroundColor: '#10151f', padding: 11 },
+  noteDot: { width: 7, height: 7, borderRadius: 99, backgroundColor: '#9ca3af' },
   noteDotGood: { backgroundColor: '#65e0a6' },
+  noteDotNone: { backgroundColor: '#f0a45b' },
   providerText: { flex: 1, color: '#9ba5b6', fontSize: 11, lineHeight: 16, fontWeight: '700' },
   synopsis: { color: '#c5ccd8', fontSize: Platform.isTV ? 15 : 12, lineHeight: Platform.isTV ? 22 : 18 },
   loadingRow: { flexDirection: 'row', alignItems: 'center', gap: 9 },
