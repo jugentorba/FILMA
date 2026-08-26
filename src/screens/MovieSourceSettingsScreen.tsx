@@ -9,7 +9,7 @@ import { useResponsiveLayout } from '../ui/useResponsiveLayout';
 function copyFor(language: 'en' | 'fr' | 'sq') {
   if (language === 'fr') return {
     title: 'Sources films & séries',
-    automaticTitle: 'FILMA automatique',
+    automaticTitle: 'FILMA Films & Séries — Automatique',
     automaticHelp: 'FILMA découvre et actualise automatiquement les fournisseurs compatibles en arrière-plan. Aucune configuration n’est nécessaire.',
     automatic: 'Automatique',
     customTitle: 'Source site / fournisseur',
@@ -26,7 +26,7 @@ function copyFor(language: 'en' | 'fr' | 'sq') {
   };
   if (language === 'sq') return {
     title: 'Burimet e filmave & serialeve',
-    automaticTitle: 'FILMA automatik',
+    automaticTitle: 'FILMA Filma & Seriale — Automatik',
     automaticHelp: 'FILMA zbulon dhe rifreskon automatikisht ofruesit e përputhshëm në sfond. Nuk duhet të konfigurosh asgjë.',
     automatic: 'Automatik',
     customTitle: 'Burim website / provider',
@@ -43,7 +43,7 @@ function copyFor(language: 'en' | 'fr' | 'sq') {
   };
   return {
     title: 'Movies & Series sources',
-    automaticTitle: 'FILMA Automatic',
+    automaticTitle: 'FILMA Movies & Series — Automatic',
     automaticHelp: 'FILMA discovers and refreshes compatible providers automatically in the background. No setup is required.',
     automatic: 'Automatic',
     customTitle: 'Website / provider source',

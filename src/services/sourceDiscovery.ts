@@ -229,10 +229,7 @@ export async function refreshOfficialMovieProviders(): Promise<DiscoveredMoviePr
 }
 
 export async function discoverOfficialMovieProviders(): Promise<DiscoveredMovieProvider[]> {
-  const cached = cachedProviders();
-  if (cached) return cached;
-  void loadOfficialMovieProviders(true).catch(() => undefined);
-  return coreProviders();
+  return loadOfficialMovieProviders(false);
 }
 
 export async function discoverAutomaticCatalogProviders(): Promise<AddonSource[]> {
