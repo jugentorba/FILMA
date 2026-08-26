@@ -185,7 +185,7 @@ export function HomeNuvioScreen({ onSelect, onOpenYouTubeVideo }: Props) {
     genres: ['Shqip'],
     source: { kind: 'youtube', videoId: video.id, channelTitle: video.channelTitle },
   })), [archiveVideos]);
-  const rtshById = useMemo(() => new Map(archiveVideos.map(video => [`youtube:${video.id}`, video] as const)), [archiveVideos]);
+  const rtshById = useMemo(() => new Map<string, YouTubeVideo>(archiveVideos.map(video => [`youtube:${video.id}`, video])), [archiveVideos]);
 
   const refresh = () => { clearMediaDiscoveryCache(); setReload(value => value + 1); };
 
@@ -238,7 +238,7 @@ export function HomeNuvioScreen({ onSelect, onOpenYouTubeVideo }: Props) {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#070707' },
   hero: { justifyContent: 'flex-end', backgroundColor: '#111' },
-  heroShade: { position: 'absolute', inset: 0, backgroundColor: 'rgba(0,0,0,0.25)' },
+  heroShade: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: 'rgba(0,0,0,0.25)' },
   heroContent: { maxWidth: 760 },
   heroTitle: { color: '#fff', fontWeight: '900', letterSpacing: -1.5, lineHeight: 52 },
   heroMeta: { color: '#f0f0f1', fontSize: 14, fontWeight: '800', marginTop: 9 },
@@ -255,7 +255,7 @@ const styles = StyleSheet.create({
   continueCard: { height: Platform.isTV ? 205 : 145, marginRight: 12, borderRadius: 14, overflow: 'hidden', backgroundColor: '#171718' },
   continueArt: { flex: 1, justifyContent: 'flex-end' },
   continueImage: { borderRadius: 14 },
-  continueShade: { position: 'absolute', inset: 0, backgroundColor: 'rgba(0,0,0,0.24)' },
+  continueShade: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: 'rgba(0,0,0,0.24)' },
   remainingBadge: { position: 'absolute', top: 9, right: 9, paddingHorizontal: 9, paddingVertical: 5, borderRadius: 7, backgroundColor: 'rgba(15,15,16,0.82)' },
   remainingText: { color: '#fff', fontSize: 10, fontWeight: '800' },
   continueTextWrap: { paddingHorizontal: 12, paddingBottom: 13 },
