@@ -4,9 +4,9 @@ FILMA is a cross-platform movie, series, YouTube and Live TV app built with Expo
 
 ## Current release
 
-- App version: **0.1.5**
-- iOS build: **6**
-- Android versionCode: **6**
+- App version: **0.1.6**
+- iOS build: **7**
+- Android versionCode: **7**
 - Bundle/package id: `com.jugentorba.filma`
 
 ## Core features
@@ -14,11 +14,14 @@ FILMA is a cross-platform movie, series, YouTube and Live TV app built with Expo
 - Movies-first home experience with TV-aware navigation.
 - Phone / TV Mode switch for testing TV features on an Android phone; native TV devices always stay in TV mode.
 - Permanent **Cinemeta** movie/series catalog and metadata anchor.
-- Stremio-compatible user sources plus official automatic source discovery.
-- Custom movie sources are validated before saving and must expose a movie/series `stream` resource.
-- Automatic stream ranking and player-level failover when a direct stream fails, plus manual **Next source** switching.
+- Built-in **FILMA Free** catalogue with direct playable public Internet Archive feature films.
+- Automatic official movie/series provider discovery at startup, with a forced fresh provider pass before FILMA declares a title unavailable.
+- Movie and episode availability is checked automatically; a playback miss offers **Search again** first. Manual source management is optional.
+- Stremio-compatible user sources can supplement automatic discovery and may provide catalogue, metadata, streams, or a combination of those capabilities.
+- Automatic stream ranking by preferred audio language and player-level failover when a direct stream fails, plus manual **Next source** switching.
 - Default playback language priority: **French → Albanian → English**. Manual audio preferences override that order.
-- Series/episode selection with artwork, progress and resume-aware continuation.
+- Movies/series discovery includes Popular, New and Featured rows, cached catalogue/metadata requests, cross-provider deduplication, and combined search.
+- Series/episode selection with artwork, automatic episode source resolution, progress and resume-aware continuation.
 - Profile-scoped Continue Watching, favorites and playback progress.
 - Dropbox synchronization of profiles, progress, favorites, preferences and configured sources across devices.
 - Live TV via legal/public or user-authorized M3U/M3U8 playlists, local M3U/M3U8 file import and Xtream Codes, with channel logos, search, groups and backup-source failover.
@@ -30,7 +33,7 @@ FILMA is a cross-platform movie, series, YouTube and Live TV app built with Expo
 
 ## Content-source policy
 
-FILMA is designed for sources the user is authorized to use. The built-in discovery path is limited to official/public sources such as Cinemeta, the official Stremio add-on index, IPTV-org public playlists and official YouTube content. User-configured Stremio manifests, M3U/M3U8 URLs/files and authorized Xtream providers are supported.
+FILMA is designed for sources the user is authorized to use. The built-in discovery path is limited to official/public sources such as Cinemeta, the official Stremio add-on index, Internet Archive public content, IPTV-org public playlists and official YouTube content. User-configured Stremio manifests, M3U/M3U8 URLs/files and authorized Xtream providers are supported.
 
 The project does not include scraping, anti-bot bypasses, token extraction or automatic harvesting of unauthorized copyrighted streams.
 
@@ -73,7 +76,9 @@ EXPO_TV=1 yarn prebuild:tv
 
 - TypeScript
 - state migration/conflict tests
-- source/language-priority and custom-source validation tests
+- source/language-priority, media-discovery and custom-source validation tests
+- built-in playable movie-provider regression tests
+- release-version alignment
 - M3U parsing/merge and local-playlist tests
 - YouTube source tests
 - Expo config
