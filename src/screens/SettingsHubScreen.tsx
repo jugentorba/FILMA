@@ -3,9 +3,10 @@ import { Modal, Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, Text,
 import { useFilma } from '../store/FilmaContext';
 import { ProfileSwitcher } from '../ui/ProfileSwitcher';
 import { useResponsiveLayout } from '../ui/useResponsiveLayout';
+import { MovieSourceSettingsScreen } from './MovieSourceSettingsScreen';
 import { SettingsScreen as DetailedSettings } from './SettingsV2';
 
-type SectionKey = 'appearance' | 'content' | 'playback' | 'integrations' | 'tv' | 'advanced';
+type SectionKey = 'appearance' | 'content' | 'sources' | 'playback' | 'integrations' | 'tv' | 'advanced';
 
 type RowCopy = { title: string; help: string; icon: string; section: SectionKey };
 
@@ -17,7 +18,8 @@ function copyFor(language: 'en' | 'fr' | 'sq') {
       version: 'Version et informations', versionHelp: 'FILMA 0.1.7 · build 8', close: 'Fermer',
       rows: [
         { title: 'Apparence', help: 'Langue de l’application, densité et préférences visuelles.', icon: '◉', section: 'appearance' },
-        { title: 'Contenu et découverte', help: 'Catalogue, langues audio et sources personnalisées.', icon: '✚', section: 'content' },
+        { title: 'Contenu et découverte', help: 'Catalogue et langues audio préférées.', icon: '✚', section: 'content' },
+        { title: 'Sources films & séries', help: 'Découverte automatique et source site/fournisseur optionnelle.', icon: '◎', section: 'sources' },
         { title: 'Lecture', help: 'Audio, sous-titres et comportement du lecteur.', icon: '▶', section: 'playback' },
         { title: 'Intégrations', help: 'Synchronisation Dropbox et services connectés.', icon: '↗', section: 'integrations' },
         { title: 'TV en direct', help: 'Playlists M3U, fichiers locaux et Xtream.', icon: 'TV', section: 'tv' },
@@ -32,7 +34,8 @@ function copyFor(language: 'en' | 'fr' | 'sq') {
       version: 'Versioni dhe informacioni', versionHelp: 'FILMA 0.1.7 · build 8', close: 'Mbyll',
       rows: [
         { title: 'Pamja', help: 'Gjuha e aplikacionit, dendësia dhe preferencat vizuale.', icon: '◉', section: 'appearance' },
-        { title: 'Përmbajtja dhe zbulimi', help: 'Katalogu, gjuhët e audios dhe burimet personale.', icon: '✚', section: 'content' },
+        { title: 'Përmbajtja dhe zbulimi', help: 'Katalogu dhe gjuhët e preferuara të audios.', icon: '✚', section: 'content' },
+        { title: 'Burimet e filmave & serialeve', help: 'Zbulim automatik dhe website/provider opsional.', icon: '◎', section: 'sources' },
         { title: 'Luajtja', help: 'Audio, titrat dhe sjellja e player-it.', icon: '▶', section: 'playback' },
         { title: 'Integrimet', help: 'Sinkronizimi Dropbox dhe shërbimet e lidhura.', icon: '↗', section: 'integrations' },
         { title: 'TV Live', help: 'M3U, skedarë lokalë dhe Xtream.', icon: 'TV', section: 'tv' },
@@ -46,7 +49,8 @@ function copyFor(language: 'en' | 'fr' | 'sq') {
     version: 'Version & information', versionHelp: 'FILMA 0.1.7 · build 8', close: 'Close',
     rows: [
       { title: 'Appearance', help: 'App language, density and visual preferences.', icon: '◉', section: 'appearance' },
-      { title: 'Content & discovery', help: 'Catalogue, audio languages and custom sources.', icon: '✚', section: 'content' },
+      { title: 'Content & discovery', help: 'Catalogue and preferred audio languages.', icon: '✚', section: 'content' },
+      { title: 'Movies & Series sources', help: 'Automatic discovery and optional website/provider source.', icon: '◎', section: 'sources' },
       { title: 'Playback', help: 'Audio, subtitles and player behavior.', icon: '▶', section: 'playback' },
       { title: 'Integrations', help: 'Dropbox sync and connected services.', icon: '↗', section: 'integrations' },
       { title: 'Live TV', help: 'M3U playlists, local files and Xtream.', icon: 'TV', section: 'tv' },
@@ -112,7 +116,7 @@ export function SettingsHubScreen() {
             <Text style={styles.modalTitle}>{detail ? (detail === 'advanced' ? copy.advancedRow.title : copy.rows.find(row => row.section === detail)?.title ?? copy.title) : copy.title}</Text>
             <Pressable accessibilityRole="button" accessibilityLabel={copy.close} hitSlop={12} onPress={() => setDetail(null)}><Text style={styles.close}>×</Text></Pressable>
           </View>
-          <DetailedSettings />
+          {detail === 'sources' ? <MovieSourceSettingsScreen /> : <DetailedSettings />}
         </SafeAreaView>
       </Modal>
     </>
