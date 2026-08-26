@@ -1,1 +1,1 @@
-export { SettingsScreen } from './SettingsV2';
+export { SettingsHubScreen as SettingsScreen } from './SettingsHubScreen';
