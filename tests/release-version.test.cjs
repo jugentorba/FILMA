@@ -19,5 +19,6 @@ assert.equal(androidBuild, iosBuild, 'Android versionCode and iOS buildNumber mu
 assert.ok(settingsEntry.includes("export { SettingsHubScreen as SettingsScreen } from './SettingsHubScreen';"), 'SettingsScreen must point at the grouped settings hub');
 assert.ok(settingsHub.includes(expectedLabel), `Settings hub must show the current release label: ${expectedLabel}`);
 assert.ok(settingsDetail.includes(expectedLabel), `Detailed settings must show the current release label: ${expectedLabel}`);
+assert.ok(settingsHub.includes('<DetailedSettings hideMovieSources />'), 'Settings hub must keep the legacy manual add-on manager hidden outside the dedicated source screen');
 
 console.log(`FILMA release metadata is aligned: ${expectedLabel}`);

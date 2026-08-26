@@ -15,7 +15,7 @@ function copyFor(language: 'en' | 'fr' | 'sq') {
     return {
       title: 'Paramètres', account: 'COMPTE', general: 'GÉNÉRAL', about: 'À PROPOS', advanced: 'AVANCÉ',
       switchProfile: 'Changer de profil', switchHelp: 'Basculer vers un profil différent.',
-      version: 'Version et informations', versionHelp: 'FILMA 0.1.7 · build 8', close: 'Fermer',
+      version: 'Version et informations', versionHelp: 'FILMA 0.1.8 · build 9', close: 'Fermer',
       rows: [
         { title: 'Apparence', help: 'Langue de l’application, densité et préférences visuelles.', icon: '◉', section: 'appearance' },
         { title: 'Contenu et découverte', help: 'Catalogue et langues audio préférées.', icon: '✚', section: 'content' },
@@ -31,7 +31,7 @@ function copyFor(language: 'en' | 'fr' | 'sq') {
     return {
       title: 'Cilësimet', account: 'LLOGARIA', general: 'TË PËRGJITHSHME', about: 'RRETH APLIKACIONIT', advanced: 'TË AVANCUARA',
       switchProfile: 'Ndrysho profilin', switchHelp: 'Kalo në një profil tjetër.',
-      version: 'Versioni dhe informacioni', versionHelp: 'FILMA 0.1.7 · build 8', close: 'Mbyll',
+      version: 'Versioni dhe informacioni', versionHelp: 'FILMA 0.1.8 · build 9', close: 'Mbyll',
       rows: [
         { title: 'Pamja', help: 'Gjuha e aplikacionit, dendësia dhe preferencat vizuale.', icon: '◉', section: 'appearance' },
         { title: 'Përmbajtja dhe zbulimi', help: 'Katalogu dhe gjuhët e preferuara të audios.', icon: '✚', section: 'content' },
@@ -46,7 +46,7 @@ function copyFor(language: 'en' | 'fr' | 'sq') {
   return {
     title: 'Settings', account: 'ACCOUNT', general: 'GENERAL', about: 'ABOUT', advanced: 'ADVANCED',
     switchProfile: 'Switch profile', switchHelp: 'Change to a different profile.',
-    version: 'Version & information', versionHelp: 'FILMA 0.1.7 · build 8', close: 'Close',
+    version: 'Version & information', versionHelp: 'FILMA 0.1.8 · build 9', close: 'Close',
     rows: [
       { title: 'Appearance', help: 'App language, density and visual preferences.', icon: '◉', section: 'appearance' },
       { title: 'Content & discovery', help: 'Catalogue and preferred audio languages.', icon: '✚', section: 'content' },
@@ -116,7 +116,7 @@ export function SettingsHubScreen() {
             <Text style={styles.modalTitle}>{detail ? (detail === 'advanced' ? copy.advancedRow.title : copy.rows.find(row => row.section === detail)?.title ?? copy.title) : copy.title}</Text>
             <Pressable accessibilityRole="button" accessibilityLabel={copy.close} hitSlop={12} onPress={() => setDetail(null)}><Text style={styles.close}>×</Text></Pressable>
           </View>
-          {detail === 'sources' ? <MovieSourceSettingsScreen /> : <DetailedSettings />}
+          {detail === 'sources' ? <MovieSourceSettingsScreen /> : <DetailedSettings hideMovieSources />}
         </SafeAreaView>
       </Modal>
     </>

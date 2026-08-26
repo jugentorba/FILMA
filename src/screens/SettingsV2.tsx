@@ -11,7 +11,7 @@ import { FocusButton } from '../ui/FocusButton';
 import { theme } from '../ui/theme';
 import { useResponsiveLayout } from '../ui/useResponsiveLayout';
 
-export function SettingsScreen() {
+export function SettingsScreen({ hideMovieSources = false }: { hideMovieSources?: boolean }) {
   const {
     deviceId,
     state,
@@ -283,49 +283,51 @@ export function SettingsScreen() {
         </View>
       </View>
 
-      <SummaryCard
-        icon="▶"
-        title={copy.movieSources}
-        subtitle={copy.movieSummary}
-        status={movieSourceStatus}
-        action={showMovieSources ? copy.hide : copy.open}
-        open={showMovieSources}
-        onToggle={() => setShowMovieSources(value => !value)}
-      >
-        <View style={styles.sourceList}>
-          <View style={styles.sourceRow}>
-            <View style={styles.sourceMain}>
-              <View style={styles.sourceNameLine}>
-                <Text style={styles.sourceName}>{copy.filmaMovies}</Text>
-                <View style={styles.tagGood}><Text style={styles.tagGoodText}>{copy.automatic}</Text></View>
-              </View>
-              <Text style={styles.sourceDescription}>{copy.filmaSourceHelp}</Text>
-            </View>
-          </View>
-
-          {customAddons.length ? <Text style={styles.sourceSectionLabel}>{copy.customSources}</Text> : null}
-          {customAddons.map(item => (
-            <View key={item.id} style={styles.sourceRow}>
+      {!hideMovieSources ? (
+        <SummaryCard
+          icon="▶"
+          title={copy.movieSources}
+          subtitle={copy.movieSummary}
+          status={movieSourceStatus}
+          action={showMovieSources ? copy.hide : copy.open}
+          open={showMovieSources}
+          onToggle={() => setShowMovieSources(value => !value)}
+        >
+          <View style={styles.sourceList}>
+            <View style={styles.sourceRow}>
               <View style={styles.sourceMain}>
                 <View style={styles.sourceNameLine}>
-                  <Text style={styles.sourceName}>{item.name}</Text>
-                  <View style={styles.tag}><Text style={styles.tagText}>{item.enabled ? text.enabled : text.disabled}</Text></View>
+                  <Text style={styles.sourceName}>{copy.filmaMovies}</Text>
+                  <View style={styles.tagGood}><Text style={styles.tagGoodText}>{copy.automatic}</Text></View>
                 </View>
-                <Text numberOfLines={1} style={styles.sourceUrl}>{item.manifestUrl}</Text>
-              </View>
-              <View style={styles.sourceActions}>
-                <FocusButton compact label={item.enabled ? text.disable : text.enable} onPress={() => setAddonEnabled(item.id, !item.enabled)} />
-                <FocusButton compact label={text.remove} onPress={() => removeAddon(item.id)} />
+                <Text style={styles.sourceDescription}>{copy.filmaSourceHelp}</Text>
               </View>
             </View>
-          ))}
 
-          <View style={styles.divider} />
-          <TextInput value={addonName} onChangeText={setAddonName} placeholder={copy.sourceName} placeholderTextColor={theme.muted} style={styles.input} />
-          <TextInput value={manifestUrl} onChangeText={setManifestUrl} placeholder="https://provider.example/manifest.json" placeholderTextColor={theme.muted} autoCapitalize="none" autoCorrect={false} keyboardType="url" style={styles.input} />
-          <FocusButton active label={validatingAddon ? copy.checkingSource : text.addAddon} onPress={() => void addAddonNow()} />
-        </View>
-      </SummaryCard>
+            {customAddons.length ? <Text style={styles.sourceSectionLabel}>{copy.customSources}</Text> : null}
+            {customAddons.map(item => (
+              <View key={item.id} style={styles.sourceRow}>
+                <View style={styles.sourceMain}>
+                  <View style={styles.sourceNameLine}>
+                    <Text style={styles.sourceName}>{item.name}</Text>
+                    <View style={styles.tag}><Text style={styles.tagText}>{item.enabled ? text.enabled : text.disabled}</Text></View>
+                  </View>
+                  <Text numberOfLines={1} style={styles.sourceUrl}>{item.manifestUrl}</Text>
+                </View>
+                <View style={styles.sourceActions}>
+                  <FocusButton compact label={item.enabled ? text.disable : text.enable} onPress={() => setAddonEnabled(item.id, !item.enabled)} />
+                  <FocusButton compact label={text.remove} onPress={() => removeAddon(item.id)} />
+                </View>
+              </View>
+            ))}
+
+            <View style={styles.divider} />
+            <TextInput value={addonName} onChangeText={setAddonName} placeholder={copy.sourceName} placeholderTextColor={theme.muted} style={styles.input} />
+            <TextInput value={manifestUrl} onChangeText={setManifestUrl} placeholder="https://provider.example/manifest.json" placeholderTextColor={theme.muted} autoCapitalize="none" autoCorrect={false} keyboardType="url" style={styles.input} />
+            <FocusButton active label={validatingAddon ? copy.checkingSource : text.addAddon} onPress={() => void addAddonNow()} />
+          </View>
+        </SummaryCard>
+      ) : null}
 
       <SummaryCard
         icon="TV"
@@ -404,7 +406,7 @@ export function SettingsScreen() {
           <FocusButton compact active={isTvMode} label={copy.tv} onPress={() => setTvModeEnabled(true)} />
         </View>
         <View style={styles.divider} />
-        <Text style={styles.deviceText}>FILMA 0.1.7 · build 8</Text>
+        <Text style={styles.deviceText}>FILMA 0.1.8 · build 9</Text>
         <Text style={styles.deviceText}>{text.device}: {deviceId}</Text>
       </View>
     </ScrollView>
