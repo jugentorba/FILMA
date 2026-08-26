@@ -1,0 +1,182 @@
+name: HDFlix iOS Port
+
+on:
+  push:
+    branches: [hdflix-ios-port]
+  workflow_dispatch:
+
+jobs:
+  build-ios:
+    runs-on: macos-14
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 18
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Show build tools
+        run: |
+          set -euxo pipefail
+          node --version
+          npm --version
+          xcodebuild -version
+          ruby --version
+          pod --version || true
+
+      - name: Download original HDFlix APK and extract bundle
+        run: |
+          set -euxo pipefail
+          mkdir -p hdflix-original
+          curl -L --fail --retry 3 \
+            https://github.com/leexiang88/hdflix/releases/download/v1.0.1/v1.0.1.apk \
+            -o hdflix-original/hdflix.apk
+          unzip -q hdflix-original/hdflix.apk -d hdflix-original/apk
+          test -s hdflix-original/apk/assets/index.android.bundle
+          cp hdflix-original/apk/assets/index.android.bundle hdflix-original/main.jsbundle
+          mkdir -p hdflix-original/fonts
+          cp hdflix-original/apk/assets/fonts/*.ttf hdflix-original/fonts/
+          shasum -a 256 hdflix-original/hdflix.apk hdflix-original/main.jsbundle
+
+      - name: Create React Native 0.71.19 iOS shell
+        run: |
+          set -euxo pipefail
+          rm -rf hdflix-port
+          npx --yes react-native@0.71.19 init HDFlix --version 0.71.19 --skip-install --directory hdflix-port
+          cd hdflix-port
+          node -e "const p=require('./package.json'); p.name='HDFlix'; p.version='1.0.1'; require('fs').writeFileSync('package.json', JSON.stringify(p,null,2)+'\\n')"
+
+      - name: Install native bridges expected by original bundle
+        working-directory: hdflix-port
+        run: |
+          set -euxo pipefail
+          npm install --legacy-peer-deps \
+            react-native@0.71.19 react@18.2.0 \
+            react-native-reanimated@2.17.0 \
+            react-native-code-push@8.3.1 \
+            realm@12.11.1 \
+            react-native-mmkv@2.12.2 \
+            react-native-applovin-max@7.1.0 \
+            @notifee/react-native@7.8.2 \
+            countly-sdk-react-native-bridge@24.4.0 \
+            @react-native-async-storage/async-storage@1.24.0 \
+            @react-native-clipboard/clipboard@1.14.1 \
+            @react-native-cookies/cookies@6.2.1 \
+            @react-native-community/blur@4.4.1 \
+            react-native-linear-gradient@2.8.3 \
+            react-native-fast-image@8.6.3 \
+            react-native-svg@14.1.0 \
+            react-native-webview@13.10.4 \
+            react-native-video@6.4.5 \
+            react-native-vector-icons@10.1.0 \
+            react-native-device-info@10.12.0 \
+            react-native-fs@2.20.0 \
+            react-native-zip-archive@6.0.9 \
+            react-native-gesture-handler@2.16.2 \
+            react-native-screens@3.31.1 \
+            react-native-safe-area-context@4.10.5 \
+            react-native-permissions@3.10.1 \
+            react-native-get-random-values@1.11.0
+
+      - name: Configure iOS shell for recovered HDFlix bundle
+        run: |
+          set -euxo pipefail
+          cd hdflix-port
+
+          # Keep the app registry name exactly as embedded in the original APK bundle.
+          python3 - <<'PY'
+          from pathlib import Path
+          candidates = list(Path('ios').glob('**/AppDelegate.mm')) + list(Path('ios').glob('**/AppDelegate.m'))
+          if not candidates:
+              raise SystemExit('AppDelegate not found')
+          p = candidates[0]
+          s = p.read_text()
+          s = s.replace('self.moduleName = @"HDFlix";', 'self.moduleName = @"HDFlix";')
+          s = s.replace('self.moduleName = @"hdflix";', 'self.moduleName = @"HDFlix";')
+          s = s.replace('self.moduleName = @"HDFlixIOS";', 'self.moduleName = @"HDFlix";')
+          p.write_text(s)
+          print(p)
+          PY
+
+          # CodePush is invoked at startup by the recovered bundle. A blank deployment key
+          # keeps the bridge available without changing the visible app.
+          /usr/libexec/PlistBuddy -c "Add :CodePushDeploymentKey string ''" ios/HDFlix/Info.plist || true
+
+          # Match the original iOS configuration embedded in app.json.
+          /usr/libexec/PlistBuddy -c "Add :GADApplicationIdentifier string 'ca-app-pub-3940256099942544~3347511713'" ios/HDFlix/Info.plist || true
+          /usr/libexec/PlistBuddy -c "Add :NSUserTrackingUsageDescription string 'This identifier will be used to deliver personalized ads to you.'" ios/HDFlix/Info.plist || true
+          /usr/libexec/PlistBuddy -c "Add :NSAppTransportSecurity dict" ios/HDFlix/Info.plist || true
+          /usr/libexec/PlistBuddy -c "Add :NSAppTransportSecurity:NSAllowsArbitraryLoads bool true" ios/HDFlix/Info.plist || true
+
+          # Reanimated 2 expects this Babel plugin if Metro is ever invoked, but this build
+          # uses the recovered precompiled bundle directly.
+          cat > babel.config.js <<'EOF'
+          module.exports = {
+            presets: ['module:metro-react-native-babel-preset'],
+            plugins: ['react-native-reanimated/plugin'],
+          };
+          EOF
+
+      - name: Install CocoaPods
+        working-directory: hdflix-port/ios
+        run: |
+          set -euxo pipefail
+          export RCT_NEW_ARCH_ENABLED=0
+          pod install --repo-update
+
+      - name: Build unsigned iPhone device app
+        working-directory: hdflix-port
+        run: |
+          set -euxo pipefail
+          export RCT_NEW_ARCH_ENABLED=0
+          export SKIP_BUNDLING=1
+          mkdir -p build
+          xcodebuild \
+            -workspace ios/HDFlix.xcworkspace \
+            -scheme HDFlix \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY='' \
+            DEVELOPMENT_TEAM='' \
+            build | tee build/xcodebuild.log
+
+      - name: Inject recovered bundle and fonts into app
+        run: |
+          set -euxo pipefail
+          APP=$(find hdflix-port/build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)
+          test -n "$APP"
+          cp hdflix-original/main.jsbundle "$APP/main.jsbundle"
+          cp hdflix-original/fonts/*.ttf "$APP/"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName HDFlix" "$APP/Info.plist" || true
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString 1.0.1" "$APP/Info.plist" || true
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion 1" "$APP/Info.plist" || true
+          test -s "$APP/main.jsbundle"
+          echo "$APP" > /tmp/hdflix_app_path
+
+      - name: Package unsigned IPA
+        run: |
+          set -euxo pipefail
+          APP=$(cat /tmp/hdflix_app_path)
+          rm -rf Payload HDFlix-iOS-Unsigned.ipa
+          mkdir Payload
+          cp -R "$APP" Payload/
+          zip -qry HDFlix-iOS-Unsigned.ipa Payload
+          unzip -l HDFlix-iOS-Unsigned.ipa | grep -E 'Payload/.+\\.app/main.jsbundle'
+          shasum -a 256 HDFlix-iOS-Unsigned.ipa > HDFlix-iOS-Unsigned.ipa.sha256
+          cat HDFlix-iOS-Unsigned.ipa.sha256
+
+      - name: Upload iOS IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: HDFlix-iOS-Unsigned-IPA
+          path: |
+            HDFlix-iOS-Unsigned.ipa
+            HDFlix-iOS-Unsigned.ipa.sha256
+          if-no-files-found: error
