@@ -64,7 +64,6 @@ function playbackCopyFor(language: AppLanguage): PlaybackCopy {
       sources: 'Sources',
     };
   }
-
   if (language === 'sq') {
     return {
       noEnabledSource: 'Nuk ka burim aktiv për luajtjen e filmave dhe serialeve.',
@@ -84,7 +83,6 @@ function playbackCopyFor(language: AppLanguage): PlaybackCopy {
       sources: 'Burimet',
     };
   }
-
   return {
     noEnabledSource: 'No playback provider is configured for movies and series.',
     manifestsUnavailable: 'FILMA could not contact the playback providers. Check the connection and try again.',
@@ -131,14 +129,13 @@ function FilmaApp() {
   const goMovies = () => { setMode('movies'); setScreen('home'); };
   const goLive = () => { setMode('live'); setScreen('live'); };
   const goYouTube = () => { if (isTvMode) setScreen('youtube'); };
-  const goSettings = () => { setAvailabilityNotice(undefined); setScreen('settings'); };
+  const goSettings = () => { setDetailsItem(null); setAvailabilityNotice(undefined); setScreen('settings'); };
 
   const resolveStreamsFor = async (item: MediaItem) => {
     if (item.source?.kind !== 'stremio') {
       setPlaybackError(playbackCopy.missingMediaIdentity);
       return;
     }
-
     setPlaybackError(undefined);
     setAvailabilityNotice(undefined);
     setResolvingTitle(item.title);
@@ -146,11 +143,8 @@ function FilmaApp() {
       const resolution = await resolveStreamsAcrossAddons(item, state.addons, state.preferences.preferredAudioLanguages);
       const best = resolution.streams[0];
       if (!best) {
-        if (resolution.diagnostics.manifestsLoaded === 0 && resolution.diagnostics.enabledProviders > 0) {
-          setPlaybackError(resolutionMessage(resolution.diagnostics, playbackCopy));
-        } else {
-          setAvailabilityNotice(resolutionMessage(resolution.diagnostics, playbackCopy));
-        }
+        if (resolution.diagnostics.manifestsLoaded === 0 && resolution.diagnostics.enabledProviders > 0) setPlaybackError(resolutionMessage(resolution.diagnostics, playbackCopy));
+        else setAvailabilityNotice(resolutionMessage(resolution.diagnostics, playbackCopy));
         return;
       }
       setSelected({ ...item, streamUrl: best.url });
@@ -194,22 +188,14 @@ function FilmaApp() {
     setPlaybackError(undefined);
     setAvailabilityNotice(undefined);
     if (item.streamUrl) { setSelected(item); return; }
-
     if (item.source?.kind === 'youtube') {
-      await handleYouTubeVideo({
-        id: item.source.videoId,
-        title: item.title,
-        channelTitle: item.source.channelTitle ?? item.subtitle ?? 'YouTube',
-        thumbnail: item.poster,
-      });
+      await handleYouTubeVideo({ id: item.source.videoId, title: item.title, channelTitle: item.source.channelTitle ?? item.subtitle ?? 'YouTube', thumbnail: item.poster });
       return;
     }
-
     if (item.source?.kind !== 'stremio') {
       setPlaybackError(playbackCopy.itemNotPlayable);
       return;
     }
-
     if (item.source.mediaType === 'series' && !item.source.videoId) {
       setResolvingTitle(item.title);
       try {
@@ -227,7 +213,6 @@ function FilmaApp() {
       }
       return;
     }
-
     await resolveStreamsFor(item);
   };
 
@@ -247,26 +232,16 @@ function FilmaApp() {
   }, [selected, updateProgress]);
 
   if (!ready) {
-    return (
-      <View style={styles.loading}>
-        <Text style={styles.brand}>FILMA</Text>
-        <ActivityIndicator size="large" />
-      </View>
-    );
+    return <View style={styles.loading}><Text style={styles.brand}>FILMA</Text><ActivityIndicator size="large" /></View>;
   }
 
   const selectedFavorite = selected ? state.favorites[selected.id] : undefined;
   const detailsFavorite = detailsItem ? state.favorites[detailsItem.id] : undefined;
-  const detailsKnownPlayable = Boolean(
-    detailsItem?.streamUrl
-    || detailsItem?.source?.kind === 'youtube'
-    || (detailsItem?.source?.kind === 'stremio' && detailsItem.source.manifestUrl === FILMA_ARCHIVE_MANIFEST_URL),
-  );
+  const detailsKnownPlayable = Boolean(detailsItem?.streamUrl || detailsItem?.source?.kind === 'youtube' || (detailsItem?.source?.kind === 'stremio' && detailsItem.source.manifestUrl === FILMA_ARCHIVE_MANIFEST_URL));
 
   return (
     <SafeAreaView style={styles.safe}>
       <StatusBar style="light" hidden={Platform.isTV} />
-
       {Platform.isTV ? (
         <View style={styles.tvNav}>
           <View style={styles.brandRow}><View style={styles.brandMark}><Text style={styles.brandMarkText}>F</Text></View><Text style={styles.brand}>FILMA</Text></View>
@@ -281,45 +256,21 @@ function FilmaApp() {
       ) : (
         <View style={styles.mobileHeader}>
           <View style={styles.brandRow}><View style={styles.brandMark}><Text style={styles.brandMarkText}>F</Text></View><Text style={styles.brand}>FILMA</Text></View>
-          <View style={styles.mobileHeaderActions}>
-            <Text style={styles.screenLabel}>{screen === 'home' ? text.movies : screen === 'live' ? text.liveTv : screen === 'youtube' ? text.youtube : text.settings}</Text>
-            <ProfileSwitcher />
-          </View>
+          <View style={styles.mobileHeaderActions}><Text style={styles.screenLabel}>{screen === 'home' ? text.movies : screen === 'live' ? text.liveTv : screen === 'youtube' ? text.youtube : text.settings}</Text><ProfileSwitcher /></View>
         </View>
       )}
 
-      {playbackError ? (
-        <View style={styles.errorBar}>
-          <Text style={styles.errorText}>{playbackError}</Text>
-          <FocusButton compact label={text.dismiss} onPress={() => setPlaybackError(undefined)} />
-        </View>
-      ) : null}
-
+      {playbackError ? <View style={styles.errorBar}><Text style={styles.errorText}>{playbackError}</Text><FocusButton compact label={text.dismiss} onPress={() => setPlaybackError(undefined)} /></View> : null}
       {availabilityNotice ? (
         <View style={styles.noticeBar}>
           <Text style={styles.noticeText}>{availabilityNotice}</Text>
-          <View style={styles.noticeActions}>
-            <FocusButton compact active label={playbackCopy.sources} onPress={goSettings} />
-            <FocusButton compact label={text.dismiss} onPress={() => setAvailabilityNotice(undefined)} />
-          </View>
+          <View style={styles.noticeActions}><FocusButton compact active label={playbackCopy.sources} onPress={goSettings} /><FocusButton compact label={text.dismiss} onPress={() => setAvailabilityNotice(undefined)} /></View>
         </View>
       ) : null}
-
-      {resolvingTitle ? (
-        <View style={styles.resolveBar}>
-          <ActivityIndicator size="small" />
-          <Text numberOfLines={1} style={styles.resolveText}>{text.loading} {resolvingTitle}…</Text>
-        </View>
-      ) : null}
+      {resolvingTitle ? <View style={styles.resolveBar}><ActivityIndicator size="small" /><Text numberOfLines={1} style={styles.resolveText}>{text.loading} {resolvingTitle}…</Text></View> : null}
 
       <View style={styles.content}>
-        {screen === 'home' ? (
-          <HomeScreen
-            onSelect={handleBrowseSelect}
-            onOpenYouTubeVideo={video => void handleYouTubeVideo(video)}
-            onOpenSettings={goSettings}
-          />
-        ) : null}
+        {screen === 'home' ? <HomeScreen onSelect={handleBrowseSelect} onOpenYouTubeVideo={video => void handleYouTubeVideo(video)} onOpenSettings={goSettings} /> : null}
         {screen === 'live' ? <LiveTvScreen onSelect={item => void handleLiveSelect(item)} onOpenSettings={goSettings} /> : null}
         {screen === 'youtube' && isTvMode ? <YouTubeScreen onOpenVideo={video => void handleYouTubeVideo(video)} /> : null}
         {screen === 'settings' ? <SettingsScreen /> : null}
@@ -340,6 +291,7 @@ function FilmaApp() {
           favorite={Boolean(detailsFavorite && !detailsFavorite.deletedAt)}
           knownPlayable={detailsKnownPlayable}
           onPlay={item => void handlePlayItem(item)}
+          onOpenSources={goSettings}
           onToggleFavorite={() => toggleFavorite(detailsItem.id)}
           onClose={() => setDetailsItem(null)}
         />
@@ -349,46 +301,19 @@ function FilmaApp() {
         <EpisodePickerModal
           series={pendingEpisodes.series}
           episodes={pendingEpisodes.episodes}
-          onChoose={video => {
-            const item = mediaItemForEpisode(pendingEpisodes.series, video);
-            setPendingEpisodes(null);
-            void resolveStreamsFor(item);
-          }}
+          onChoose={video => { const item = mediaItemForEpisode(pendingEpisodes.series, video); setPendingEpisodes(null); void resolveStreamsFor(item); }}
           onClose={() => setPendingEpisodes(null)}
         />
       ) : null}
 
-      {selectedYouTube ? (
-        <YouTubePlayerModal
-          videoId={selectedYouTube.id}
-          title={selectedYouTube.title}
-          channelTitle={selectedYouTube.channelTitle}
-          onClose={() => setSelectedYouTube(null)}
-        />
-      ) : null}
-
-      {selected?.streamUrl ? (
-        <PlayerModal
-          item={selected}
-          progress={state.progress[selected.id]}
-          favorite={Boolean(selectedFavorite && !selectedFavorite.deletedAt)}
-          onProgress={handleProgress}
-          onToggleFavorite={() => toggleFavorite(selected.id)}
-          onClose={() => setSelected(null)}
-        />
-      ) : null}
+      {selectedYouTube ? <YouTubePlayerModal videoId={selectedYouTube.id} title={selectedYouTube.title} channelTitle={selectedYouTube.channelTitle} onClose={() => setSelectedYouTube(null)} /> : null}
+      {selected?.streamUrl ? <PlayerModal item={selected} progress={state.progress[selected.id]} favorite={Boolean(selectedFavorite && !selectedFavorite.deletedAt)} onProgress={handleProgress} onToggleFavorite={() => toggleFavorite(selected.id)} onClose={() => setSelected(null)} /> : null}
     </SafeAreaView>
   );
 }
 
 export default function App() {
-  return (
-    <DeviceModeProvider>
-      <FilmaProvider>
-        <DropboxSyncProvider><FilmaApp /></DropboxSyncProvider>
-      </FilmaProvider>
-    </DeviceModeProvider>
-  );
+  return <DeviceModeProvider><FilmaProvider><DropboxSyncProvider><FilmaApp /></DropboxSyncProvider></FilmaProvider></DeviceModeProvider>;
 }
 
 const styles = StyleSheet.create({
