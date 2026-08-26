@@ -76,8 +76,12 @@ export function canonicalMediaKey(item: MediaItem): string {
   if (item.source?.kind === 'youtube') return `youtube:${item.source.videoId}`;
 
   const title = normalizedTitle(item.title);
-  const year = item.year ? String(item.year) : '';
-  if (title) return `${itemType(item)}:title:${title}:${year}`;
+  if (title && item.year) return `${itemType(item)}:title:${title}:${item.year}`;
+
+  if (item.source?.kind === 'stremio') {
+    const raw = item.source.videoId ?? item.source.mediaId;
+    return `${itemType(item)}:source:${item.source.manifestUrl}:${raw}`;
+  }
   return item.id;
 }
 
