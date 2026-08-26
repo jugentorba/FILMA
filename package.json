@@ -1,6 +1,6 @@
 {
   "name": "filma",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "private": true,
   "packageManager": "yarn@1.22.22",
   "main": "index.ts",
