@@ -192,10 +192,16 @@ function rankedExternal(candidates: ProviderCandidates[], preferred: AudioLangua
   return dedupeStreams(rankStreamsByPreferredAudio(candidates.flatMap(candidate => candidate.external), preferred));
 }
 
-export async function resolveStreamsAcrossAddons(item: MediaItem, addons: AddonSource[], preferredAudioLanguages: AudioLanguage[]): Promise<StreamResolution> {
+export async function resolveStreamsAcrossAddons(
+  item: MediaItem,
+  addons: AddonSource[],
+  preferredAudioLanguages: AudioLanguage[],
+  force = false,
+): Promise<StreamResolution> {
   const configured = addons.filter(addon => addon.enabled && !addon.deletedAt);
   const cacheKey = resolutionCacheKey(item, configured, preferredAudioLanguages);
-  const cached = cachedResolution(cacheKey);
+  if (force) resolutionCache.delete(cacheKey);
+  const cached = force ? undefined : cachedResolution(cacheKey);
   if (cached) {
     recentStreamCandidates.set(item.id, cached.streams);
     return cached;
@@ -207,7 +213,9 @@ export async function resolveStreamsAcrossAddons(item: MediaItem, addons: AddonS
   if (!identity) return finishResolution(item, cacheKey, [], diagnostics);
 
   const source = itemProvider(item);
-  const automaticPromise = discoverAutomaticStreamProviders().catch(() => [] as AddonSource[]);
+  const automaticPromise = force
+    ? refreshOfficialMovieProviders().then(providers => providers.filter(provider => provider.providesStream)).catch(() => [] as AddonSource[])
+    : discoverAutomaticStreamProviders().catch(() => [] as AddonSource[]);
   const allCandidates: ProviderCandidates[] = [];
   const attemptedUrls = new Set<string>();
 
@@ -251,22 +259,22 @@ export async function resolveStreamsAcrossAddons(item: MediaItem, addons: AddonS
     }
   }
 
-  // A title that misses the instant startup provider set gets one deliberate
-  // fresh pass through the official provider index before FILMA calls it unavailable.
-  const refreshedProviders = await refreshOfficialMovieProviders().catch(() => []);
-  diagnostics.automaticProviders = Math.max(diagnostics.automaticProviders, refreshedProviders.length);
-  const refreshedFallbacks = refreshedProviders
-    .filter(provider => provider.providesStream)
-    .filter(provider => !attemptedUrls.has(providerUrl(provider)));
-  refreshedFallbacks.forEach(provider => attemptedUrls.add(providerUrl(provider)));
-  diagnostics.enabledProviders += refreshedFallbacks.length;
-  if (refreshedFallbacks.length) {
-    const candidates = await resolveProviderBatch(refreshedFallbacks, identity, diagnostics);
-    allCandidates.push(...candidates);
-    const direct = rankedDirect(allCandidates, preferredAudioLanguages);
-    if (direct.length) {
-      diagnostics.directPlayableEntries = direct.length;
-      return finishResolution(item, cacheKey, direct, diagnostics);
+  if (!force) {
+    const refreshedProviders = await refreshOfficialMovieProviders().catch(() => []);
+    diagnostics.automaticProviders = Math.max(diagnostics.automaticProviders, refreshedProviders.length);
+    const refreshedFallbacks = refreshedProviders
+      .filter(provider => provider.providesStream)
+      .filter(provider => !attemptedUrls.has(providerUrl(provider)));
+    refreshedFallbacks.forEach(provider => attemptedUrls.add(providerUrl(provider)));
+    diagnostics.enabledProviders += refreshedFallbacks.length;
+    if (refreshedFallbacks.length) {
+      const candidates = await resolveProviderBatch(refreshedFallbacks, identity, diagnostics);
+      allCandidates.push(...candidates);
+      const direct = rankedDirect(allCandidates, preferredAudioLanguages);
+      if (direct.length) {
+        diagnostics.directPlayableEntries = direct.length;
+        return finishResolution(item, cacheKey, direct, diagnostics);
+      }
     }
   }
 
