@@ -1,5 +1,5 @@
 import type { AddonSource, AudioLanguage, MediaItem } from '../types';
-import { discoverAutomaticStreamProviders, mergeMovieProviders } from './sourceDiscovery';
+import { discoverAutomaticStreamProviders, mergeMovieProviders, refreshOfficialMovieProviders } from './sourceDiscovery';
 import { fetchManifest, fetchStreams, rankStreamsByPreferredAudio, type StremioManifest } from './stremio';
 
 export type ResolvedStream = {
@@ -239,14 +239,37 @@ export async function resolveStreamsAcrossAddons(item: MediaItem, addons: AddonS
   const automatic = await automaticPromise;
   diagnostics.automaticProviders = automatic.length;
   const automaticFallbacks = mergeMovieProviders([], automatic).filter(provider => !attemptedUrls.has(providerUrl(provider)));
+  automaticFallbacks.forEach(provider => attemptedUrls.add(providerUrl(provider)));
   diagnostics.enabledProviders += automaticFallbacks.length;
   if (automaticFallbacks.length) {
     const candidates = await resolveProviderBatch(automaticFallbacks, identity, diagnostics);
     allCandidates.push(...candidates);
+    const direct = rankedDirect(allCandidates, preferredAudioLanguages);
+    if (direct.length) {
+      diagnostics.directPlayableEntries = direct.length;
+      return finishResolution(item, cacheKey, direct, diagnostics);
+    }
   }
 
-  const direct = rankedDirect(allCandidates, preferredAudioLanguages);
-  diagnostics.directPlayableEntries = direct.length;
-  const resolved = direct.length ? direct : rankedExternal(allCandidates, preferredAudioLanguages);
-  return finishResolution(item, cacheKey, resolved, diagnostics);
+  // A title that misses the instant startup provider set gets one deliberate
+  // fresh pass through the official provider index before FILMA calls it unavailable.
+  const refreshedProviders = await refreshOfficialMovieProviders().catch(() => []);
+  diagnostics.automaticProviders = Math.max(diagnostics.automaticProviders, refreshedProviders.length);
+  const refreshedFallbacks = refreshedProviders
+    .filter(provider => provider.providesStream)
+    .filter(provider => !attemptedUrls.has(providerUrl(provider)));
+  refreshedFallbacks.forEach(provider => attemptedUrls.add(providerUrl(provider)));
+  diagnostics.enabledProviders += refreshedFallbacks.length;
+  if (refreshedFallbacks.length) {
+    const candidates = await resolveProviderBatch(refreshedFallbacks, identity, diagnostics);
+    allCandidates.push(...candidates);
+    const direct = rankedDirect(allCandidates, preferredAudioLanguages);
+    if (direct.length) {
+      diagnostics.directPlayableEntries = direct.length;
+      return finishResolution(item, cacheKey, direct, diagnostics);
+    }
+  }
+
+  const external = rankedExternal(allCandidates, preferredAudioLanguages);
+  return finishResolution(item, cacheKey, external, diagnostics);
 }
