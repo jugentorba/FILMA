@@ -1,4 +1,5 @@
 import type { AudioLanguage, MediaItem } from '../types';
+import { CINEMETA_MANIFEST_URL } from './sourceDiscovery';
 import {
   catalogCanLoadWithoutSearch,
   catalogLanguageExtra,
@@ -68,6 +69,46 @@ function imdbIdentity(item: MediaItem): string | undefined {
   const raw = item.source.videoId ?? item.source.mediaId;
   const match = raw.match(/^(tt\d+(?::\d+:\d+)?)/i);
   return match?.[1]?.toLocaleLowerCase();
+}
+
+export function canonicalSeriesMetaId(mediaId: string): string | undefined {
+  const match = mediaId.match(/^(tt\d+)(?::\d+:\d+)?/i);
+  return match?.[1]?.toLocaleLowerCase();
+}
+
+async function fetchMetaWithSeriesFallback(
+  manifestUrl: string,
+  type: string,
+  mediaId: string,
+): Promise<StremioDetailedMeta> {
+  let primaryMeta: StremioDetailedMeta | undefined;
+  let primaryError: unknown;
+
+  try {
+    primaryMeta = await fetchMeta(manifestUrl, type, mediaId);
+    if (type !== 'series' || (primaryMeta.videos?.length ?? 0) > 0) return primaryMeta;
+  } catch (error) {
+    primaryError = error;
+    if (type !== 'series') throw error;
+  }
+
+  const canonicalId = canonicalSeriesMetaId(mediaId);
+  const alreadyCanonical = manifestUrl.trim().toLocaleLowerCase() === CINEMETA_MANIFEST_URL.toLocaleLowerCase();
+  if (!canonicalId || alreadyCanonical) {
+    if (primaryMeta) return primaryMeta;
+    throw primaryError instanceof Error ? primaryError : new Error('Series metadata is unavailable.');
+  }
+
+  try {
+    const fallbackMeta = await fetchMeta(CINEMETA_MANIFEST_URL, 'series', canonicalId);
+    if ((fallbackMeta.videos?.length ?? 0) > 0) return fallbackMeta;
+    if (primaryMeta) return primaryMeta;
+    return fallbackMeta;
+  } catch (fallbackError) {
+    if (primaryMeta) return primaryMeta;
+    if (primaryError instanceof Error) throw primaryError;
+    throw fallbackError;
+  }
 }
 
 export function canonicalMediaKey(item: MediaItem): string {
@@ -205,7 +246,7 @@ export async function getMetaCached(
     if (inflight) return inflight;
   }
 
-  const request = fetchMeta(manifestUrl, type, mediaId).then(meta => {
+  const request = fetchMetaWithSeriesFallback(manifestUrl, type, mediaId).then(meta => {
     metaCache.set(key, { expiresAt: Date.now() + META_TTL_MS, value: meta });
     return meta;
   }).finally(() => {
