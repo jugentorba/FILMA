@@ -1,9 +1,11 @@
 import { StatusBar } from 'expo-status-bar';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, BackHandler, Linking, Platform, SafeAreaView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, BackHandler, Linking, Platform, Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
 import { stringsFor } from './src/i18n';
 import { HomeScreen } from './src/screens/HomeScreen';
+import { LibraryScreen } from './src/screens/LibraryScreen';
 import { LiveTvScreen } from './src/screens/LiveTvScreen';
+import { SearchScreen } from './src/screens/SearchScreen';
 import { SettingsScreen } from './src/screens/SettingsScreen';
 import { YouTubeScreen } from './src/screens/YouTubeScreen';
 import { getMetaCached } from './src/services/mediaDiscovery';
@@ -23,7 +25,7 @@ import { ProfileSwitcher } from './src/ui/ProfileSwitcher';
 import { YouTubePlayerModal } from './src/ui/YouTubePlayerModal';
 import { theme } from './src/ui/theme';
 
-type Screen = 'home' | 'live' | 'youtube' | 'settings';
+type Screen = 'home' | 'search' | 'library' | 'profile' | 'live' | 'youtube' | 'settings';
 type PendingEpisodes = { series: MediaItem; episodes: StremioVideo[] };
 
 type PlaybackCopy = {
@@ -49,61 +51,67 @@ function playbackCopyFor(language: AppLanguage): PlaybackCopy {
   if (language === 'fr') {
     return {
       noEnabledSource: 'Aucune source de lecture automatique n’est disponible pour ce titre.',
-      manifestsUnavailable: 'FILMA n’a pas pu contacter les fournisseurs de lecture. Vérifiez la connexion et réessayez.',
-      noStreamResource: 'Les fournisseurs trouvés donnent un catalogue, mais aucun ne fournit de lecture pour ce titre.',
-      noCompatibleProvider: 'Ce titre est dans le catalogue, mais aucun fournisseur trouvé ne prend actuellement en charge sa lecture.',
-      noProviderResponse: 'Les fournisseurs compatibles n’ont renvoyé aucune disponibilité de lecture pour ce titre.',
+      manifestsUnavailable: 'FILMA n’a pas pu contacter les sources de lecture. Vérifiez la connexion et réessayez.',
+      noStreamResource: 'Le titre est disponible dans le catalogue, mais aucune lecture n’est disponible.',
+      noCompatibleProvider: 'Aucune lecture compatible n’est actuellement disponible pour ce titre.',
+      noProviderResponse: 'Aucune disponibilité de lecture n’a été renvoyée pour ce titre.',
       indirectEntries: count => `${count} option${count === 1 ? '' : 's'} externe${count === 1 ? '' : 's'} détectée${count === 1 ? '' : 's'}, mais aucune lecture directe dans FILMA.`,
-      noPlayableStream: 'Ce titre est disponible dans le catalogue, mais aucune source de lecture n’est disponible pour le moment.',
-      missingMediaIdentity: 'Ce contenu ne fournit pas un identifiant compatible avec les fournisseurs FILMA.',
-      resolveFailed: 'FILMA n’a pas pu vérifier les sources de lecture.',
+      noPlayableStream: 'Aucune lecture n’est disponible pour le moment.',
+      missingMediaIdentity: 'Ce contenu ne fournit pas un identifiant compatible avec FILMA.',
+      resolveFailed: 'FILMA n’a pas pu vérifier la lecture.',
       youtubeOpenFailed: 'FILMA n’a pas pu ouvrir cette vidéo YouTube.',
-      youtubeAppleTvUnavailable: 'YouTube ne peut pas être ouvert sur cet Apple TV. Installez ou mettez à jour l’app YouTube depuis l’App Store de l’Apple TV, puis réessayez.',
+      youtubeAppleTvUnavailable: 'YouTube ne peut pas être ouvert sur cet Apple TV.',
       itemNotPlayable: 'Ce contenu ne fournit pas de source de lecture.',
-      noEpisodes: 'Cette série n’a renvoyé aucune liste d’épisodes.',
+      noEpisodes: 'Aucun épisode n’est disponible pour cette série.',
       episodesFailed: 'FILMA n’a pas pu charger les épisodes de cette série.',
       retry: 'Rechercher à nouveau',
-      sourcesOptional: 'Sources (optionnel)',
+      sourcesOptional: 'Sources avancées',
     };
   }
   if (language === 'sq') {
     return {
       noEnabledSource: 'Nuk ka burim automatik luajtjeje për këtë titull.',
       manifestsUnavailable: 'FILMA nuk arriti të kontaktojë burimet e luajtjes. Kontrollo internetin dhe provo përsëri.',
-      noStreamResource: 'Burimet e gjetura japin katalog, por asnjëri nuk ofron luajtje për këtë titull.',
-      noCompatibleProvider: 'Ky titull është në katalog, por asnjë burim i gjetur nuk e mbështet aktualisht luajtjen e tij.',
-      noProviderResponse: 'Burimet e përputhshme nuk kthyen disponueshmëri luajtjeje për këtë titull.',
+      noStreamResource: 'Titulli është në katalog, por nuk ka luajtje të disponueshme.',
+      noCompatibleProvider: 'Nuk ka luajtje të përputhshme për këtë titull.',
+      noProviderResponse: 'Nuk u kthye asnjë mundësi luajtjeje për këtë titull.',
       indirectEntries: count => `U gjetën ${count} opsione të jashtme, por jo transmetim direkt në FILMA.`,
-      noPlayableStream: 'Ky titull është në katalog, por për momentin nuk ka burim luajtjeje.',
-      missingMediaIdentity: 'Ky përmbajtje nuk ka identitet të përputhshëm me burimet FILMA.',
-      resolveFailed: 'FILMA nuk arriti të kontrollojë burimet e luajtjes.',
+      noPlayableStream: 'Nuk ka luajtje të disponueshme për momentin.',
+      missingMediaIdentity: 'Kjo përmbajtje nuk ka identitet të përputhshëm me FILMA.',
+      resolveFailed: 'FILMA nuk arriti të kontrollojë luajtjen.',
       youtubeOpenFailed: 'FILMA nuk arriti ta hapë këtë video në YouTube.',
-      youtubeAppleTvUnavailable: 'YouTube nuk mund të hapet në këtë Apple TV. Instalo ose përditëso aplikacionin YouTube nga App Store i Apple TV dhe provo përsëri.',
-      itemNotPlayable: 'Ky përmbajtje nuk ka burim luajtjeje.',
-      noEpisodes: 'Ky serial nuk ktheu asnjë listë episodesh.',
-      episodesFailed: 'FILMA nuk arriti të ngarkojë episodet e këtij seriali.',
+      youtubeAppleTvUnavailable: 'YouTube nuk mund të hapet në këtë Apple TV.',
+      itemNotPlayable: 'Kjo përmbajtje nuk ka burim luajtjeje.',
+      noEpisodes: 'Nuk ka episode të disponueshme për këtë serial.',
+      episodesFailed: 'FILMA nuk arriti të ngarkojë episodet.',
       retry: 'Kërko përsëri',
-      sourcesOptional: 'Burimet (opsionale)',
+      sourcesOptional: 'Burime të avancuara',
     };
   }
   return {
-    noEnabledSource: 'No automatic playback provider is currently available for this title.',
-    manifestsUnavailable: 'FILMA could not contact the playback providers. Check the connection and try again.',
-    noStreamResource: 'The providers found supply catalogue data, but none supplies playback for this title.',
-    noCompatibleProvider: 'This title is in the catalogue, but none of the providers found currently supports playback for it.',
-    noProviderResponse: 'Compatible providers returned no playback availability for this title.',
+    noEnabledSource: 'No automatic playback source is currently available for this title.',
+    manifestsUnavailable: 'FILMA could not contact playback sources. Check the connection and try again.',
+    noStreamResource: 'This title is in the catalogue, but no playback is available.',
+    noCompatibleProvider: 'No compatible playback is currently available for this title.',
+    noProviderResponse: 'No playback availability was returned for this title.',
     indirectEntries: count => `${count} external option${count === 1 ? '' : 's'} found, but no direct playback in FILMA.`,
-    noPlayableStream: 'This title is in the catalogue, but no playback source is currently available.',
-    missingMediaIdentity: 'This content does not provide an identity compatible with FILMA providers.',
-    resolveFailed: 'FILMA could not check playback sources.',
+    noPlayableStream: 'No playback is available right now.',
+    missingMediaIdentity: 'This content does not provide an identity compatible with FILMA.',
+    resolveFailed: 'FILMA could not check playback.',
     youtubeOpenFailed: 'FILMA could not open this YouTube video.',
-    youtubeAppleTvUnavailable: 'YouTube cannot be opened on this Apple TV. Install or update the YouTube app from the Apple TV App Store, then try again.',
+    youtubeAppleTvUnavailable: 'YouTube cannot be opened on this Apple TV.',
     itemNotPlayable: 'This content does not provide a playback source.',
-    noEpisodes: 'This series source returned no episode list.',
-    episodesFailed: 'FILMA could not load this series episode list.',
+    noEpisodes: 'No episodes are available for this series.',
+    episodesFailed: 'FILMA could not load the episode list.',
     retry: 'Search again',
-    sourcesOptional: 'Sources (optional)',
+    sourcesOptional: 'Advanced sources',
   };
+}
+
+function mobileCopy(language: AppLanguage) {
+  if (language === 'fr') return { home: 'Accueil', search: 'Rechercher', library: 'Bibliothèque', profile: 'Profil' };
+  if (language === 'sq') return { home: 'Kryefaqja', search: 'Kërko', library: 'Biblioteka', profile: 'Profili' };
+  return { home: 'Home', search: 'Search', library: 'Library', profile: 'Profile' };
 }
 
 function resolutionMessage(diagnostics: StreamResolutionDiagnostics, copy: PlaybackCopy): string {
@@ -120,6 +128,7 @@ function FilmaApp() {
   const { ready, state, setMode, updateProgress, toggleFavorite } = useFilma();
   const { isTvMode } = useDeviceMode();
   const text = stringsFor(state.preferences.appLanguage);
+  const nav = useMemo(() => mobileCopy(state.preferences.appLanguage), [state.preferences.appLanguage]);
   const playbackCopy = useMemo(() => playbackCopyFor(state.preferences.appLanguage), [state.preferences.appLanguage]);
   const [screen, setScreen] = useState<Screen>('home');
   const screenHistoryRef = useRef<Screen[]>([]);
@@ -132,20 +141,25 @@ function FilmaApp() {
   const [playbackError, setPlaybackError] = useState<string>();
   const [availabilityNotice, setAvailabilityNotice] = useState<string>();
 
-  const clearAvailability = () => {
+  const clearAvailability = useCallback(() => {
     setAvailabilityNotice(undefined);
     setPendingRetryItem(null);
-  };
+  }, []);
 
-  const navigateTo = (next: Screen) => {
-    if (next !== screen) screenHistoryRef.current.push(screen);
-    setScreen(next);
-  };
+  const navigateTo = useCallback((next: Screen) => {
+    setScreen(current => {
+      if (next !== current) screenHistoryRef.current.push(current);
+      return next;
+    });
+  }, []);
 
-  const goMovies = () => { clearAvailability(); setMode('movies'); navigateTo('home'); };
+  const goHome = () => { clearAvailability(); setMode('movies'); navigateTo('home'); };
+  const goSearch = () => { clearAvailability(); setMode('movies'); navigateTo('search'); };
+  const goLibrary = () => { clearAvailability(); setMode('movies'); navigateTo('library'); };
+  const goProfile = () => { setDetailsItem(null); clearAvailability(); navigateTo('profile'); };
   const goLive = () => { clearAvailability(); setMode('live'); navigateTo('live'); };
   const goYouTube = () => { if (isTvMode) { clearAvailability(); navigateTo('youtube'); } };
-  const goSettings = () => { setDetailsItem(null); clearAvailability(); navigateTo('settings'); };
+  const goSettings = () => { setDetailsItem(null); clearAvailability(); navigateTo(Platform.isTV ? 'settings' : 'profile'); };
 
   useEffect(() => {
     if (Platform.OS !== 'android') return;
@@ -162,8 +176,7 @@ function FilmaApp() {
       const previous = screenHistoryRef.current.pop();
       if (previous) {
         clearAvailability();
-        if (previous === 'home') setMode('movies');
-        if (previous === 'live') setMode('live');
+        if (previous === 'live') setMode('live'); else setMode('movies');
         setScreen(previous);
         return true;
       }
@@ -175,13 +188,11 @@ function FilmaApp() {
         return true;
       }
 
-      // At the FILMA home screen the Android Back button is intentionally consumed.
-      // This prevents an accidental app exit; Home/Recents remain available to leave FILMA.
       return true;
     });
 
     return () => subscription.remove();
-  }, [availabilityNotice, detailsItem, pendingEpisodes, playbackError, resolvingTitle, screen, selected, selectedYouTube, setMode]);
+  }, [availabilityNotice, clearAvailability, detailsItem, pendingEpisodes, playbackError, resolvingTitle, screen, selected, selectedYouTube, setMode]);
 
   const resolveStreamsFor = async (item: MediaItem, force = false) => {
     if (item.source?.kind !== 'stremio') {
@@ -200,7 +211,6 @@ function FilmaApp() {
         setAvailabilityNotice(resolutionMessage(resolution.diagnostics, playbackCopy));
         return;
       }
-      setPendingRetryItem(null);
       setSelected({ ...item, streamUrl: best.url });
     } catch (error) {
       setPendingRetryItem(item);
@@ -221,21 +231,14 @@ function FilmaApp() {
     if (isTvMode && Platform.OS === 'ios') {
       try {
         const canOpen = await Linking.canOpenURL(watchUrl);
-        if (!canOpen) {
-          setPlaybackError(playbackCopy.youtubeAppleTvUnavailable);
-          return;
-        }
+        if (!canOpen) { setPlaybackError(playbackCopy.youtubeAppleTvUnavailable); return; }
         await Linking.openURL(watchUrl);
       } catch {
         setPlaybackError(playbackCopy.youtubeAppleTvUnavailable);
       }
       return;
     }
-    try {
-      await Linking.openURL(watchUrl);
-    } catch {
-      setPlaybackError(playbackCopy.youtubeOpenFailed);
-    }
+    try { await Linking.openURL(watchUrl); } catch { setPlaybackError(playbackCopy.youtubeOpenFailed); }
   };
 
   const handlePlayItem = async (item: MediaItem) => {
@@ -256,10 +259,7 @@ function FilmaApp() {
       try {
         const meta = await getMetaCached(item.source.manifestUrl, item.source.mediaType, item.source.mediaId);
         const episodes = (meta.videos ?? []).filter(video => Boolean(video.id && video.title));
-        if (!episodes.length) {
-          setAvailabilityNotice(playbackCopy.noEpisodes);
-          return;
-        }
+        if (!episodes.length) { setAvailabilityNotice(playbackCopy.noEpisodes); return; }
         setPendingEpisodes({ series: item, episodes });
       } catch (error) {
         setPlaybackError(error instanceof Error && error.message ? `${playbackCopy.episodesFailed} ${error.message}` : playbackCopy.episodesFailed);
@@ -282,10 +282,6 @@ function FilmaApp() {
     await handlePlayItem(item);
   };
 
-  const dismissAvailability = () => {
-    clearAvailability();
-  };
-
   const handleProgress = useCallback((positionSeconds: number, durationSeconds: number) => {
     if (selected && !selected.id.startsWith('live:')) updateProgress(selected, positionSeconds, durationSeconds);
   }, [selected, updateProgress]);
@@ -297,43 +293,50 @@ function FilmaApp() {
   const selectedFavorite = selected ? state.favorites[selected.id] : undefined;
   const detailsFavorite = detailsItem ? state.favorites[detailsItem.id] : undefined;
   const detailsKnownPlayable = Boolean(detailsItem?.streamUrl || detailsItem?.source?.kind === 'youtube' || (detailsItem?.source?.kind === 'stremio' && detailsItem.source.manifestUrl === FILMA_ARCHIVE_MANIFEST_URL));
+  const mobilePrimary = screen === 'live' ? 'library' : screen;
 
   return (
     <SafeAreaView style={styles.safe}>
       <StatusBar style="light" hidden={Platform.isTV} />
+
       {Platform.isTV ? (
         <View style={styles.tvNav}>
           <View style={styles.brandRow}><View style={styles.brandMark}><Text style={styles.brandMarkText}>F</Text></View><Text style={styles.brand}>FILMA</Text></View>
           <View style={styles.navButtons}>
-            <FocusButton compact label={text.movies} active={screen === 'home'} onPress={goMovies} />
+            <FocusButton compact label={text.movies} active={screen === 'home'} onPress={goHome} />
             <FocusButton compact label={text.liveTv} active={screen === 'live'} onPress={goLive} />
             <FocusButton compact label={text.youtube} active={screen === 'youtube'} onPress={goYouTube} />
             <ProfileSwitcher />
             <FocusButton compact label={text.settings} active={screen === 'settings'} onPress={goSettings} />
           </View>
         </View>
-      ) : (
-        <View style={styles.mobileHeader}>
-          <View style={styles.brandRow}><View style={styles.brandMark}><Text style={styles.brandMarkText}>F</Text></View><Text style={styles.brand}>FILMA</Text></View>
-          <ProfileSwitcher />
-        </View>
-      )}
+      ) : null}
 
-      {playbackError ? <View style={styles.errorBar}><Text style={styles.errorText}>{playbackError}</Text><FocusButton compact label={text.dismiss} onPress={() => setPlaybackError(undefined)} /></View> : null}
+      {playbackError ? (
+        <View style={styles.errorBar}>
+          <Text style={styles.errorText}>{playbackError}</Text>
+          <Pressable accessibilityRole="button" accessibilityLabel={text.dismiss} hitSlop={10} onPress={() => setPlaybackError(undefined)}><Text style={styles.closeNotice}>×</Text></Pressable>
+        </View>
+      ) : null}
+
       {availabilityNotice ? (
         <View style={styles.noticeBar}>
           <Text style={styles.noticeText}>{availabilityNotice}</Text>
           <View style={styles.noticeActions}>
             {pendingRetryItem ? <FocusButton compact active label={playbackCopy.retry} onPress={() => void resolveStreamsFor(pendingRetryItem, true)} /> : null}
             {pendingRetryItem ? <FocusButton compact label={playbackCopy.sourcesOptional} onPress={goSettings} /> : null}
-            <FocusButton compact label={text.dismiss} onPress={dismissAvailability} />
+            <Pressable accessibilityRole="button" accessibilityLabel={text.dismiss} hitSlop={10} onPress={clearAvailability}><Text style={styles.closeNotice}>×</Text></Pressable>
           </View>
         </View>
       ) : null}
+
       {resolvingTitle ? <View style={styles.resolveBar}><ActivityIndicator size="small" /><Text numberOfLines={1} style={styles.resolveText}>{text.loading} {resolvingTitle}…</Text></View> : null}
 
       <View style={styles.content}>
         {screen === 'home' ? <HomeScreen onSelect={handleBrowseSelect} onOpenYouTubeVideo={video => void handleYouTubeVideo(video)} onOpenSettings={goSettings} /> : null}
+        {screen === 'search' ? <SearchScreen onSelect={handleBrowseSelect} /> : null}
+        {screen === 'library' ? <LibraryScreen onSelect={handleBrowseSelect} onOpenLiveTv={goLive} /> : null}
+        {screen === 'profile' ? <View style={styles.profileScreen}><View style={styles.profileQuick}><ProfileSwitcher /></View><SettingsScreen /></View> : null}
         {screen === 'live' ? <LiveTvScreen onSelect={item => void handleLiveSelect(item)} onOpenSettings={goSettings} /> : null}
         {screen === 'youtube' && isTvMode ? <YouTubeScreen onOpenVideo={video => void handleYouTubeVideo(video)} /> : null}
         {screen === 'settings' ? <SettingsScreen /> : null}
@@ -341,10 +344,10 @@ function FilmaApp() {
 
       {!Platform.isTV ? (
         <View style={styles.bottomNav}>
-          <NavTab label={text.movies} icon="movies" active={screen === 'home'} onPress={goMovies} />
-          <NavTab label={text.liveTv} icon="live" active={screen === 'live'} onPress={goLive} />
-          {isTvMode ? <NavTab label={text.youtube} icon="youtube" active={screen === 'youtube'} onPress={goYouTube} /> : null}
-          <NavTab label={text.settings} icon="settings" active={screen === 'settings'} onPress={goSettings} />
+          <NavTab label={nav.home} icon="home" active={mobilePrimary === 'home'} onPress={goHome} />
+          <NavTab label={nav.search} icon="search" active={mobilePrimary === 'search'} onPress={goSearch} />
+          <NavTab label={nav.library} icon="library" active={mobilePrimary === 'library'} onPress={goLibrary} />
+          <NavTab label={nav.profile} icon="profile" active={mobilePrimary === 'profile'} onPress={goProfile} />
         </View>
       ) : null}
 
@@ -380,22 +383,24 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#05070b' },
-  loading: { flex: 1, backgroundColor: theme.background, alignItems: 'center', justifyContent: 'center', gap: 22 },
+  safe: { flex: 1, backgroundColor: '#080808' },
+  loading: { flex: 1, backgroundColor: '#080808', alignItems: 'center', justifyContent: 'center', gap: 22 },
   tvNav: { minHeight: 82, paddingHorizontal: 52, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#090c14', borderBottomWidth: 1, borderBottomColor: theme.border, zIndex: 10 },
-  mobileHeader: { minHeight: 54, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#07090f', gap: 10 },
   brandRow: { flexDirection: 'row', alignItems: 'center', gap: 10, flexShrink: 0 },
-  brandMark: { width: Platform.isTV ? 38 : 29, height: Platform.isTV ? 38 : 29, borderRadius: 10, backgroundColor: theme.accent, alignItems: 'center', justifyContent: 'center' },
-  brandMarkText: { color: '#fff', fontWeight: '900', fontSize: Platform.isTV ? 20 : 15 },
-  brand: { color: theme.text, fontWeight: '900', fontSize: Platform.isTV ? 29 : 20, letterSpacing: 2 },
+  brandMark: { width: 38, height: 38, borderRadius: 10, backgroundColor: theme.accent, alignItems: 'center', justifyContent: 'center' },
+  brandMarkText: { color: '#fff', fontWeight: '900', fontSize: 20 },
+  brand: { color: theme.text, fontWeight: '900', fontSize: Platform.isTV ? 29 : 23, letterSpacing: 2 },
   navButtons: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  bottomNav: { minHeight: 66, marginHorizontal: 10, marginTop: 4, marginBottom: 7, paddingHorizontal: 6, paddingVertical: 4, flexDirection: 'row', gap: 2, backgroundColor: 'rgba(14,17,24,0.98)', borderWidth: 1, borderColor: '#242a36', borderRadius: 20, overflow: 'hidden' },
-  resolveBar: { minHeight: 48, paddingHorizontal: Platform.isTV ? 48 : 16, backgroundColor: theme.surface, flexDirection: 'row', alignItems: 'center', gap: 12, borderBottomWidth: 1, borderBottomColor: theme.border },
-  resolveText: { color: theme.text, fontWeight: '700', flex: 1 },
-  errorBar: { minHeight: 58, paddingHorizontal: Platform.isTV ? 48 : 14, paddingVertical: 8, backgroundColor: '#3b1018', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  bottomNav: { position: 'absolute', left: 12, right: 12, bottom: 8, minHeight: 70, padding: 5, flexDirection: 'row', gap: 2, backgroundColor: 'rgba(29,29,30,0.96)', borderWidth: 1, borderColor: '#3a3a3d', borderRadius: 34, overflow: 'hidden', zIndex: 40 },
+  resolveBar: { minHeight: 46, paddingHorizontal: Platform.isTV ? 48 : 16, backgroundColor: '#151516', flexDirection: 'row', alignItems: 'center', gap: 12 },
+  resolveText: { color: '#ededee', fontWeight: '700', flex: 1 },
+  errorBar: { minHeight: 54, paddingHorizontal: Platform.isTV ? 48 : 16, paddingVertical: 8, backgroundColor: '#3b1018', flexDirection: 'row', alignItems: 'center', gap: 12 },
   errorText: { flex: 1, color: '#fecdd3', fontWeight: '700' },
-  noticeBar: { minHeight: 62, paddingHorizontal: Platform.isTV ? 48 : 14, paddingVertical: 9, backgroundColor: '#172033', borderBottomWidth: 1, borderBottomColor: '#33415d', flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
-  noticeText: { flex: 1, minWidth: 190, color: '#d7dfec', fontWeight: '700', fontSize: 12 },
-  noticeActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  noticeBar: { minHeight: 58, paddingHorizontal: Platform.isTV ? 48 : 16, paddingVertical: 8, backgroundColor: '#181a1f', flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 10 },
+  noticeText: { flex: 1, minWidth: 190, color: '#d7d9de', fontWeight: '700', fontSize: 12 },
+  noticeActions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6 },
+  closeNotice: { color: '#e8e8e9', fontSize: 28, lineHeight: 29, fontWeight: '300', paddingHorizontal: 4 },
   content: { flex: 1 },
+  profileScreen: { flex: 1 },
+  profileQuick: { position: 'absolute', top: 14, right: 16, zIndex: 30 },
 });
