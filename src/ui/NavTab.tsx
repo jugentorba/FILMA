@@ -4,7 +4,7 @@ import Svg, { Circle, Path, Rect } from 'react-native-svg';
 import { theme } from './theme';
 import { useResponsiveLayout } from './useResponsiveLayout';
 
-export type NavIconName = 'movies' | 'live' | 'youtube' | 'settings';
+export type NavIconName = 'home' | 'search' | 'library' | 'profile' | 'movies' | 'live' | 'youtube' | 'settings';
 
 type Props = {
   label: string;
@@ -15,6 +15,41 @@ type Props = {
 
 function NavIcon({ name, color, size }: { name: NavIconName; color: string; size: number }) {
   const common = { width: size, height: size, viewBox: '0 0 24 24' } as const;
+
+  if (name === 'home') {
+    return (
+      <Svg {...common} fill="none">
+        <Path d="M3.5 10.4 12 3l8.5 7.4v9.1a1.5 1.5 0 0 1-1.5 1.5h-4.8v-6.2H9.8V21H5a1.5 1.5 0 0 1-1.5-1.5v-9.1Z" fill={color} />
+      </Svg>
+    );
+  }
+
+  if (name === 'search') {
+    return (
+      <Svg {...common} fill="none">
+        <Circle cx="10.8" cy="10.8" r="6.2" stroke={color} strokeWidth="2.4" />
+        <Path d="m15.4 15.4 5 5" stroke={color} strokeWidth="2.4" strokeLinecap="round" />
+      </Svg>
+    );
+  }
+
+  if (name === 'library') {
+    return (
+      <Svg {...common} fill="none">
+        <Rect x="4.4" y="7.2" width="15.2" height="13" rx="2.8" fill={color} />
+        <Path d="M7 4.6h10M8.6 2.8h6.8" stroke={color} strokeWidth="2" strokeLinecap="round" />
+      </Svg>
+    );
+  }
+
+  if (name === 'profile') {
+    return (
+      <Svg {...common} fill="none">
+        <Circle cx="12" cy="8" r="4" fill={color} />
+        <Path d="M4.7 20c.7-4.1 3.1-6.2 7.3-6.2s6.6 2.1 7.3 6.2" fill={color} />
+      </Svg>
+    );
+  }
 
   if (name === 'movies') {
     return (
@@ -56,23 +91,17 @@ function NavIcon({ name, color, size }: { name: NavIconName; color: string; size
 
 export function NavTab({ label, icon, active = false, onPress }: Props) {
   const [focused, setFocused] = useState(false);
-  const iconColor = active || focused ? theme.accent : '#9ca6b9';
   const layout = useResponsiveLayout();
-  const iconSize = layout.iconSize;
+  const iconColor = active || focused ? '#ffffff' : '#b1b5bc';
+  const iconSize = Math.max(20, layout.iconSize + 3);
 
   const rootStyle = useMemo(() => ({
-    minHeight: layout.isCompactPhone ? 50 : layout.isTablet ? 60 : 54,
-    borderRadius: layout.isCompactPhone ? 11 : 13,
+    minHeight: layout.isCompactPhone ? 58 : layout.isTablet ? 70 : 64,
+    borderRadius: layout.isCompactPhone ? 24 : 28,
   }), [layout.isCompactPhone, layout.isTablet]);
 
-  const iconWrapStyle = useMemo(() => ({
-    width: iconSize + 8,
-    height: iconSize + 6,
-    borderRadius: 9,
-  }), [iconSize]);
-
   const labelStyle = useMemo(() => ({
-    fontSize: layout.isCompactPhone ? 9 : layout.isTablet ? 11 : 10,
+    fontSize: layout.isCompactPhone ? 10 : layout.isTablet ? 13 : 11,
   }), [layout.isCompactPhone, layout.isTablet]);
 
   return (
@@ -84,13 +113,12 @@ export function NavTab({ label, icon, active = false, onPress }: Props) {
       onFocus={() => setFocused(true)}
       onBlur={() => setFocused(false)}
       onPress={onPress}
-      style={[styles.root, rootStyle, focused && styles.focused]}
+      style={[styles.root, rootStyle, active && styles.active, focused && styles.focused]}
     >
-      <View style={[styles.iconWrap, iconWrapStyle, active && styles.iconWrapActive]}>
+      <View style={styles.iconWrap}>
         <NavIcon name={icon} color={iconColor} size={iconSize} />
       </View>
       <Text numberOfLines={1} style={[styles.label, labelStyle, active && styles.labelActive, focused && styles.labelFocused]}>{label}</Text>
-      {active ? <View style={styles.indicator} /> : null}
     </Pressable>
   );
 }
@@ -101,35 +129,27 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 3,
-    position: 'relative',
+  },
+  active: {
+    backgroundColor: 'rgba(255,255,255,0.16)',
   },
   focused: {
-    backgroundColor: '#151b28',
+    backgroundColor: 'rgba(255,255,255,0.13)',
   },
   iconWrap: {
+    minHeight: 25,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  iconWrapActive: {
-    backgroundColor: 'rgba(247,58,95,0.11)',
-  },
   label: {
-    color: '#9ca6b9',
+    color: '#b1b5bc',
     fontWeight: '700',
   },
   labelActive: {
-    color: theme.text,
+    color: '#ffffff',
     fontWeight: '900',
   },
   labelFocused: {
-    color: theme.text,
-  },
-  indicator: {
-    position: 'absolute',
-    bottom: 1,
-    width: 18,
-    height: 2,
-    borderRadius: 2,
-    backgroundColor: theme.accent,
+    color: '#ffffff',
   },
 });
