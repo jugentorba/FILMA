@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { validatePlaybackAddon } from '../services/addonValidation';
 import { discoverWebsiteMovieSource } from '../services/websiteSourceDiscovery';
 import { useFilma } from '../store/FilmaContext';
 import { FocusButton } from '../ui/FocusButton';
@@ -12,6 +13,14 @@ function copyFor(language: 'en' | 'fr' | 'sq') {
     automaticTitle: 'FILMA Films & Séries — Automatique',
     automaticHelp: 'FILMA découvre et actualise automatiquement les fournisseurs compatibles en arrière-plan. Aucune configuration n’est nécessaire.',
     automatic: 'Automatique',
+    providerTitle: 'Ajouter un fournisseur',
+    providerHelp: 'Ajoutez directement un fournisseur compatible. Collez son URL manifest.json ou l’adresse de base du fournisseur ; FILMA vérifiera la source avant de l’enregistrer.',
+    providerName: 'Nom du fournisseur (facultatif)',
+    providerUrl: 'https://fournisseur.com/manifest.json',
+    addProvider: 'Ajouter le fournisseur',
+    checkingProvider: 'Vérification…',
+    providerAdded: 'Fournisseur ajouté.',
+    providerUnsupported: 'Ce fournisseur n’a pas de manifeste films/séries compatible.',
     customTitle: 'Source site / fournisseur',
     customHelp: 'Collez l’adresse d’un site ou fournisseur. FILMA recherchera une API ou un manifeste public compatible. Les pages vidéo protégées ne sont pas extraites.',
     sourceName: 'Nom (facultatif)',
@@ -21,7 +30,7 @@ function copyFor(language: 'en' | 'fr' | 'sq') {
     added: 'Source ajoutée.',
     invalid: 'Entrez une adresse http:// ou https:// valide.',
     unsupported: 'Aucun flux public compatible n’a été trouvé à cette adresse.',
-    saved: 'Sources ajoutées',
+    saved: 'Fournisseurs / sources ajoutés',
     enabled: 'Activée', disabled: 'Désactivée', enable: 'Activer', disable: 'Désactiver', remove: 'Supprimer',
   };
   if (language === 'sq') return {
@@ -29,6 +38,14 @@ function copyFor(language: 'en' | 'fr' | 'sq') {
     automaticTitle: 'FILMA Filma & Seriale — Automatik',
     automaticHelp: 'FILMA zbulon dhe rifreskon automatikisht ofruesit e përputhshëm në sfond. Nuk duhet të konfigurosh asgjë.',
     automatic: 'Automatik',
+    providerTitle: 'Shto provider',
+    providerHelp: 'Shto direkt një provider të përputhshëm. Vendos URL-në manifest.json ose adresën bazë të providerit; FILMA e kontrollon para se ta ruajë.',
+    providerName: 'Emri i providerit (opsional)',
+    providerUrl: 'https://provider.com/manifest.json',
+    addProvider: 'Shto providerin',
+    checkingProvider: 'Duke kontrolluar…',
+    providerAdded: 'Provideri u shtua.',
+    providerUnsupported: 'Ky provider nuk ka manifest të përputhshëm për filma/seriale.',
     customTitle: 'Burim website / provider',
     customHelp: 'Vendos adresën e një website-i ose provideri. FILMA kërkon një API ose manifest publik të përputhshëm. Faqet e mbrojtura të videove nuk ekstraktohen.',
     sourceName: 'Emri (opsional)',
@@ -38,7 +55,7 @@ function copyFor(language: 'en' | 'fr' | 'sq') {
     added: 'Burimi u shtua.',
     invalid: 'Vendos një adresë të vlefshme http:// ose https://.',
     unsupported: 'Nuk u gjet një burim publik i përputhshëm në këtë adresë.',
-    saved: 'Burime të shtuara',
+    saved: 'Providerë / burime të shtuara',
     enabled: 'Aktiv', disabled: 'Joaktiv', enable: 'Aktivizo', disable: 'Çaktivizo', remove: 'Hiq',
   };
   return {
@@ -46,6 +63,14 @@ function copyFor(language: 'en' | 'fr' | 'sq') {
     automaticTitle: 'FILMA Movies & Series — Automatic',
     automaticHelp: 'FILMA discovers and refreshes compatible providers automatically in the background. No setup is required.',
     automatic: 'Automatic',
+    providerTitle: 'Add Provider',
+    providerHelp: 'Add a compatible provider directly. Paste its manifest.json URL or provider base address; FILMA validates it before saving.',
+    providerName: 'Provider name (optional)',
+    providerUrl: 'https://provider.example/manifest.json',
+    addProvider: 'Add Provider',
+    checkingProvider: 'Checking…',
+    providerAdded: 'Provider added.',
+    providerUnsupported: 'This provider does not expose a compatible movie/series manifest.',
     customTitle: 'Website / provider source',
     customHelp: 'Paste a website or provider address. FILMA looks for a compatible public API/feed/manifest. Protected video pages are not extracted.',
     sourceName: 'Name (optional)',
@@ -55,7 +80,7 @@ function copyFor(language: 'en' | 'fr' | 'sq') {
     added: 'Source added.',
     invalid: 'Enter a valid http:// or https:// address.',
     unsupported: 'No compatible public movie feed was found at this address.',
-    saved: 'Added sources',
+    saved: 'Added providers / sources',
     enabled: 'Enabled', disabled: 'Disabled', enable: 'Enable', disable: 'Disable', remove: 'Remove',
   };
 }
@@ -65,11 +90,55 @@ export function MovieSourceSettingsScreen() {
   const layout = useResponsiveLayout();
   const copy = useMemo(() => copyFor(state.preferences.appLanguage), [state.preferences.appLanguage]);
   const custom = useMemo(() => state.addons.filter(addon => !addon.deletedAt && !addon.id.startsWith('auto-stremio:')), [state.addons]);
+
+  const [providerName, setProviderName] = useState('');
+  const [providerUrl, setProviderUrl] = useState('');
+  const [providerChecking, setProviderChecking] = useState(false);
+  const [providerMessage, setProviderMessage] = useState<string>();
+  const [providerError, setProviderError] = useState(false);
+
   const [name, setName] = useState('');
   const [url, setUrl] = useState('');
   const [checking, setChecking] = useState(false);
   const [message, setMessage] = useState<string>();
   const [error, setError] = useState(false);
+
+  const addProvider = async () => {
+    if (providerChecking) return;
+    const rawUrl = providerUrl.trim();
+    if (!/^https?:\/\//i.test(rawUrl)) {
+      setProviderError(true);
+      setProviderMessage(copy.invalid);
+      return;
+    }
+
+    setProviderChecking(true);
+    setProviderMessage(undefined);
+    const candidates = /\/manifest\.json(?:[?#].*)?$/i.test(rawUrl)
+      ? [rawUrl]
+      : [rawUrl, `${rawUrl.replace(/\/+$/, '')}/manifest.json`];
+
+    try {
+      for (const candidate of candidates) {
+        try {
+          const validation = await validatePlaybackAddon(candidate);
+          if (!validation.valid) continue;
+          addAddon(providerName.trim() || validation.name, candidate);
+          setProviderName('');
+          setProviderUrl('');
+          setProviderError(false);
+          setProviderMessage(copy.providerAdded);
+          return;
+        } catch {
+          // Try the next candidate before declaring the provider unsupported.
+        }
+      }
+      setProviderError(true);
+      setProviderMessage(copy.providerUnsupported);
+    } finally {
+      setProviderChecking(false);
+    }
+  };
 
   const addWebsiteSource = async () => {
     if (checking) return;
@@ -115,6 +184,15 @@ export function MovieSourceSettingsScreen() {
           <View style={styles.goodTag}><Text style={styles.goodTagText}>{copy.automatic}</Text></View>
         </View>
         <Text style={styles.help}>{copy.automaticHelp}</Text>
+      </View>
+
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>{copy.providerTitle}</Text>
+        <Text style={styles.help}>{copy.providerHelp}</Text>
+        <TextInput value={providerName} onChangeText={setProviderName} placeholder={copy.providerName} placeholderTextColor={theme.muted} style={styles.input} />
+        <TextInput value={providerUrl} onChangeText={setProviderUrl} placeholder={copy.providerUrl} placeholderTextColor={theme.muted} autoCapitalize="none" autoCorrect={false} keyboardType="url" style={styles.input} />
+        <FocusButton active label={providerChecking ? copy.checkingProvider : copy.addProvider} onPress={() => void addProvider()} />
+        {providerMessage ? <Text style={[styles.message, providerError && styles.error]}>{providerMessage}</Text> : null}
       </View>
 
       <View style={styles.card}>
