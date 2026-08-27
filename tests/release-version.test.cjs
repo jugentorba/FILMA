@@ -8,6 +8,7 @@ const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'))
 const settingsEntry = fs.readFileSync(path.join(root, 'src/screens/SettingsScreen.tsx'), 'utf8');
 const settingsHub = fs.readFileSync(path.join(root, 'src/screens/SettingsHubScreen.tsx'), 'utf8');
 const settingsDetail = fs.readFileSync(path.join(root, 'src/screens/SettingsV2.tsx'), 'utf8');
+const movieSources = fs.readFileSync(path.join(root, 'src/screens/MovieSourceSettingsScreen.tsx'), 'utf8');
 
 const version = String(app.expo.version);
 const iosBuild = String(app.expo.ios.buildNumber);
@@ -20,5 +21,7 @@ assert.ok(settingsEntry.includes("export { SettingsHubScreen as SettingsScreen }
 assert.ok(settingsHub.includes(expectedLabel), `Settings hub must show the current release label: ${expectedLabel}`);
 assert.ok(settingsDetail.includes(expectedLabel), `Detailed settings must show the current release label: ${expectedLabel}`);
 assert.ok(settingsHub.includes('<DetailedSettings hideMovieSources />'), 'Settings hub must keep the legacy manual add-on manager hidden outside the dedicated source screen');
+assert.ok(movieSources.includes("providerTitle: 'Add Provider'"), 'Dedicated movie source settings must expose the Add Provider option');
+assert.ok(movieSources.includes('validatePlaybackAddon'), 'Manual providers must be validated before they are saved');
 
 console.log(`FILMA release metadata is aligned: ${expectedLabel}`);
