@@ -69,6 +69,7 @@ export function LibraryScreen({ onSelect, onOpenLiveTv }: Props) {
 
   const favorites = useMemo(() => Object.values(state.favorites)
     .filter(entry => !entry.deletedAt)
+    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
     .flatMap(entry => {
       const item = savedSnapshots.get(entry.mediaId);
       return item ? [item] : [];
