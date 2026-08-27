@@ -56,6 +56,7 @@ jobs:
             --skipLibCheck \
             --esModuleInterop
           node tests/sync.test.cjs
+          node tests/library-progress.test.cjs
           node tests/sources.test.cjs
           node tests/archive-provider.test.cjs
           node tests/media-discovery.test.cjs
