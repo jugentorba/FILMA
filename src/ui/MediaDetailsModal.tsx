@@ -22,7 +22,7 @@ type Props = {
 type Availability = 'checking' | 'available' | 'none' | 'unknown';
 
 export function MediaDetailsModal({ item, favorite, knownPlayable = false, onPlay, onOpenSources, onToggleFavorite, onClose }: Props) {
-  const { state } = useFilma();
+  const { state, updateProgress } = useFilma();
   const layout = useResponsiveLayout();
   const text = stringsFor(state.preferences.appLanguage);
   const [description, setDescription] = useState<string>();
@@ -120,6 +120,18 @@ export function MediaDetailsModal({ item, favorite, knownPlayable = false, onPla
     onPlay(item);
   };
 
+  const handleFavorite = () => {
+    if (!favorite) {
+      const existing = state.progress[item.id];
+      updateProgress(
+        item,
+        existing?.positionSeconds ?? 0,
+        existing?.durationSeconds ?? item.durationSeconds ?? 0,
+      );
+    }
+    onToggleFavorite();
+  };
+
   const backdrop = item.backdrop || item.poster;
   const meta = [isSeries ? copy.series : copy.movie, item.year, item.genres?.slice(0, 3).join(' · ')].filter(Boolean).join('  •  ');
 
@@ -148,7 +160,7 @@ export function MediaDetailsModal({ item, favorite, knownPlayable = false, onPla
               {item.subtitle ? <Text numberOfLines={2} style={styles.subtitle}>{item.subtitle}</Text> : null}
               <View style={styles.heroActions}>
                 <FocusButton active preferredFocus label={primaryLabel} onPress={handlePrimary} />
-                <FocusButton label={favorite ? `♥ ${copy.favorite}` : `♡ ${copy.addFavorite}`} onPress={onToggleFavorite} />
+                <FocusButton label={favorite ? `♥ ${copy.favorite}` : `♡ ${copy.addFavorite}`} onPress={handleFavorite} />
               </View>
             </View>
           </ImageBackground>
